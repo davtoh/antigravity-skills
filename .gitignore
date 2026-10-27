@@ -1,0 +1,19 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# skill-creator evaluation outputs (machine-local, not portable)
+skill-creator/eval-results/
+skill-creator/benchmarks/
+skill-creator/eval-data/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
