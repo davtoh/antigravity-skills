@@ -11,9 +11,16 @@ __pycache__/
 skill-creator/eval-results/
 skill-creator/benchmarks/
 skill-creator/eval-data/
+evals.json
 
 # Editor
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# Ignore all directories by default
+/*/
+
+# Whitelist registered skills
+!/frontier-architect/
