@@ -29,10 +29,11 @@ Heavyweight models allocate massive internal compute per token to hold implicit 
 
 ### A. Externalized Pre-Computation (Think-on-Paper First)
 Before modifying any production file on a non-trivial task, write an explicit **Architectural Pre-Flight Block** (either in the plan artifact or concisely in chat):
-- **Invariants**: What must remain true before and after this change?
+- **Invariants & Global Rules**: What must remain true before and after this change? Verify compliance with global rules in `~/.gemini/config/rules/` (12-Factor zero hardcoded credentials/URLs, OS-agnostic verification commands, and comment preservation).
+- **Portable Plan Hygiene (Strict Precedence)**: While generic chat guidelines allow `file:///` links, committable files and implementation plans **must never contain `file:///` links, absolute drive paths (`C:\...`), or OS user paths**. Use clean POSIX repo-relative paths (`src/module/file.py#L10-L20`).
 - **Data & State Flow**: Source of truth → transformation → sink.
 - **Failure Modes**: Network drop, null/empty input, concurrency race, quota limit.
-- **Verification Command**: The exact shell command or browser check that proves it works.
+- **OS-Agnostic Verification Command**: The exact cross-platform command (`python -m unittest discover tests`, `pytest`) or browser check that proves it works. Never embed `.venv\Scripts\` or hidden user directories (`~/.gemini/...`).
 
 *Why it works:* Once these constraints are written into the prompt/artifact context, the model attends to them explicitly while generating code, simulating deep internal reasoning at near-zero latency cost.
 
@@ -60,6 +61,7 @@ Before declaring a task complete, perform a strict adversarial audit of both the
 - **Container & Asset Sync**: If Docker is running, did I confirm the container is serving the new JS/CSS/Python files (`docker cp` or restart) rather than an old image layer?
 - **DOM Bounding-Box & State Proof**: For layout or button-state bugs, did I inspect the live browser via `chrome-devtools` MCP (`evaluate_script` / `take_screenshot`) after a hard reload?
 - **Resource & Process Hygiene (`vmmem` / Docker CPU)**: Did I check `docker top` / `docker stats --no-stream` to ensure no orphaned `ffmpeg` jobs, unthrottled video loops, or inactive tab streams are burning CPU in the background?
+- **Export & Staging Sanitization**: If saving a plan or updating documentation in the repository, did I audit the files to ensure zero `file:///` URLs, zero machine-local paths (`C:\Users\`), zero virtualenv binaries (`.venv\Scripts\`), and zero hardcoded URLs (`http://localhost:8000`)?
 - **Documentation & Test Preservation**: Did I preserve all existing docstrings/comments and run the unit test suite after my *very last* edit?
 
 ---

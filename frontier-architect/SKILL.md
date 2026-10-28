@@ -160,6 +160,11 @@ Before modifying production files on any multi-step task:
 
 1. **Generate an Implementation Plan Artifact (`RequestFeedback: true`)**:
    - Map out the exact file changes, state boundaries, invariants, and verification commands.
+   - **Enforce the Export-Ready Portable Plan Contract** (per `~/.gemini/config/rules/` and `AGENTS.md`):
+     - **Repo-Relative Paths Only**: Format all file references as POSIX repository-relative paths (`dashboard/static/app.js#L94-L105`), never machine-local absolute paths (`C:\Users\...`), and **never use `file:///` URIs inside plans or documentation**. (This strictly overrides generic chat link formatting).
+     - **OS-Agnostic Verification Commands**: Write portable commands (`python -m unittest discover tests`, `pytest tests/`, `python scripts/cdp_inspect.py`) and use `$APP_URL` placeholders. Never embed `.venv\Scripts\` or personal customization paths (`~/.gemini/config/skills/...`). If a helper script is needed across sessions, reference it in `<workspace>/scripts/`.
+     - **Zero Hardcoded Infrastructure Details**: Follow 12-factor rules (parameterize hosts/ports; no literal `localhost:8000` hardcoded in plans or configs).
+     - **Scenario Combinations Matrix**: Include an executable test matrix per `executable_documentation.md`.
    - Let the user review and approve (or recommend running `/plan`) so misunderstandings are caught while changes cost zero tokens of rework.
 2. **Codify Persistent Rules (`AGENTS.md` / `.agents/rules/`)**:
    - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), create or update it with the folder ownership, coding conventions, and exact test/build commands. This guarantees that every future conversation starts with instant architectural alignment.
@@ -184,8 +189,11 @@ Execute the approved plan in tight, verifiable increments rather than a single m
    - **`scratch/` is Ephemeral Only**: Files in `scratch/` are NOT automatically indexed or reused by future conversations. Use `scratch/` strictly for throwaway Phase 4 SPIKEs or temporary screenshots.
    - **Global Skill `scripts/` (`~/.gemini/config/skills/frontier-architect/scripts/`)**: Must remain **100% OS-agnostic (Windows, macOS, Linux)** and **100% project-agnostic** so they can be committed and shared across any repo or machine.
    - **Project `<workspace>/scripts/`**: If a reusable diagnostic or automation script is specific to the current repository, save it in `<workspace>/scripts/` and document its command in `<workspace>/AGENTS.md` so future conversations discover and reuse it immediately.
-5. **Milestone Checkpoint & Fresh Conversation Hygiene**:
-   - Once a milestone is verified, log the completed state and explicitly advise the user if it is a good point to click **New Conversation (+)** or run `/compact` to keep context crisp for the next feature.
+5. **Milestone Checkpoint, Export Sanitization & Fresh Thread Hygiene**:
+   - **Pre-Commit Staging Audit**: When exporting plans/artifacts to the repository (e.g. `milestone_plan.md`, `INTELLIGENT_TRACKER_INTEGRATION_PLAN.md`) or preparing a git commit:
+     - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries (`.venv\Scripts`), and zero hardcoded local URLs/ports**.
+     - Present a clean, copy-pasteable git commit command with a concise milestone summary.
+   - **Fresh Conversation Hygiene**: Once a milestone is verified and committed, update `MIGRATION_LOG.md` / `AGENTS.md` and explicitly advise the user to click **New Conversation (+)** or run `/compact` to maintain peak reasoning and keep context crisp for the next milestone.
 
 ---
 
