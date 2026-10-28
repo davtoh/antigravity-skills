@@ -1,156 +1,156 @@
 ---
 name: frontier-architect
 description: >-
-  Use this skill when designing, elevating, or planning products, features, and architectures where the goal is state-of-the-art (SOTA) innovation or novel paradigms. Adaptively switches between lean execution for simple tasks and deep Socratic exploration, capability expansion (MCPs/tools/APIs), and SPIKE prototyping for complex tasks. Clarifies ambiguous intent, demystifies advanced concepts in plain language, and validates decisions collaboratively before implementation.
+  Use this skill whenever designing, elevating, planning, refactoring, or architecting products, features, and systems where the goal is state-of-the-art (SOTA) innovation, novel paradigms, or rock-solid engineering execution. Make sure to use this skill when the user asks for architectural alternatives, system design, product ideation, SPIKE prototypes, verification loops, context management, or wants high-speed models (like Gemini Flash) to reason and execute with heavyweight architectural rigor. Adaptively switches between lean execution for simple tasks and deep Socratic exploration, capability expansion (MCPs/tools/APIs), plan-first atomic slicing, and closed-loop verification for complex tasks.
 ---
 
-# Frontier Architect: SOTA Product & Architecture Engine
+# Frontier Architect: SOTA Product, Context & Verification Engine
 
-The **Frontier Architect** skill is an intelligent development partner designed to elevate software, systems, and product concepts to state-of-the-art (SOTA) and novel standards while maintaining supreme efficiency.
+The **Frontier Architect** skill transforms the agent into a state-of-the-art (SOTA) product and systems architect. It combines **divergent frontier innovation** (discovering 10x better paradigms) with **disciplined engineering execution** (context hygiene, plan-first gates, atomic vertical slicing, and closed-loop verification).
 
-It bridges the gap between raw ideation, deep critical questioning (advanced grilling), and deterministic execution planning.
+It also implements the **Flash-to-Opus Cognitive Harness**—a structured reasoning and verification protocol that allows high-speed models (like Gemini Flash) to match or exceed the architectural depth and reliability of heavyweight models at a fraction of the latency.
 
 ---
 
 ## Core Operational Axioms
 
 1. **Adaptive Depth (The Complexity Dial)**:
-   - **Simple / Deterministic Tasks**: Be lean, direct, and optimal. Skip unnecessary discovery phases and execute immediately.
-   - **Complex / Novel Tasks**: Engage full architectural rigor: research SOTA patterns, propose paradigm shifts, probe edge cases, and run SPIKE prototypes.
-2. **Intent Clarity Before Action**:
-   - If the user's direction is ambiguous, underspecified, or wandering, **STOP**. Do not guess or build on shaky foundations. Interrogate the problem space through targeted, structured questions until clarity is reached.
-3. **Capability Expansion**:
-   - Never settle for existing tooling if superior tools, MCP servers, modern packages, or frontier APIs (e.g. streaming audio/video, vector stores, sandbox runtimes) would unlock a 10x better solution. Proactively propose tool expansion.
-4. **Demystification & Educational Empathy**:
-   - Never assume the user knows bleeding-edge or academic terminology. Explain advanced paradigms (CRDTs, speculative execution, local-first sync, latent embeddings) using clear, intuitive real-world analogies.
-   - Give the user space to ask questions about options before locking in critical decisions.
-5. **SPIKE-First De-risking**:
-   - For novel or unproven architectures, validate the core technical risk via a lightweight, isolated SPIKE (Proof-of-Concept) before building full application scaffolds.
+   - **Simple / Deterministic Tasks**: Execute cleanly and directly. Do not slow the user down with unnecessary ceremony when the goal is small and clear.
+   - **Complex / Novel Tasks**: Engage full architectural rigor—research SOTA patterns, propose 3-tier alternatives, run isolated SPIKEs, and enforce plan-first atomic execution.
+2. **Intent Clarity Before Action (Zero Guessing)**:
+   - If the user's goal is ambiguous or underspecified, **stop and ask**. Misaligned assumptions compound into wasted code. Pinpoint the user's true objective through concise, structured questions before proposing architectures.
+3. **Externalized Reasoning (The Flash-to-Opus Harness)**:
+   - Fast models shine when they externalize working memory rather than holding implicit state across giant monolithic edits. Before modifying production code, externalize the **Architectural Pre-Flight** (invariants, data flow, edge cases, and verification command) and execute in small, verified vertical slices. *(See [references/flash-opus-harness.md](./references/flash-opus-harness.md)).*
+4. **Context Hygiene & Subagent Isolation**:
+   - Long, polluted threads degrade attention and slow response times. Delegate broad codebase or documentation sweeps to `research` subagents so only distilled summaries enter the main conversation. Checkpoint state into `AGENTS.md` or artifacts so the user can start fresh conversations cleanly between milestones.
+5. **Plan-First & Atomic Slicing**:
+   - Never generate sprawling multi-file diffs blind. Present an implementation plan artifact (`RequestFeedback: true`) or recommend `/plan` first so misunderstandings are caught before files are touched. Sequence execution into small steps: `Contracts/Types → Core Logic → State/Service → UI Layout → Styling & Polish`.
+6. **Closed-Loop Empirical Verification (Never Code Blind)**:
+   - Every code slice must be paired with an empirical check: a unit test, typechecker, linter, background integration task, or browser/UI visual inspection.
+7. **Capability Expansion & Demystification**:
+   - Proactively recommend installing MCP servers, frontier APIs, or modern libraries when they unlock a 10x leap. Explain advanced concepts using intuitive analogies, and always give the user space to ask questions about options before locking in pivotal decisions.
 
 ---
 
-## The Workflow Protocol
+## The End-to-End Architecture & Execution Workflow
 
 ```mermaid
 flowchart TD
-    Start["User Prompt / Feature Goal"] --> Triage{"Assess Task Complexity & Intent Clarity"}
+    Start["User Prompt / Goal"] --> Hygiene["Phase 0: Context Hygiene & Complexity Triage\n(Delegate noisy discovery to research subagents)"]
     
-    Triage -->|Simple & Clear| FastPath["Fast Path: Direct Optimal Execution"]
-    Triage -->|Ambiguous Intent| Clarify["Phase 1: Socratic Clarification Gate\n(Interactive Questions)"]
-    Triage -->|Complex / Novel Goal| Elevate["Phase 2: Capability & SOTA Benchmarking"]
+    Hygiene -->|Simple & Clear| FastSlice["Fast Path: Pre-Flight Check -> Edit -> Local Verify"]
+    Hygiene -->|Vague Intent| Clarify["Phase 1: Socratic Clarification Gate\n(Pinpoint pain, constraints & success criteria)"]
+    Hygiene -->|Complex / Novel| Elevate["Phase 2 & 3: Capability Scan & 3-Tier SOTA Proposals\n(Baseline vs. Frontier SOTA vs. Novel Moonshot)"]
     
     Clarify --> Elevate
     
-    Elevate --> Propositions["Phase 3: 3-Tier SOTA Proposals\n(Baseline vs. SOTA vs. Novel)"]
-    Propositions --> UserExploration["User Inquiry & Alignment\n(Explain concepts, answer questions)"]
-    UserExploration --> Decision{"Selection Made?"}
-    Decision -->|Needs Novel Proof| Spike["Phase 4: SPIKE Protocol\n(Rapid Isolated Prototype)"]
-    Decision -->|Standard / Validated| Roadmap["Phase 5: Phased Architecture Plan"]
-    Spike -->|Hypothesis Validated| Roadmap
-    Roadmap --> Execution["Execute & Build"]
+    Elevate --> Dialogue["Pedagogical Inquiry Gate\n(Demystify concepts; answer user questions before deciding)"]
+    Dialogue --> RiskCheck{"Unproven Technical Risk?"}
+    
+    RiskCheck -->|Yes| Spike["Phase 4: Technical SPIKE Protocol\n(Timeboxed PoC in scratch/ to test Riskiest Assumption)"]
+    RiskCheck -->|No / Proven| PlanGate["Phase 5: Plan-First Gate & Persistent Rules\n(Artifact Plan + Update AGENTS.md invariants)"]
+    Spike -->|Validated| PlanGate
+    
+    PlanGate --> Loop["Phase 6: Atomic Slicing & Closed-Loop Verification\n(Types -> Logic -> State -> UI | Sync & Async Tests + Browser Check)"]
+    Loop --> Handoff["Milestone Checkpoint & Fresh Thread Recommendation"]
 ```
 
 ---
 
-### Phase 0: Complexity & Intent Triage
+### Phase 0: Context Hygiene & Complexity Triage
 
-When presented with a request, classify it into one of three buckets:
+Before diving in, protect the context window and classify the task:
 
-- **Bucket A: Tactical / Simple (e.g., bugfix, small utility, straightforward function)**
-  - Action: Execute cleanly and optimally without bureaucratic overhead.
-- **Bucket B: Ambiguous / Underspecified Intent**
-  - Trigger: The user describes a vague desire (e.g., "make our search better", "add AI to this", "help me build a cool app").
-  - Action: Transition immediately to **Phase 1: Socratic Clarification Gate**.
-- **Bucket C: Complex / Novel / Ambitious Product**
-  - Trigger: Green-field projects, major system redesigns, new product paradigms, or requests seeking state-of-the-art capability.
-  - Action: Transition to **Phase 2 & Phase 3**.
+1. **Protect Primary Context (Subagent Map-Reduce)**:
+   - If you need to inspect more than 3–4 files or search documentation to understand the system, spawn a `research` subagent (`Model: 'flash'`) to do the heavy reading and return a concise summary of file paths, symbols, and constraints.
+2. **Triage the Request**:
+   - **Bucket A (Tactical / Simple)**: Small bugfix, minor tweak, or clear single-step utility. Proceed directly to a quick Pre-Flight check, implement, and run the local verifier.
+   - **Bucket B (Ambiguous / Underspecified)**: The user isn't sure what they want or gives a high-level wish ("make this faster", "add AI workflow"). Go to **Phase 1**.
+   - **Bucket C (Complex / Architectural / SOTA Product)**: New modules, architectural redesigns, or requests to elevate a product. Go to **Phase 2 & Phase 3**.
 
 ---
 
 ### Phase 1: Socratic Clarification Gate
 
-When intent is unclear, ask 2 to 4 high-leverage questions to pin down the true objective.
-- Identify the **User & Core Pain**: Who is this for, and what exact friction are we removing?
-- Identify the **Primary Constraint**: Latency, cost, privacy, offline capability, or development speed?
-- Identify the **Definition of Excellence**: What does a 10x breakthrough look like for this product?
-
-> [!TIP]
-> Use the `ask_question` tool when multiple concrete paths exist, or ask concise conversational questions with structured bullet points.
+When intent is fuzzy, prevent wasted effort by asking 2 to 4 sharp, structured questions (using `ask_question` for concrete choices or clear markdown bullets):
+- **Core Friction**: What exact problem or bottleneck are we solving, and for whom?
+- **Hard Constraints**: What matters most here—sub-100ms latency, offline resilience, zero external cost, or rapid shipping?
+- **10x Outcome**: What would make this feel state-of-the-art rather than just "working"?
 
 ---
 
-### Phase 2: Tooling & Capability Expansion Scan
+### Phase 2: Capability, Tooling & Model Tier Scan
 
-Before architecting, assess if the environment is missing critical capabilities:
-- **MCP Servers**: Would adding a database MCP, Chrome DevTools MCP, or terminal sandbox make this 10x faster or more capable?
-- **Frontier APIs & SDKs**: Would multimodal streaming (Gemini 3.8 Live), background reasoning, or specialized embedding models enable a step-change in quality?
-- **Modern Libraries / Ecosystems**: Are there state-of-the-art libraries (e.g., modern state management, high-performance WASM modules, local vector search) that eliminate custom boilerplate?
-
-If an upgrade is advantageous, explicitly present it:
-> *"To achieve state-of-the-art performance on this, we can expand our capabilities by installing [Tool/MCP/Library]. Here is what it unlocks..."*
+Assess whether current capabilities and model tiers are optimal for the goal:
+- **MCP & Tool Expansion**: Would an MCP server (e.g., Chrome DevTools, database, Flutter inspector) or a frontier SDK (e.g., Gemini Live bidirectional streaming, local WASM vector search) eliminate custom boilerplate? Search the marketplace (`search_marketplace`) if a missing integration would replace a fragile workaround.
+- **Model Tier Strategy**:
+  - Use **Gemini Flash + Cognitive Harness** for rapid exploration, subagent research, technical SPIKEs, and iterative vertical slices.
+  - If the task hits a deep theoretical bottleneck (e.g., complex distributed consensus proof or subtle multi-threaded deadlock) that resists 2–3 empirical loops, advise scaling up the model tier (or using `/boost`) for that specific bottleneck, while keeping `useG1Credits` enabled in CLI settings if seamless quota overflow is desired.
 
 ---
 
 ### Phase 3: The 3-Tier SOTA Proposition Engine
 
-For non-trivial designs, present **3 distinct tiers of solution**. Never settle for only one default:
+For architectural or product decisions, never offer a single default. Present **3 distinct tiers** so the user sees the full landscape of possibilities *(consult [references/sota-patterns.md](./references/sota-patterns.md) for frontier primitives)*:
 
 1. **Tier 1: Pragmatic Baseline**
-   - The battle-tested, standard industry approach (how 90% of developers do it today).
-   - *Pros*: Familiar, fast to scaffold, minimal unknowns.
-   - *Cons*: Ordinary, no competitive moat, prone to conventional performance/architectural ceilings.
-2. **Tier 2: Frontier SOTA**
-   - The current best-practice used by top-tier engineering organizations and modern AI-native applications.
-   - *Pros*: High performance, modern developer/user experience, resilient.
-   - *Cons*: Requires modern toolchain knowledge and disciplined design.
+   - The conventional, battle-tested approach (how 90% of teams build it).
+   - *Trade-off*: Fast and familiar, but offers no competitive moat and hits standard performance ceilings.
+2. **Tier 2: Frontier SOTA (Recommended Default for Production)**
+   - Current best practices used by top engineering teams (e.g., optimistic UI, streaming pipelines, hybrid edge/cloud execution, strict type-safe boundaries).
+   - *Trade-off*: Superior UX, speed, and maintainability; requires disciplined structure.
 3. **Tier 3: Novel 0-to-1 Paradigm (The Moonshot)**
-   - An unconventional or paradigm-inverting approach that creates an unfair advantage (e.g., local-first + speculative agent sync, zero-latency streaming interfaces, self-healing architectures).
-   - *Pros*: Market-differentiating, 10x delight, category-defining.
-   - *Cons*: Highest technical novelty, requires prototyping to de-risk.
+   - A paradigm-inverting approach that creates an unfair advantage (e.g., local-first CRDT sync with zero loading spinners, speculative background agents, self-healing workflows).
+   - *Trade-off*: 10x product differentiation, but carries technical novelty that must be de-risked via a SPIKE.
 
-#### Pedagogical Rule for Explaining Options
-- Define any technical jargon immediately using accessible analogies.
-- Explicitly prompt the user:
-  > *"Feel free to ask me to unpack any of these concepts or explore how they compare before we commit to a decision."*
+#### The Pedagogical Inquiry Rule
+- Explain advanced concepts in plain, accessible language using concrete analogies.
+- **Pause before locking in**: Explicitly invite the user to ask questions about any tier or trade-off before committing to a path:
+  > *"Before we lock in our direction, would you like me to unpack how any of these options work under the hood or compare their long-term maintenance?"*
 
 ---
 
 ### Phase 4: The SPIKE De-risking Protocol
 
-If Tier 2 or Tier 3 is chosen, **do NOT write production boilerplate immediately**.
-Identify the **Single Riskiest Assumption (SRA)**:
-- *Can this API actually stream fast enough?*
-- *Can this local model run in under 50ms on device?*
-- *Can this data structure synchronize conflict-free?*
-
-Design a **SPIKE**:
-1. Create a minimal standalone script in `<appDataDir>\brain\<conversation-id>/scratch/` or an isolated test file.
-2. Write only the code required to test the hypothesis.
-3. Execute and verify the metrics (latency, reliability, output fidelity).
-4. Share the concrete findings with the user. If it fails, pivot without wasted effort. If it succeeds, proceed with complete confidence.
-
-*(See [references/spike-protocol.md](./references/spike-protocol.md) for detailed SPIKE templates).*
+When Tier 2 or Tier 3 introduces an unproven technical assumption, **do not build production scaffolding yet**.
+1. Isolate the **Single Riskiest Assumption (SRA)** (e.g., *"Can we stream structured chunks in under 150ms?"*).
+2. Write a minimal, self-contained prototype in `<appDataDir>\brain\<conversation-id>/scratch/` *(see [references/spike-protocol.md](./references/spike-protocol.md))*.
+3. Run it, measure empirical metrics (latency, memory, accuracy), and report the verdict. Pivot early if it fails; advance to Phase 5 if it passes.
 
 ---
 
-### Phase 5: Phased Architecture & Execution Plan
+### Phase 5: Plan-First Gate & Persistent Project Memory (`AGENTS.md`)
 
-Once the direction and SPIKE succeed, generate a structured, verifiable plan (e.g. as an artifact):
+Before modifying production files on any multi-step task:
 
-1. **Phase 1: Foundation & Tooling Setup** (Configuring new capabilities, dependencies, environment).
-2. **Phase 2: Core Engine / Steel Thread** (Connecting the novel mechanism end-to-end with minimal UI).
-3. **Phase 3: Robustness & Ergonomics** (Edge cases, offline tolerance, error handling, telemetry).
-4. **Phase 4: User Experience Delight & SOTA Polish** (Instant feedback, micro-interactions, sensory responsiveness).
+1. **Generate an Implementation Plan Artifact (`RequestFeedback: true`)**:
+   - Map out the exact file changes, state boundaries, invariants, and verification commands.
+   - Let the user review and approve (or recommend running `/plan`) so misunderstandings are caught while changes cost zero tokens of rework.
+2. **Codify Persistent Rules (`AGENTS.md` / `.agents/rules/`)**:
+   - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), create or update it with the folder ownership, coding conventions, and exact test/build commands. This guarantees that every future conversation starts with instant architectural alignment.
 
 ---
 
-## Quick Reference Checklists
+### Phase 6: Atomic Vertical Slicing & Closed-Loop Verification
 
-### When Grilling / Inquiring
-- [ ] Have I challenged obvious assumptions (e.g., "Does this really need a central server?")?
-- [ ] Have I checked if latency can be made imperceptible (<100ms)?
-- [ ] Have I considered failure modes (network drop, API rate limits, edge input)?
+Execute the approved plan in tight, verifiable increments rather than a single massive code dump *(see [references/flash-opus-harness.md](./references/flash-opus-harness.md) for the full harness)*:
 
-### When Explaining Options
-- [ ] Is this explained without pretentious jargon?
-- [ ] Did I give the user a clear opportunity to probe each option before deciding?
+1. **Sequence Slices Cleanly**:
+   - **Step 1**: Data schemas, types, and contracts → *Verify with typechecker/linter.*
+   - **Step 2**: Pure core logic / state handling → *Verify with fast unit tests.*
+   - **Step 3**: UI layout & styling → *Verify with build + browser/visual tools.*
+2. **Run Heavy Tests Asynchronously**:
+   - Kick off slow integration suites, builds, or E2E runs as background tasks (`WaitMsBeforeAsync: 500`) so workspace momentum never freezes.
+3. **Visual & Browser Verification for UI**:
+   - For web or mobile frontends, use the Chrome DevTools MCP (`take_snapshot`, `take_screenshot`, `list_console_messages`), `/browser`, or Flutter `widget_inspector` to visually verify layout alignment, responsiveness, and zero console errors autonomously.
+4. **Milestone Checkpoint & Fresh Conversation Hygiene**:
+   - Once a milestone is verified, log the completed state and explicitly advise the user if it is a good point to click **New Conversation (+)** or run `/compact` to keep context crisp for the next feature.
+
+---
+
+## Reference Library (Progressive Disclosure)
+
+Load these reference files only when needed for the active phase:
+- **[`references/flash-opus-harness.md`](./references/flash-opus-harness.md)**: Consult when executing complex tasks on fast models, structuring `AGENTS.md`, designing verification matrices, or managing context hygiene and model tier escalation.
+- **[`references/sota-patterns.md`](./references/sota-patterns.md)**: Consult during Phase 3 when formulating Tier 2 (SOTA) and Tier 3 (Novel) architectural proposals.
+- **[`references/spike-protocol.md`](./references/spike-protocol.md)**: Consult during Phase 4 when designing and measuring an isolated technical SPIKE.
