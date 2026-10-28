@@ -54,11 +54,13 @@ Every raw file read or 500-line stack trace injected into the main thread perman
 - **Delegate Exploration**: When surveying more than 3–4 files or searching external docs, invoke the `research` subagent.
 - **Distilled Return**: Instruct the subagent to return *only* exact file paths, line ranges, symbol signatures, and a 10-line architectural synthesis.
 
-### E. Self-Critique Pass Before User Handoff
-Before declaring a task complete, perform a quick adversarial audit of the diff:
-- Did I leave any `TODO` placeholders or mock stubs unimplemented?
-- Did I preserve existing docstrings and valuable comments?
-- Did I actually run the verification command after my *very last* edit?
+### E. Self-Critique & Live Runtime Audit Before User Handoff
+Before declaring a task complete, perform a strict adversarial audit of both the diff and the live runtime:
+- **Per-Symptom Checklist**: Did I verify *every single* symptom reported by the user against the live running application (not just unit tests)?
+- **Container & Asset Sync**: If Docker is running, did I confirm the container is serving the new JS/CSS/Python files (`docker cp` or restart) rather than an old image layer?
+- **DOM Bounding-Box & State Proof**: For layout or button-state bugs, did I inspect the live browser via `chrome-devtools` MCP (`evaluate_script` / `take_screenshot`) after a hard reload?
+- **Resource & Process Hygiene (`vmmem` / Docker CPU)**: Did I check `docker top` / `docker stats --no-stream` to ensure no orphaned `ffmpeg` jobs, unthrottled video loops, or inactive tab streams are burning CPU in the background?
+- **Documentation & Test Preservation**: Did I preserve all existing docstrings/comments and run the unit test suite after my *very last* edit?
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: frontier-architect
 description: >-
-  Use this skill whenever designing, elevating, planning, refactoring, or architecting products, features, and systems where the goal is state-of-the-art (SOTA) innovation, novel paradigms, or rock-solid engineering execution. Make sure to use this skill when the user asks for architectural alternatives, system design, product ideation, SPIKE prototypes, verification loops, context management, or wants high-speed models (like Gemini Flash) to reason and execute with heavyweight architectural rigor. Adaptively switches between lean execution for simple tasks and deep Socratic exploration, capability expansion (MCPs/tools/APIs), plan-first atomic slicing, and closed-loop verification for complex tasks.
+  Use this skill whenever designing, elevating, planning, refactoring, debugging multi-symptom UI/runtime regressions, or architecting products, features, and systems where the goal is state-of-the-art (SOTA) innovation, novel paradigms, or zero-regression engineering execution. Make sure to use this skill when the user asks for architectural alternatives, system design, product ideation, SPIKE prototypes, live browser/Docker verification loops, context management, or wants high-speed models (like Gemini Flash) to reason and execute with heavyweight architectural rigor. Adaptively switches between lean execution for simple tasks, reproduce-first browser/runtime diagnostics for bugs, and deep Socratic exploration, capability expansion (MCPs/tools/APIs), plan-first atomic slicing, and closed-loop verification for complex tasks.
 ---
 
 # Frontier Architect: SOTA Product, Context & Verification Engine
@@ -38,20 +38,22 @@ It also implements the **Flash-to-Opus Cognitive Harness**—a structured reason
 flowchart TD
     Start["User Prompt / Goal"] --> Hygiene["Phase 0: Context Hygiene & Complexity Triage\n(Delegate noisy discovery to research subagents)"]
     
-    Hygiene -->|Simple & Clear| FastSlice["Fast Path: Pre-Flight Check -> Edit -> Local Verify"]
-    Hygiene -->|Vague Intent| Clarify["Phase 1: Socratic Clarification Gate\n(Pinpoint pain, constraints & success criteria)"]
+    Hygiene -->|Simple & Single-Step| FastSlice["Fast Path: Pre-Flight Check -> Edit -> Local Verify"]
+    Hygiene -->|Multi-Symptom Bug / UI / CPU Issue| DiagGate["Phase 1B: Live Reproduction & UX Interview Gate\n(Browser/DOM Inspect + Container/CPU Audit + Clarify UX Policy)"]
+    Hygiene -->|Vague Intent| Clarify["Phase 1A: Socratic Clarification Gate\n(Pinpoint pain, constraints & success criteria)"]
     Hygiene -->|Complex / Novel| Elevate["Phase 2 & 3: Capability Scan & 3-Tier SOTA Proposals\n(Baseline vs. Frontier SOTA vs. Novel Moonshot)"]
     
     Clarify --> Elevate
+    DiagGate --> PlanGate
     
     Elevate --> Dialogue["Pedagogical Inquiry Gate\n(Demystify concepts; answer user questions before deciding)"]
     Dialogue --> RiskCheck{"Unproven Technical Risk?"}
     
     RiskCheck -->|Yes| Spike["Phase 4: Technical SPIKE Protocol\n(Timeboxed PoC in scratch/ to test Riskiest Assumption)"]
-    RiskCheck -->|No / Proven| PlanGate["Phase 5: Plan-First Gate & Persistent Rules\n(Artifact Plan + Update AGENTS.md invariants)"]
+    RiskCheck -->|No / Proven| PlanGate["Phase 5: Plan-First Gate & Persistent Rules\n(Artifact Plan / Symptom Matrix + Update AGENTS.md)"]
     Spike -->|Validated| PlanGate
     
-    PlanGate --> Loop["Phase 6: Atomic Slicing & Closed-Loop Verification\n(Types -> Logic -> State -> UI | Sync & Async Tests + Browser Check)"]
+    PlanGate --> Loop["Phase 6: Atomic Slicing & Closed-Loop Verification\n(Types -> Logic -> State -> UI | Live Browser + Runtime CPU Check)"]
     Loop --> Handoff["Milestone Checkpoint & Fresh Thread Recommendation"]
 ```
 
@@ -64,18 +66,38 @@ Before diving in, protect the context window and classify the task:
 1. **Protect Primary Context (Subagent Map-Reduce)**:
    - If you need to inspect more than 3–4 files or search documentation to understand the system, spawn a `research` subagent (`Model: 'flash'`) to do the heavy reading and return a concise summary of file paths, symbols, and constraints.
 2. **Triage the Request**:
-   - **Bucket A (Tactical / Simple)**: Small bugfix, minor tweak, or clear single-step utility. Proceed directly to a quick Pre-Flight check, implement, and run the local verifier.
-   - **Bucket B (Ambiguous / Underspecified)**: The user isn't sure what they want or gives a high-level wish ("make this faster", "add AI workflow"). Go to **Phase 1**.
+   - **Bucket A (Tactical / Single-Step)**: Isolated, deterministic tweak or single-function utility with zero UI/runtime ambiguity. Proceed to a quick Pre-Flight check, implement, and run the local verifier.
+   - **Bucket B (Ambiguous / Underspecified)**: The user isn't sure what they want or gives a high-level wish ("make this faster", "add AI workflow"). Go to **Phase 1A**.
    - **Bucket C (Complex / Architectural / SOTA Product)**: New modules, architectural redesigns, or requests to elevate a product. Go to **Phase 2 & Phase 3**.
+   - **Bucket D (Multi-Symptom Bug, UI Regression, or Resource/CPU Bottleneck)**: Any report involving multiple UI/state bugs, follow-up regressions after a prior fix, visual overflow, stuck status indicators, or high Docker/WSL (`vmmem`) CPU usage. **NEVER treat Bucket D as Bucket A.** Go immediately to **Phase 1B**.
 
 ---
 
-### Phase 1: Socratic Clarification Gate
+### Phase 1A: Socratic Clarification Gate (For New Features / Vague Intent)
 
 When intent is fuzzy, prevent wasted effort by asking 2 to 4 sharp, structured questions (using `ask_question` for concrete choices or clear markdown bullets):
 - **Core Friction**: What exact problem or bottleneck are we solving, and for whom?
 - **Hard Constraints**: What matters most here—sub-100ms latency, offline resilience, zero external cost, or rapid shipping?
 - **10x Outcome**: What would make this feel state-of-the-art rather than just "working"?
+
+---
+
+### Phase 1B: Reproduce-First & Browser/Runtime Diagnostic Gate (For Bugs & Regressions)
+
+Why do bug fixes fail or cause follow-up regressions? Because the agent guesses fixes from static source files, only runs headless unit tests, forgets to sync/restart Docker containers, or doesn't check live browser DOM dimensions and background CPU processes.
+
+When handling **Bucket D**, you **MUST** execute these 3 steps *before* editing production code:
+
+1. **Live Runtime, ContainerSync & Resource Audit**:
+   - Check if the app runs inside Docker/WSL (`docker ps`, `docker stats --no-stream`, `docker top <container>`).
+   - Verify whether host file edits are bind-mounted into the running container or require a container restart/rebuild to take effect.
+   - Check for runaway background processes (e.g., orphaned `ffmpeg` jobs, unthrottled OpenCV `VideoSource` / `StreamManager` loops, or leaked WebSockets) that inflate `vmmem` / CPU.
+2. **Live Browser Inspection or Guided User Walkthrough**:
+   - Use the **Chrome DevTools MCP** (`chrome-devtools` skill: `list_pages`, `navigate_page`, `take_screenshot`, `evaluate_script` to measure `getBoundingClientRect()`, `list_console_messages`) or `/browser` to observe the actual live UI state, or offer to open the browser so the user can demonstrate the exact state.
+   - Never guess CSS layout fixes (`max-height`, `aspect-ratio`, flex/grid overflow) without inspecting the parent-child computed styles and bounding boxes in the live DOM.
+3. **Socratic Symptom & Lifecycle Interview (`ask_question`)**:
+   - Whenever a bug report includes behavioral or resource-management choices (e.g., *"Should pausing on tab switch auto-resume when returning to the tab, or require manual resume? Should background Docker camera streams also hibernate when no client tab is viewing them?"*), use `ask_question` to lock in the exact UX and resource policy with the user *before* coding.
+   - Build a **Symptom-to-Root-Cause Matrix** (mapping Symptom #1..#N → Root Cause → Exact File/Line → Live Verification Check) and present it in **Phase 5**.
 
 ---
 
@@ -141,8 +163,10 @@ Execute the approved plan in tight, verifiable increments rather than a single m
    - **Step 3**: UI layout & styling → *Verify with build + browser/visual tools.*
 2. **Run Heavy Tests Asynchronously**:
    - Kick off slow integration suites, builds, or E2E runs as background tasks (`WaitMsBeforeAsync: 500`) so workspace momentum never freezes.
-3. **Visual & Browser Verification for UI**:
-   - For web or mobile frontends, use the Chrome DevTools MCP (`take_snapshot`, `take_screenshot`, `list_console_messages`), `/browser`, or Flutter `widget_inspector` to visually verify layout alignment, responsiveness, and zero console errors autonomously.
+3. **Visual, DOM & Container Verification for UI/Runtime**:
+   - **Container Deployment Check**: If the app runs in Docker, ensure updated code/assets are actually active in the container (`docker cp` or `docker compose restart`/`up -d --build`) and verify with `curl` or browser inspection that the browser isn't serving stale cached JS/CSS.
+   - **Live Browser & Bounding-Box Check**: Use the Chrome DevTools MCP (`navigate_page`, `take_screenshot`, `evaluate_script` to assert `video.getBoundingClientRect().height <= container.getBoundingClientRect().height`, `list_console_messages`) or `/browser` to prove each UI symptom is fixed in the real browser.
+   - **CPU & Orphan Process Clean-Room Gate**: Before ending the turn, run `docker stats --no-stream` / `docker top` (when Docker is used) to confirm zero orphan `ffmpeg` processes or runaway background loops are spiking `vmmem` CPU when tabs are idle/switched.
 4. **Milestone Checkpoint & Fresh Conversation Hygiene**:
    - Once a milestone is verified, log the completed state and explicitly advise the user if it is a good point to click **New Conversation (+)** or run `/compact` to keep context crisp for the next feature.
 
