@@ -1,0 +1,42 @@
+{
+  "skill_name": "refactor-monolith",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our backend has a 1,200-line server.py with models, authentication endpoints, and payment webhook logic all mixed together. Downstream unit tests import 'app' and several utility functions directly from server.py. Please audit the file and decompose it into clean modules without breaking existing imports.",
+      "expected_output": "The model audits server.py using code_health_audit.py, creates a decomposition plan grouping routes, services, and models, implements the package facade pattern with __init__.py re-exporting public symbols, extracts routers and services into separate files under 300 lines each, preserves all docstrings/comments, and verifies with unit tests and code_health_audit.py.",
+      "files": [],
+      "expectations": [
+        "Audits the target code using code_health_audit.py before and after changes",
+        "Presents a structured decomposition plan before executing edits",
+        "Maintains zero breaking imports by re-exporting moved symbols via facade or __init__.py",
+        "Keeps extracted files and classes within the quantitative modularity budget (<=350 lines, <=10-12 methods)",
+        "Preserves existing docstrings, rationale comments, and test compatibility"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our DataStore class in storage.py has grown to over 35 methods across 1,800 lines. Callers all across our repository call data_store.get_user(), data_store.record_transaction(), and data_store.generate_metrics(). How can we refactor this God Class into manageable chunks without breaking call sites?",
+      "expected_output": "The model recommends and implements either the cohesive domain mixin pattern or composition facade, separating user queries, transaction queries, and metrics queries into dedicated modules with <=10 methods each, re-exporting DataStore with identical method signatures.",
+      "files": [],
+      "expectations": [
+        "Identifies the God Class exceeding method limits (>10-12 methods)",
+        "Applies the domain mixin or composition facade pattern from decomposition-patterns.md",
+        "Preserves 100% of existing call signatures on the main class",
+        "Separates domain responsibilities into submodules under 300 lines",
+        "Enforces unidirectional dependencies and avoids circular imports"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Audit our repository at ./src to see if any files or classes exceed our modularity limits, and show me the top offenders.",
+      "expected_output": "Runs python scripts/code_health_audit.py --path ./src --top 15 --show-methods and outputs an organized table with line counts, class method counts, and status indicators.",
+      "files": [],
+      "expectations": [
+        "Executes the built-in code_health_audit.py tool",
+        "Uses appropriate CLI flags like --path and --top or --show-methods",
+        "Summarizes findings into actionable next steps based on quantitative modularity budgets"
+      ]
+    }
+  ]
+}

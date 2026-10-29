@@ -1,7 +1,7 @@
 ---
 name: refactor-monolith
 description: >-
-  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" >350-500 lines) and overly complex classes ("God Classes" >10-12 methods) into clean, modular architectures. Make sure to use this skill whenever the user asks to split large files, refactor a monolith, reduce class or method count, audit codebase modularity/complexity, apply Single Responsibility Principle (SRP), or migrate entangled code into routers, services, repositories, mixins, or UI modules without breaking existing imports or tests.
+  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" exceeding 350-500 lines) and overly complex classes ("God Classes" exceeding 10-12 methods) into clean, modular architectures. Make sure to use this skill whenever the user asks to split large files, refactor a monolith, reduce class or method count, audit codebase modularity/complexity, apply Single Responsibility Principle (SRP), or migrate entangled code into routers, services, repositories, mixins, or UI modules without breaking existing imports or tests.
 ---
 
 # Refactor Monolith: Safe Decomposition & Modularity Engine
@@ -96,6 +96,9 @@ python "<skill_dir>/scripts/code_health_audit.py" --help
 
 # 2. Run a self-check on the refactor-monolith skill directory itself
 python "<skill_dir>/scripts/code_health_audit.py" --path "<skill_dir>" --strict
+
+# 3. Run the automated unit test suite
+python -m unittest discover -s "<skill_dir>/tests" -v
 ```
 
 ### Scenario Combinations Matrix
@@ -109,7 +112,9 @@ python "<skill_dir>/scripts/code_health_audit.py" --path "<skill_dir>" --strict
 
 ---
 
-## Built-In Scripts & Reference Library
+## Built-In Scripts, Tests & Reference Library
 
 - **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone, zero-dependency, cross-platform (Windows, macOS, Linux) modularity and AST auditor. Measures source file line counts across `.py`, `.js`, `.ts`, `.tsx`, `.jsx`, `.css`, `.scss`, `.dart`, `.go`, `.rs`, and `.cs`, and performs deep AST analysis on Python files to report class method counts, class line spans, and oversized functions.
+- **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Full automated regression test suite covering AST parsing, classification thresholds, directory pruning, and CLI execution.
+- **[`evals/evals.json`](./evals/evals.json)**: Verification scenarios and expected outputs for continuous quality benchmarking.
 - **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Consult during Step 2 and Step 3 for concrete, language-agnostic architectural patterns to split monolithic web routers, God classes, persistence layers, and frontend bundles without breaking callers.

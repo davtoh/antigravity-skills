@@ -110,22 +110,28 @@ def analyze_python_ast(
     """Parse a Python module AST to extract class and function modularity metrics."""
     try:
         tree = ast.parse(source_text)
-    except SyntaxError:
+    except (SyntaxError, ValueError):
         return [], []
 
     classes: list[ClassMetric] = []
     oversized_funcs: list[FunctionMetric] = []
+    class_method_ids: set[int] = set()
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             c_metric, c_funcs = _inspect_class_node(node, thresholds)
             classes.append(c_metric)
             oversized_funcs.extend(c_funcs)
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    class_method_ids.add(id(item))
 
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            f_metric = _inspect_func_node(node, node.name, thresholds.max_func_lines)
-            if f_metric.status != "OK":
-                oversized_funcs.append(f_metric)
+            if id(node) not in class_method_ids:
+                f_metric = _inspect_func_node(node, node.name, thresholds.max_func_lines)
+                if f_metric.status != "OK":
+                    oversized_funcs.append(f_metric)
 
     classes.sort(key=lambda c: (c.method_count, c.lines), reverse=True)
     oversized_funcs.sort(key=lambda f: f.lines, reverse=True)

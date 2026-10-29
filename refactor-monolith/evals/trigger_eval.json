@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Hey, our main worker file worker.py in backend/jobs has grown to almost 1,800 lines with 6 different queue handlers, Redis retry loops, and report email formatters in one place. We need to split it up into domain modules without breaking imports across the test suite.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you run a code health and modularity audit on our repo under ./src and let me know if we have any God classes with more than 10-12 methods or files over 500 lines?",
+    "should_trigger": true
+  },
+  {
+    "query": "Our legacy PipelineManager class in src/pipeline.py is 2,400 lines and has 38 public methods. It touches database queries, OpenCV processing, and AWS S3 uploads. How should we refactor this God Class into cohesive mixins or collaborator services?",
+    "should_trigger": true
+  },
+  {
+    "query": "We have an oversized monolithic app.js that's 2,100 lines long handling DOM events, AJAX calls, and graph rendering. Help me break it down into modular ES modules using the Strangler Fig approach.",
+    "should_trigger": true
+  },
+  {
+    "query": "The router file in our Flask application api_routes.py has 45 route decorators across 1,400 lines. Downstream integration tests import the app and blueprint directly. How can we break this into sub-routers without breaking any existing test paths?",
+    "should_trigger": true
+  },
+  {
+    "query": "Please check if any files in our Python repo exceed the 350-line soft ceiling or 500-line hard ceiling, and show the method breakdown for the biggest classes.",
+    "should_trigger": true
+  },
+  {
+    "query": "Our data ingestion module has become a massive God File where parsing, validation, database writes, and metrics emitting are all tangled together. Help me decompose it into a clean service/repository layer.",
+    "should_trigger": true
+  },
+  {
+    "query": "We need to refactor our monolithic Django views.py (1,600 lines) into class-based views or viewsets split across multiple files, while re-exporting them from views/__init__.py to keep backward compatibility.",
+    "should_trigger": true
+  },
+  {
+    "query": "I want to apply the Single Responsibility Principle to our UserController which currently has 28 methods and does everything from auth token verification to billing webhooks.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you run scripts/code_health_audit.py on our codebase with --strict flag and show me which classes failed the method count budget?",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you help me fix a syntax error in my Python function where it throws IndexError: list index out of range on line 42?",
+    "should_trigger": false
+  },
+  {
+    "query": "Can you write a unit test for my existing Calculator class using pytest to verify addition and division by zero?",
+    "should_trigger": false
+  },
+  {
+    "query": "We need to set up a new Dockerfile and docker-compose.yml for our FastAPI backend and Postgres database.",
+    "should_trigger": false
+  },
+  {
+    "query": "Can you optimize this SQL query in repositories/user_repo.py? It's doing a full table scan on the orders table and taking 3 seconds.",
+    "should_trigger": false
+  },
+  {
+    "query": "I need to add a new column 'middle_name' to our SQLAlchemy User model and create an Alembic migration file for it.",
+    "should_trigger": false
+  },
+  {
+    "query": "Can you review my Git commit history and remove large binary mp4 files from the repo using git-filter-repo?",
+    "should_trigger": false
+  },
+  {
+    "query": "How do I configure GitHub Actions CI to run pytest on pull requests to the main branch?",
+    "should_trigger": false
+  },
+  {
+    "query": "Can you explain the difference between asyncio.gather and asyncio.wait in Python 3.12?",
+    "should_trigger": false
+  },
+  {
+    "query": "I want to create a new REST endpoint POST /api/v1/auth/login that takes email and password and returns a JWT token.",
+    "should_trigger": false
+  },
+  {
+    "query": "Our React app has a small CSS alignment bug where the navbar dropdown is hidden behind the hero image z-index.",
+    "should_trigger": false
+  }
+]
