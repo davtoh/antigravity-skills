@@ -29,6 +29,12 @@ It also implements the **Flash-to-Opus Cognitive Harness**—a structured reason
    - Every code slice must be paired with an empirical check: a unit test, typechecker, linter, background integration task, or browser/UI visual inspection.
 7. **Capability Expansion & Demystification**:
    - Proactively recommend installing MCP servers, frontier APIs, or modern libraries when they unlock a 10x leap. Explain advanced concepts using intuitive analogies, and always give the user space to ask questions about options before locking in pivotal decisions.
+8. **Non-Destructive & Reversible by Default**:
+   - The user's work is not yours to lose. Before any action that is hard to undo—`git reset --hard`, `git checkout -- <file>`, `git clean`, force-push, rebases, deleting/overwriting files you didn't create, dropping DB tables, `docker system prune`, global package installs—stop and get explicit consent. Prefer additive edits over rewrites, and never discard staged or uncommitted changes you didn't make. If a destructive step looks necessary, explain why and offer a reversible alternative (a branch, a backup copy, a dry run).
+9. **Honest Verification Reporting (Evidence, Not Optimism)**:
+   - Only call something "verified" if you ran the check and saw it pass. If a check couldn't run (no browser, Docker daemon stopped, missing dependency, no test suite), say so plainly and list what's still unverified—don't swap in a weaker check and report it as the strong one. Report failures and regressions you caused as prominently as successes. The user decides what to commit based on your report, so an overstated report is worse than an incomplete one.
+10. **Respect Explicit User Overrides**:
+    - These gates are there to prevent wasted work, not to slow the user down. If the user says "just do it", "skip the plan", or "no questions", follow that for the parts that are reversible, state the assumptions you're making in one or two lines, and still keep Axioms 8 and 9 (safety and honest reporting)—those don't get waived.
 
 ---
 
@@ -70,6 +76,11 @@ Before diving in, protect the context window and classify the task:
    - **Bucket B (Ambiguous / Underspecified)**: The user isn't sure what they want or gives a high-level wish ("make this faster", "add AI workflow"). Go to **Phase 1A**.
    - **Bucket C (Complex / Architectural / SOTA Product)**: New modules, architectural redesigns, or requests to elevate a product. Go to **Phase 2 & Phase 3**.
    - **Bucket D (Multi-Symptom Bug, UI Regression, or Resource/CPU Bottleneck)**: Any report involving multiple UI/state bugs, follow-up regressions after a prior fix, visual overflow, stuck status indicators, or high Docker/WSL (`vmmem`) CPU usage. **NEVER treat Bucket D as Bucket A.** Go immediately to **Phase 1B**.
+3. **Triage Edge Cases**:
+   - **Mixed requests** (e.g., "fix this bug and also redesign the page"): split them. Handle the Bucket D part first with its diagnostic gate, then the Bucket C part—otherwise the redesign hides whether the bug was actually fixed.
+   - **Bucket A that grows**: If a "simple" fix touches more than 2–3 files, changes a public interface, or fails its first verification, it wasn't Bucket A. Stop, re-triage, and tell the user the scope changed instead of expanding the diff quietly.
+   - **No interactive user** (you're running as a subagent, under `/goal`, or `ask_question` isn't available): you can't use the clarification gates. Pick the most conservative, reversible interpretation, write the assumptions at the top of your output (or in the plan artifact), and don't take any Axiom 8 destructive action—leave those as recommendations for the user.
+   - **Read-only or review requests** ("check this", "audit this", "is this right?"): report findings and proposed fixes. Only edit if the user asked for changes, and when you do, keep them minimal and non-destructive.
 
 ---
 
@@ -118,8 +129,9 @@ When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection script
        ```bash
        python "<skill_dir>/scripts/cdp_inspect.py" --url $APP_URL --audit-layout --selectors "<css_selectors>"
        ```
-     - Auto-attaches to the user's live Chrome tab via `DevToolsActivePort`, or pass `--headless` for an isolated, auto-cleaned headless run.
-     - Supports `--click <selector>`, `--eval <js>`, and `--screenshot <path>`.
+     - Auto-attaches to the user's live Chrome/Edge tab via `DevToolsActivePort`, or pass `--headless` for an isolated, auto-cleaned headless run (OS-assigned free port; needs `--url` or `APP_URL`). The `--url` flag can be omitted when the `APP_URL` environment variable is set. If `--url` doesn't match an open tab, the script opens a new tab rather than auditing an unrelated one. After a fix, pass `--navigate` to force a fresh reload so you don't measure stale assets.
+     - Supports `--click <selector>`, `--eval <js>`, and `--screenshot <path>`. Page-side JS errors come back as `{"jsException": ...}` (exit code 3 for `--eval`). Treat that as a failed check, not as empty data.
+   - **When the helpers can't run** (no Python, no browser binary, Docker daemon stopped, remote/CI box): don't silently skip the step. Tell the user which check is blocked and why, give them the exact command to run locally, and mark that symptom "unverified" in the Symptom Matrix (Axiom 9). If `docker_audit.py` reports `UNVERIFIABLE` (e.g., a distroless image without `md5sum`), sync wasn't checked. It doesn't mean the files are in sync.
 3. **Socratic Symptom & Lifecycle Interview (`ask_question`)**:
    - Whenever a bug report includes behavioral or resource-management choices (e.g., *"Should pausing on tab switch auto-resume when returning to the tab, or require manual resume? Should background backend streams also hibernate when no client tab is viewing them?"*), use `ask_question` to lock in the exact UX and resource policy with the user *before* coding.
    - Build a **Symptom-to-Root-Cause Matrix** (mapping Symptom #1..#N → Root Cause → Exact File/Line → Live Verification Check) and present it in **Phase 5**.
@@ -184,7 +196,8 @@ Before modifying production files on any multi-step task:
      - **Scenario Combinations Matrix**: Include an executable test matrix per `executable_documentation.md`.
    - Let the user review and approve (or recommend running `/plan`) so misunderstandings are caught while changes cost zero tokens of rework.
 2. **Codify Persistent Rules (`AGENTS.md` / `.agents/rules/`)**:
-   - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), create or update it with the folder ownership, coding conventions, modularity budgets, and exact OS-agnostic test/build commands. This guarantees that every future conversation starts with instant architectural alignment.
+   - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), propose creating or updating it with the folder ownership, coding conventions, modularity budgets, and exact OS-agnostic test/build commands. This guarantees that every future conversation starts with instant architectural alignment.
+   - **Merge, don't overwrite**: an existing `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.agents/rules/` file is the team's established memory. Read it first, follow it where it conflicts with this skill's defaults (project rules win), and append or amend specific sections rather than rewriting the file.
 
 ---
 
@@ -202,13 +215,16 @@ Execute the approved plan in tight, verifiable increments rather than a single m
    - **Container Deployment Check**: If the app runs in Docker, ensure updated code/assets are actually active in the container (`docker cp` or `docker compose restart`/`up -d --build`) and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
    - **Live Browser & Bounding-Box Check**: Use `chrome_devtools` MCP (if Node/`npx` is configured) or run `scripts/cdp_inspect.py --url $APP_URL --audit-layout --selectors "<selectors>"` to assert DOM bounding boxes, overflow flags, media/button states, and zero console errors in a single command.
    - **CPU & Orphan Process Clean-Room Gate**: Before ending the turn, check `scripts/docker_audit.py` output to confirm zero orphan processes or runaway background loops are spiking CPU when tabs are idle/switched.
-4. **Tooling Hygiene: `scratch/` vs. Skill `scripts/` vs. Project `scripts/`**:
+4. **Stop-Loss on Failed Fixes (Anti-Thrash Rule)**:
+   - If the same symptom survives two fix attempts, stop editing. A third guess on the same theory usually piles on more changes without understanding more. Revert or isolate your speculative changes, go back to Phase 1B evidence (live DOM, logs, container state), write down which hypothesis was wrong and why, and then either form a new hypothesis backed by evidence or escalate (Phase 2 model tier / `/boost`) with a summary of what you've already ruled out.
+5. **Tooling Hygiene: `scratch/` vs. Skill `scripts/` vs. Project `scripts/`**:
    - **`scratch/` is Ephemeral Only**: Files in `scratch/` are NOT automatically indexed or reused by future conversations. Use `<appDataDir>/brain/<conversation-id>/scratch/` strictly for throwaway Phase 4 SPIKEs or temporary screenshots—never leave `scratch/` directories inside a project repository.
    - **Skill `scripts/`**: Must remain **100% OS-agnostic (Windows, macOS, Linux)**, **100% standalone**, and **100% project-agnostic** so they can be committed and shared across any repo or machine.
    - **Project `<workspace>/scripts/`**: If a reusable diagnostic or automation script is specific to the current repository, save it in `<workspace>/scripts/` and document its command in `<workspace>/AGENTS.md` so future conversations discover and reuse it immediately.
-5. **Milestone Checkpoint, Export Sanitization & Fresh Thread Hygiene**:
+6. **Milestone Checkpoint, Export Sanitization & Fresh Thread Hygiene**:
+   - **Evidence-Based Handoff**: End each milestone with a short report in three parts: **Verified** (check run + observed result), **Not verified** (what couldn't run and why), and **Known risks / follow-ups**. If you changed anything beyond the agreed scope, call it out here.
    - **Pre-Commit Staging Audit**: When exporting plans/artifacts to the repository or preparing a git commit:
-     - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries, zero hardcoded local URLs/ports, and full compliance with the 350/500-line file and 10–12 method class budgets**.
+     - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries, zero hardcoded local URLs/ports, zero secrets or `.env` files, zero build/cache artifacts (`__pycache__`, `node_modules`, `.skill` bundles), and full compliance with the 350/500-line file and 10–12 method class budgets**. Respect what the user already staged: review it, but never unstage, amend, or commit on their behalf unless they ask.
      - Present a clean, copy-pasteable git commit command with a concise milestone summary.
    - **Fresh Conversation Hygiene**: Once a milestone is verified and committed, update `MIGRATION_LOG.md` / `AGENTS.md` and explicitly advise the user to click **New Conversation (+)** or run `/compact` to maintain peak reasoning and keep context crisp for the next milestone.
 
@@ -217,7 +233,8 @@ Execute the approved plan in tight, verifiable increments rather than a single m
 ## Built-In Cross-Platform Helper Scripts & Reference Library
 
 ### Pre-Built Diagnostic Scripts (`scripts/` — Windows, macOS & Linux)
-- **[`scripts/cdp_inspect.py`](./scripts/cdp_inspect.py)**: Cross-platform, project-agnostic Chrome DevTools Protocol (CDP) inspector. Auto-detects `DevToolsActivePort` (`chrome://inspect/#remote-debugging`) across Windows, macOS, and Linux to attach to the user's live Chrome tab, or runs an auto-cleaned temporary `--headless` instance. Supports `--list-tabs`, `--audit-layout` (generic viewport/container overflow + `<video>`/`<img>`/`<canvas>` state), `--selectors "<css>"`, `--click "<selector>"`, `--eval "<js>"`, and `--screenshot <path>`.
+- **[`scripts/cdp_inspect.py`](./scripts/cdp_inspect.py)**: Cross-platform, project-agnostic Chrome DevTools Protocol (CDP) inspector with 100% zero-dependency pure-Python RFC 6455 transport (`scripts/cdp_transport.py`) and modular layout evaluator (`scripts/audit_layout.js`). Auto-detects `DevToolsActivePort` (`chrome://inspect/#remote-debugging` or `edge://inspect/#remote-debugging`) across Windows, macOS, Linux, and WSL to attach to the user's live browser tab, or runs an auto-cleaned temporary `--headless` instance. Supports `--list-tabs`, `--audit-layout` (generic viewport/container overflow + `<video>`/`<img>`/`<canvas>` state), `--selectors "<css>"`, `--click "<selector>"`, `--eval "<js>"`, and `--screenshot <path>`.
+- **[`scripts/cdp_transport.py`](./scripts/cdp_transport.py)**: Zero-dependency asyncio standard library RFC 6455 WebSocket client with automatic fallback when third-party `websockets` package is not installed.
 - **[`scripts/docker_audit.py`](./scripts/docker_audit.py)**: Cross-platform, project-agnostic Docker container CPU/memory/PID auditor (`docker stats --no-stream`), `docker top` inspector, host-vs-container MD5 file sync verifier (`--container <name> --workdir /app --sync-check <files>`), and recent container traceback scanner.
 
 ### Reference Library (`references/`)

@@ -14,8 +14,12 @@ Usage:
   python docker_audit.py --container <container_name> --workdir /app --sync-check src/app.py static/styles.css
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -40,19 +44,29 @@ def host_md5(path: str) -> str:
     p = Path(path)
     if not p.exists():
         return "MISSING_ON_HOST"
-    return hashlib.md5(p.read_bytes()).hexdigest()
+    # usedforsecurity=False keeps this working on FIPS-enforced hosts; MD5 is only a sync fingerprint here.
+    return hashlib.md5(p.read_bytes(), usedforsecurity=False).hexdigest()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Frontier Architect Cross-Platform Docker CPU & Sync Auditor")
-    parser.add_argument("--container", default=None, help="Target container name (optional; inspects top processes, sync, and logs)")
-    parser.add_argument("--workdir", default="/app", help="Container working directory prefix for --sync-check (default: /app)")
+    parser.add_argument("--container", default=os.getenv("DOCKER_CONTAINER"), help="Target container name (defaults to $DOCKER_CONTAINER)")
+    parser.add_argument("--workdir", default=os.getenv("CONTAINER_WORKDIR", "/app"), help="Container working directory prefix (default: /app)")
     parser.add_argument("--sync-check", nargs="*", default=[], help="Relative host paths to compare MD5 against <workdir>/<path> in container")
     parser.add_argument("--tail-errors", type=int, default=150, help="Lines of container logs to scan for Tracebacks/Errors")
     args = parser.parse_args()
 
+    if not shutil.which("docker"):
+        print("[Docker Auditor] Notice: 'docker' CLI not found on host. Skipping container audit.")
+        return
+
     print("=== 1. DOCKER STATS (CPU / MEM / NET I/O / PIDS) ===")
-    print(run_cmd(["docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"]).strip())
+    stats_out = run_cmd(["docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"]).strip()
+    daemon_errs = ("error during connect", "cannot connect to the docker daemon", "failed to connect to the docker api")
+    if any(err in stats_out.lower() for err in daemon_errs):
+        print(f"[Docker Auditor] Notice: Docker daemon is not active. ({stats_out.splitlines()[0]})")
+        return
+    print(stats_out)
 
     if args.container:
         print(f"\n=== 2. CONTAINER PROCESSES ({args.container}) ===")
@@ -63,10 +77,19 @@ def main():
         print(f"\n=== 3. HOST vs CONTAINER FILE SYNC ({args.container}:{workdir}) ===")
         container_paths = [f"{workdir}/{p.replace(chr(92), '/')}" for p in args.sync_check]
         out = run_cmd(["docker", "exec", args.container, "md5sum", *container_paths])
+        lowered = out.lower()
+        if "executable file not found" in lowered or "md5sum: not found" in lowered or "no such container" in lowered or "is not running" in lowered:
+            # Distroless/scratch images lack md5sum; a stopped container can't exec. Don't misreport as STALE.
+            print(f"  UNVERIFIABLE: cannot hash inside container ({out.strip().splitlines()[0]})")
+            print("  Fallback: `docker cp <container>:<path> -` and compare, or check the image build timestamp.")
+            args.sync_check = []
         container_hashes = {}
         for line in out.splitlines():
-            parts = line.strip().split(None, 1)
-            if len(parts) == 2:
+            clean = line.strip()
+            if clean.startswith("md5sum:") or clean.startswith("Error:"):
+                continue
+            parts = clean.split(None, 1)
+            if len(parts) == 2 and len(parts[0]) == 32:
                 container_hashes[parts[1].strip()] = parts[0].strip().lower()
 
         for rel in args.sync_check:

@@ -11,7 +11,6 @@ __pycache__/
 skill-creator/eval-results/
 skill-creator/benchmarks/
 skill-creator/eval-data/
-evals.json
 
 # Editor
 .vscode/
