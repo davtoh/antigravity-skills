@@ -104,35 +104,24 @@ def measure_node_lines(node: ast.AST) -> tuple[int, int, int]:
 
 
 def analyze_python_ast(
-    source_text: str,
-    thresholds: AuditThresholds,
+    source_text: str, thresholds: AuditThresholds
 ) -> tuple[list[ClassMetric], list[FunctionMetric]]:
     """Parse a Python module AST to extract class and function modularity metrics."""
     try:
         tree = ast.parse(source_text)
     except (SyntaxError, ValueError):
         return [], []
-
-    classes: list[ClassMetric] = []
-    oversized_funcs: list[FunctionMetric] = []
-    class_method_ids: set[int] = set()
-
+    classes, oversized_funcs, method_ids = [], [], set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             c_metric, c_funcs = _inspect_class_node(node, thresholds)
             classes.append(c_metric)
             oversized_funcs.extend(c_funcs)
-            for item in node.body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    class_method_ids.add(id(item))
-
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if id(node) not in class_method_ids:
-                f_metric = _inspect_func_node(node, node.name, thresholds.max_func_lines)
-                if f_metric.status != "OK":
-                    oversized_funcs.append(f_metric)
-
+            method_ids.update(id(i) for i in node.body)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and id(node) not in method_ids:
+            f_metric = _inspect_func_node(node, node.name, thresholds.max_func_lines)
+            if f_metric.status != "OK":
+                oversized_funcs.append(f_metric)
     classes.sort(key=lambda c: (c.method_count, c.lines), reverse=True)
     oversized_funcs.sort(key=lambda f: f.lines, reverse=True)
     return classes, oversized_funcs
@@ -226,6 +215,15 @@ def has_hard_breach(reports: Iterable[FileReport]) -> bool:
     )
 
 
+def recommend_mode(reports: list[FileReport]) -> str:
+    """Return 'PROJECT_CAMPAIGN' if >2 files have CRITICAL status, else 'SINGLE_FILE'."""
+    crit_files = sum(
+        1 for r in reports
+        if r.status == "CRITICAL" or any(c.status == "CRITICAL" for c in r.classes)
+    )
+    return "PROJECT_CAMPAIGN" if crit_files > 2 else "SINGLE_FILE"
+
+
 def print_text_summary(
     reports: list[FileReport],
     thresholds: AuditThresholds,
@@ -236,11 +234,12 @@ def print_text_summary(
     ranked = sorted(reports, key=lambda r: r.lines, reverse=True)
     crit = sum(1 for r in reports if r.status == "CRITICAL")
     warn = sum(1 for r in reports if r.status == "WARNING")
+    mode = recommend_mode(reports)
     print(f"=== Modularity Audit ({len(reports)} files | Critical: {crit} | Warning: {warn}) ===")
     print(
         f"Budgets: File <= {thresholds.warn_file_lines}/{thresholds.max_file_lines}L | "
         f"Class <= {thresholds.warn_class_methods}/{thresholds.max_class_methods}M | "
-        f"Func <= {thresholds.max_func_lines}L\n"
+        f"Func <= {thresholds.max_func_lines}L | Recommended Mode: {mode}\n"
     )
     print(f"{'Status':<10} {'Lines':>7}  {'Path'}\n" + "-" * 72)
     for rep in ranked[:top_n]:
@@ -298,8 +297,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         ranked = sorted(reports, key=lambda r: r.lines, reverse=True)[: args.top]
         print(json.dumps({
-            "total_files": len(reports), "hard_breach": has_hard_breach(reports),
-            "thresholds": asdict(thresholds), "files": [asdict(r) for r in ranked],
+            "total_files": len(reports),
+            "hard_breach": has_hard_breach(reports),
+            "recommended_mode": recommend_mode(reports),
+            "thresholds": asdict(thresholds),
+            "files": [asdict(r) for r in ranked],
         }, indent=2))
     else:
         print_text_summary(reports, thresholds, args.top, args.show_methods)

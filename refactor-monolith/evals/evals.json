@@ -4,11 +4,11 @@
     {
       "id": 1,
       "prompt": "Our backend has a 1,200-line server.py with models, authentication endpoints, and payment webhook logic all mixed together. Downstream unit tests import 'app' and several utility functions directly from server.py. Please audit the file and decompose it into clean modules without breaking existing imports.",
-      "expected_output": "The model audits server.py using code_health_audit.py, creates a decomposition plan grouping routes, services, and models, implements the package facade pattern with __init__.py re-exporting public symbols, extracts routers and services into separate files under 300 lines each, preserves all docstrings/comments, and verifies with unit tests and code_health_audit.py.",
+      "expected_output": "The model detects Mode A (Single-File Fast-Track), audits server.py using code_health_audit.py, outlines cohesion clusters, implements the package facade pattern with __init__.py or server.py re-exporting public symbols, extracts routers and services into separate files under 300 lines each, preserves all docstrings/comments, and verifies with unit tests and code_health_audit.py.",
       "files": [],
       "expectations": [
+        "Routes to Mode A (Single-File Fast-Track) without unnecessary multi-file project roadmap ceremony",
         "Audits the target code using code_health_audit.py before and after changes",
-        "Presents a structured decomposition plan before executing edits",
         "Maintains zero breaking imports by re-exporting moved symbols via facade or __init__.py",
         "Keeps extracted files and classes within the quantitative modularity budget (<=350 lines, <=10-12 methods)",
         "Preserves existing docstrings, rationale comments, and test compatibility"
@@ -16,26 +16,27 @@
     },
     {
       "id": 2,
-      "prompt": "Our DataStore class in storage.py has grown to over 35 methods across 1,800 lines. Callers all across our repository call data_store.get_user(), data_store.record_transaction(), and data_store.generate_metrics(). How can we refactor this God Class into manageable chunks without breaking call sites?",
-      "expected_output": "The model recommends and implements either the cohesive domain mixin pattern or composition facade, separating user queries, transaction queries, and metrics queries into dedicated modules with <=10 methods each, re-exporting DataStore with identical method signatures.",
+      "prompt": "We have a legacy web project with 8 huge files (database.py at 2,100 lines with 60 methods, app.py at 1,900 lines, worker.py at 950 lines, and several 1,000+ line JS/CSS files). I don't want to go file-by-file figuring out what to ask each time. Please refactor our project to follow a recommended modular structure and migrate it by parts.",
+      "expected_output": "The model runs code_health_audit.py, detects Mode B (PROJECT_CAMPAIGN), proposes a layered directory structure (Level 0 models/utils -> Level 1 repositories -> Level 2 services -> Level 3 routers/UI -> Level 4 facade entrypoints), creates a 4-phase dependency-ordered checklist in MIGRATION_LOG.md, updates AGENTS.md with a Monolith Freeze, and immediately executes Phase 1 Slice 1 with facade re-exports and test verification.",
       "files": [],
       "expectations": [
-        "Identifies the God Class exceeding method limits (>10-12 methods)",
-        "Applies the domain mixin or composition facade pattern from decomposition-patterns.md",
-        "Preserves 100% of existing call signatures on the main class",
-        "Separates domain responsibilities into submodules under 300 lines",
-        "Enforces unidirectional dependencies and avoids circular imports"
+        "Runs code_health_audit.py and selects Mode B (PROJECT_CAMPAIGN) for multi-monolith repositories",
+        "Designs a layered target directory structure (models/utils, repositories, services, routers, frontend modules)",
+        "Persists a 4-phase dependency-ordered migration checklist in MIGRATION_LOG.md with [ ] checkboxes",
+        "Updates AGENTS.md with a Monolith Freeze and target directory ownership map",
+        "Executes or initiates Phase 1 Slice 1 using the 5-Step Zero-Regression Decomposition Workflow and checkpoints MIGRATION_LOG.md for automatic resume"
       ]
     },
     {
       "id": 3,
-      "prompt": "Audit our repository at ./src to see if any files or classes exceed our modularity limits, and show me the top offenders.",
-      "expected_output": "Runs python scripts/code_health_audit.py --path ./src --top 15 --show-methods and outputs an organized table with line counts, class method counts, and status indicators.",
+      "prompt": "/refactor-monolith Continue migrating the next part of our project.",
+      "expected_output": "The model checks MIGRATION_LOG.md first (Mode B2 Auto-Resume), automatically identifies the next unchecked [ ] milestone without asking the user which file to pick, runs code_health_audit.py --show-methods on that target file, extracts the cohesive module with zero breaking imports, runs tests, and marks the item [x] in MIGRATION_LOG.md.",
       "files": [],
       "expectations": [
-        "Executes the built-in code_health_audit.py tool",
-        "Uses appropriate CLI flags like --path and --top or --show-methods",
-        "Summarizes findings into actionable next steps based on quantitative modularity budgets"
+        "Reads MIGRATION_LOG.md first and automatically selects the next pending [ ] milestone without requiring the user to specify a filename",
+        "Runs code_health_audit.py --show-methods on the selected milestone file",
+        "Applies the 5-Step Zero-Regression Decomposition Protocol with facade re-exports",
+        "Verifies with unit tests and code_health_audit.py, then marks the milestone [x] in MIGRATION_LOG.md"
       ]
     }
   ]

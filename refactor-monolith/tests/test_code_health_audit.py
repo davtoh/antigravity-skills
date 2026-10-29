@@ -28,6 +28,7 @@ from scripts.code_health_audit import (
     iter_source_files,
     main,
     measure_node_lines,
+    recommend_mode,
 )
 
 
@@ -162,7 +163,15 @@ class TestCliExecution(unittest.TestCase):
                 data = json.loads(mock_stdout.getvalue())
                 self.assertIn("total_files", data)
                 self.assertIn("hard_breach", data)
+                self.assertEqual(data.get("recommended_mode"), "SINGLE_FILE")
                 self.assertIn("files", data)
+
+    def test_recommend_mode_switches_to_project_campaign(self) -> None:
+        reports = [
+            FileReport(f"m{i}.py", 600, "CRITICAL") for i in range(3)
+        ]
+        self.assertEqual(recommend_mode(reports), "PROJECT_CAMPAIGN")
+        self.assertEqual(recommend_mode(reports[:2]), "SINGLE_FILE")
 
 
 if __name__ == "__main__":

@@ -40,6 +40,14 @@
     "should_trigger": true
   },
   {
+    "query": "Our project has grown organically and now has 10 huge files over 800 lines across backend and frontend. I don't want to go file-by-file manually—please organize a modular folder structure and migrate the project by parts.",
+    "should_trigger": true
+  },
+  {
+    "query": "Continue migrating the next part of our monolithic codebase from MIGRATION_LOG.md.",
+    "should_trigger": true
+  },
+  {
     "query": "Can you help me fix a syntax error in my Python function where it throws IndexError: list index out of range on line 42?",
     "should_trigger": false
   },
