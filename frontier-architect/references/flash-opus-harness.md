@@ -29,11 +29,12 @@ Heavyweight models allocate massive internal compute per token to hold implicit 
 
 ### A. Externalized Pre-Computation (Think-on-Paper First)
 Before modifying any production file on a non-trivial task, write an explicit **Architectural Pre-Flight Block** (either in the plan artifact or concisely in chat):
-- **Invariants & Global Rules**: What must remain true before and after this change? Verify compliance with global rules in `~/.gemini/config/rules/` (12-Factor zero hardcoded credentials/URLs, OS-agnostic verification commands, and comment preservation).
-- **Portable Plan Hygiene (Strict Precedence)**: While generic chat guidelines allow `file:///` links, committable files and implementation plans **must never contain `file:///` links, absolute drive paths (`C:\...`), or OS user paths**. Use clean POSIX repo-relative paths (`src/module/file.py#L10-L20`).
+- **Invariants & Global Rules**: What must remain true before and after this change? Verify compliance with global rules (12-Factor zero hardcoded credentials/URLs, the 10 Core Coding Principles, OS-agnostic verification commands, and comment preservation).
+- **Modularity & SRP Budget Check**: What is the current line count and class method count of each target file? Enforce the **350-line soft / 500-line hard ceiling per file**, **$\le$ 10–12 methods per class**, and **$\le$ 40 lines per function**. If a target file is already $\ge$ 350 lines, apply the **Split-Before-You-Grow** rule and place new logic in a dedicated submodule.
+- **Portable Plan Hygiene (Strict Precedence)**: While generic chat guidelines allow `file:///` links, committable files and implementation plans **must never contain `file:///` links, absolute drive paths, or OS user paths**. Use clean POSIX repo-relative paths (`src/module/file.py#L10-L20`).
 - **Data & State Flow**: Source of truth → transformation → sink.
 - **Failure Modes**: Network drop, null/empty input, concurrency race, quota limit.
-- **OS-Agnostic Verification Command**: The exact cross-platform command (`python -m unittest discover tests`, `pytest`) or browser check that proves it works. Never embed `.venv\Scripts\` or hidden user directories (`~/.gemini/...`).
+- **OS-Agnostic Verification Command**: The exact cross-platform command (`python -m unittest discover tests`, `pytest`) or browser check that proves it works. Never embed OS-locked virtualenv paths or hidden user customization directories.
 
 *Why it works:* Once these constraints are written into the prompt/artifact context, the model attends to them explicitly while generating code, simulating deep internal reasoning at near-zero latency cost.
 
@@ -61,7 +62,8 @@ Before declaring a task complete, perform a strict adversarial audit of both the
 - **Container & Asset Sync**: If Docker is running, did I confirm the container is serving the new JS/CSS/Python files (`docker cp` or restart) rather than an old image layer?
 - **DOM Bounding-Box & State Proof**: For layout or button-state bugs, did I inspect the live browser via `chrome-devtools` MCP (`evaluate_script` / `take_screenshot`) after a hard reload?
 - **Resource & Process Hygiene (`vmmem` / Docker CPU)**: Did I check `docker top` / `docker stats --no-stream` to ensure no orphaned `ffmpeg` jobs, unthrottled video loops, or inactive tab streams are burning CPU in the background?
-- **Export & Staging Sanitization**: If saving a plan or updating documentation in the repository, did I audit the files to ensure zero `file:///` URLs, zero machine-local paths (`C:\Users\`), zero virtualenv binaries (`.venv\Scripts\`), and zero hardcoded URLs (`http://localhost:8000`)?
+- **Export & Staging Sanitization**: If saving a plan or updating documentation in the repository, did I audit the files to ensure zero `file:///` URLs, zero machine-local paths, zero OS-locked virtualenv binaries, and zero hardcoded local host/port URLs?
+- **Modularity & Line Budget Audit**: Did I verify that all newly created or modified files stay within the 350-line soft / 500-line hard budget, classes stay $\le$ 10–12 methods, and functions stay $\le$ 40 lines?
 - **Documentation & Test Preservation**: Did I preserve all existing docstrings/comments and run the unit test suite after my *very last* edit?
 
 ---
@@ -126,12 +128,17 @@ To make every fresh conversation start with instant project mastery, maintain a 
 - `src/services/`: External APIs, storage, MCP adapters
 - `src/ui/`: Components, views, styling
 
-## 3. Mandatory Verification Commands
+## 3. Modularity Budgets & Split-Before-You-Grow
+- **File Size Budget**: Soft warning at 350 lines; hard ceiling at 500 lines.
+- **Class & Function Budget**: Max 10–12 methods per class; max 40 lines per function; max 15–25 lines per route handler.
+- **Monolith Freeze**: Never append new features directly to files $\ge$ 350 lines; extract a domain submodule instead.
+
+## 4. Mandatory OS-Agnostic Verification Commands
 - **Typecheck & Lint**: `<exact command>`
 - **Fast Unit Tests**: `<exact command>`
 - **Full Smoke Test**: `<exact command>`
 
-## 4. Architectural Invariants
+## 5. Architectural Invariants
 - Never bypass the service layer from UI components.
 - All state mutations must be optimistic and idempotent.
 ```

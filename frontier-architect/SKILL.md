@@ -88,7 +88,7 @@ Why do bug fixes fail or burn excessive tokens?
 1. Agents guess fixes from static source files without inspecting live DOM dimensions or container sync.
 2. When `chrome_devtools` MCP or `/browser` fails (e.g. `npx` not in `%PATH%` / `$PATH`), agents waste thousands of tokens probing Node/Chrome versions and writing repetitive CDP scripts in `scratch/`.
 
-When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**. Instead, use the cross-platform, project-agnostic helpers in `[skill_dir]/scripts/` (`~/.gemini/config/skills/frontier-architect/scripts/`) and execute these 3 steps *before* editing production code:
+When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**. Instead, use the cross-platform, project-agnostic helpers in `<skill_dir>/scripts/` and execute these 3 steps *before* editing production code:
 
 1. **1-Call Live Runtime, Container Sync & CPU Audit (`scripts/docker_audit.py`)**:
    - If the project uses Docker, run the built-in cross-platform auditor in a single command:
@@ -108,15 +108,15 @@ When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection script
      - **For sizing, coordinate alignment, overflow, or responsive bugs**: Default to **Mode A (`cdp_inspect.py`)** to conserve context tokens and get exact pixel measurements.
      - **For human-visible aesthetic reviews or complex interactive clicks**: Propose **Mode B (`/browser`)**, noting the higher token profile so the user can decide.
    - **Environment Setup & Step 2a Pre-Flight (Required for Mode B)**:
-     - If `chrome_devtools` MCP or `/browser` fails with `exec: "npx": executable file not found in %PATH%`:
-       - Probe whether Node.js is already installed (e.g. `C:\Program Files\nodejs\node.exe`).
-       - If installed, immediately advise the user to restart the IDE/CLI so child processes inherit `nodejs` into `%PATH%`.
+     - If `chrome_devtools` MCP or `/browser` fails with `exec: "npx": executable file not found in PATH`:
+       - Probe whether Node.js is already installed on the host.
+       - If installed, immediately advise the user to restart the IDE/CLI so child processes inherit `nodejs` into `PATH`.
        - If not installed, provide the package manager one-liner (`winget install OpenJS.NodeJS.LTS` / `brew install node`).
        - Ensure remote debugging is active in Chrome (`chrome://inspect/#remote-debugging` -> "Enable remote debugging") and user clicks "Allow" on the Chrome banner.
    - **Step 2b — Zero-Overhead Python CDP Execution (`scripts/cdp_inspect.py`)**:
      - Execute directly with zero `npx` overhead across Windows, macOS, and Linux:
        ```bash
-       python "<skill_dir>/scripts/cdp_inspect.py" --url http://localhost:8000 --audit-layout --selectors "<css_selectors>"
+       python "<skill_dir>/scripts/cdp_inspect.py" --url $APP_URL --audit-layout --selectors "<css_selectors>"
        ```
      - Auto-attaches to the user's live Chrome tab via `DevToolsActivePort`, or pass `--headless` for an isolated, auto-cleaned headless run.
      - Supports `--click <selector>`, `--eval <js>`, and `--screenshot <path>`.
@@ -166,20 +166,25 @@ When Tier 2 or Tier 3 introduces an unproven technical assumption, **do not buil
 
 ---
 
-### Phase 5: Plan-First Gate & Persistent Project Memory (`AGENTS.md`)
+### Phase 5: Plan-First Gate, Modularity Budgets & Persistent Project Memory (`AGENTS.md`)
 
 Before modifying production files on any multi-step task:
 
 1. **Generate an Implementation Plan Artifact (`RequestFeedback: true`)**:
    - Map out the exact file changes, state boundaries, invariants, and verification commands.
-   - **Enforce the Export-Ready Portable Plan Contract** (per `~/.gemini/config/rules/` and `AGENTS.md`):
-     - **Repo-Relative Paths Only**: Format all file references as POSIX repository-relative paths (`dashboard/static/app.js#L94-L105`), never machine-local absolute paths (`C:\Users\...`), and **never use `file:///` URIs inside plans or documentation**. (This strictly overrides generic chat link formatting).
-     - **OS-Agnostic Verification Commands**: Write portable commands (`python -m unittest discover tests`, `pytest tests/`, `python scripts/cdp_inspect.py`) and use `$APP_URL` placeholders. Never embed `.venv\Scripts\` or personal customization paths (`~/.gemini/config/skills/...`). If a helper script is needed across sessions, reference it in `<workspace>/scripts/`.
-     - **Zero Hardcoded Infrastructure Details**: Follow 12-factor rules (parameterize hosts/ports; no literal `localhost:8000` hardcoded in plans or configs).
+   - **Enforce the Modularity & SRP Budget Gate ("Split-Before-You-Grow")**:
+     - Check the current line count and class method count of every target file before planning edits.
+     - **File Budget**: Soft warning at **350 lines**, hard split ceiling at **500 lines**.
+     - **Class & Function Budget**: Maximum **10–12 methods** per class (or 200–300 lines); maximum **40 lines** per function/method; maximum **15–25 lines** per route/controller handler.
+     - **Split-Before-You-Grow**: Never plan to append new endpoints, database operations, or UI logic directly into an existing file that already exceeds 350 lines. Instead, plan a dedicated domain submodule (`routers/`, `services/`, `repositories/`, `components/`) and wire it cleanly. If an existing monolith must be decomposed, use or recommend the standalone `/refactor-monolith` workflow.
+   - **Enforce the Export-Ready Portable Plan Contract**:
+     - **Repo-Relative Paths Only**: Format all file references as POSIX repository-relative paths (`src/module/component.js#L94-L105`), never machine-local absolute paths, and **never use `file:///` URIs inside plans or documentation**. (This strictly overrides generic chat link formatting).
+     - **OS-Agnostic Verification Commands**: Write portable commands (`python -m unittest discover tests`, `pytest tests/`, `python scripts/cdp_inspect.py`) and use `$APP_URL` placeholders. Never embed OS-locked virtualenv binaries or personal customization paths. If a helper script is needed across sessions, reference it in `<workspace>/scripts/`.
+     - **Zero Hardcoded Infrastructure Details**: Follow 12-factor rules (parameterize hosts/ports; no literal host/port strings hardcoded in plans or configs).
      - **Scenario Combinations Matrix**: Include an executable test matrix per `executable_documentation.md`.
    - Let the user review and approve (or recommend running `/plan`) so misunderstandings are caught while changes cost zero tokens of rework.
 2. **Codify Persistent Rules (`AGENTS.md` / `.agents/rules/`)**:
-   - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), create or update it with the folder ownership, coding conventions, and exact test/build commands. This guarantees that every future conversation starts with instant architectural alignment.
+   - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), create or update it with the folder ownership, coding conventions, modularity budgets, and exact OS-agnostic test/build commands. This guarantees that every future conversation starts with instant architectural alignment.
 
 ---
 
@@ -195,15 +200,15 @@ Execute the approved plan in tight, verifiable increments rather than a single m
    - Kick off slow integration suites, builds, or E2E runs as background tasks (`WaitMsBeforeAsync: 500`) so workspace momentum never freezes.
 3. **Visual, DOM & Container Verification for UI/Runtime**:
    - **Container Deployment Check**: If the app runs in Docker, ensure updated code/assets are actually active in the container (`docker cp` or `docker compose restart`/`up -d --build`) and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
-   - **Live Browser & Bounding-Box Check**: Use `chrome_devtools` MCP (if Node/`npx` is configured) or run `scripts/cdp_inspect.py --url <url> --audit-layout --selectors "<selectors>"` to assert DOM bounding boxes, overflow flags, media/button states, and zero console errors in a single command.
+   - **Live Browser & Bounding-Box Check**: Use `chrome_devtools` MCP (if Node/`npx` is configured) or run `scripts/cdp_inspect.py --url $APP_URL --audit-layout --selectors "<selectors>"` to assert DOM bounding boxes, overflow flags, media/button states, and zero console errors in a single command.
    - **CPU & Orphan Process Clean-Room Gate**: Before ending the turn, check `scripts/docker_audit.py` output to confirm zero orphan processes or runaway background loops are spiking CPU when tabs are idle/switched.
 4. **Tooling Hygiene: `scratch/` vs. Skill `scripts/` vs. Project `scripts/`**:
-   - **`scratch/` is Ephemeral Only**: Files in `scratch/` are NOT automatically indexed or reused by future conversations. Use `scratch/` strictly for throwaway Phase 4 SPIKEs or temporary screenshots.
-   - **Global Skill `scripts/` (`~/.gemini/config/skills/frontier-architect/scripts/`)**: Must remain **100% OS-agnostic (Windows, macOS, Linux)** and **100% project-agnostic** so they can be committed and shared across any repo or machine.
+   - **`scratch/` is Ephemeral Only**: Files in `scratch/` are NOT automatically indexed or reused by future conversations. Use `<appDataDir>/brain/<conversation-id>/scratch/` strictly for throwaway Phase 4 SPIKEs or temporary screenshots—never leave `scratch/` directories inside a project repository.
+   - **Skill `scripts/`**: Must remain **100% OS-agnostic (Windows, macOS, Linux)**, **100% standalone**, and **100% project-agnostic** so they can be committed and shared across any repo or machine.
    - **Project `<workspace>/scripts/`**: If a reusable diagnostic or automation script is specific to the current repository, save it in `<workspace>/scripts/` and document its command in `<workspace>/AGENTS.md` so future conversations discover and reuse it immediately.
 5. **Milestone Checkpoint, Export Sanitization & Fresh Thread Hygiene**:
-   - **Pre-Commit Staging Audit**: When exporting plans/artifacts to the repository (e.g. `milestone_plan.md`, `INTELLIGENT_TRACKER_INTEGRATION_PLAN.md`) or preparing a git commit:
-     - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries (`.venv\Scripts`), and zero hardcoded local URLs/ports**.
+   - **Pre-Commit Staging Audit**: When exporting plans/artifacts to the repository or preparing a git commit:
+     - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries, zero hardcoded local URLs/ports, and full compliance with the 350/500-line file and 10–12 method class budgets**.
      - Present a clean, copy-pasteable git commit command with a concise milestone summary.
    - **Fresh Conversation Hygiene**: Once a milestone is verified and committed, update `MIGRATION_LOG.md` / `AGENTS.md` and explicitly advise the user to click **New Conversation (+)** or run `/compact` to maintain peak reasoning and keep context crisp for the next milestone.
 
