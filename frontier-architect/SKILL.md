@@ -96,18 +96,30 @@ When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection script
      python "<skill_dir>/scripts/docker_audit.py" --container <container_name> --workdir /app --sync-check <modified_or_suspect_files...>
      ```
    - This checks `docker stats --no-stream`, active container processes (`docker top`), MD5 file sync between host and container, and recent container Tracebacks in one shot across Windows, macOS, and Linux.
-2. **Interactive Browser Setup & Inspection Cascade (`chrome_devtools` MCP → `scripts/cdp_inspect.py`)**:
-   - **Step 2a — Check Environment MCP & Guide User Setup if Missing**:
-     - If `chrome_devtools` MCP or the `/browser` subagent fails with `exec: "npx": executable file not found in %PATH%` (or `DevToolsActivePort` not found), **do not silently loop or probe random directories**. Immediately surface the exact setup steps and ask the user (`ask_question` or concise prompt) whether they want to complete the setup now or use the built-in Python CDP fallback:
-       1. **Install Node.js LTS** (required for `npx chrome-devtools-mcp`): Download from `https://nodejs.org/en/download` (or `winget install OpenJS.NodeJS.LTS` on Windows, `brew install node` on macOS, `apt/nvm` on Linux) and restart the IDE/CLI so `npx` is in `PATH`.
-       2. **Enable Chrome Remote Debugging**: In Chrome, open `chrome://inspect/#remote-debugging` and check **"Enable remote debugging"** (this creates the `DevToolsActivePort` file in your default Chrome profile).
-       3. **Verify Port & Single Listener**: Ensure the port in `DevToolsActivePort` (default `9222`) is open without conflicting zombie Chrome processes holding it, and click **"Allow"** when Chrome prompts for remote debugging.
-   - **Step 2b — Zero-Overhead Cross-Platform Python CDP Fallback (`scripts/cdp_inspect.py`)**:
-     - When `npx` is unavailable or the user prefers immediate execution without restarting the IDE, run `[skill_dir]/scripts/cdp_inspect.py` (works on Windows, macOS, and Linux):
+2. **Browser Diagnostic Mode Selection & Token-Aware Verification**:
+   - Browser audits carry very different token and capability profiles. Never burn tokens blind—choose the recommended mode or present the choice to the user:
+
+   | Verification Mode | Token Footprint | Execution Profile | Best Used For |
+   | :--- | :--- | :--- | :--- |
+   | **Mode A: Python CDP Inspector (`scripts/cdp_inspect.py`)** *(Recommended for Layout & Math)* | **~500 – 1,000 tokens** (Lean) | Single deterministic call via Python `asyncio` returning compact JSON of exact `DOMRect` bounding boxes, computed styles, scroll dimensions, and overflow flags. | Bounding box sizing, responsive layout audits, coordinate alignment, CSS overflow detection, `:fullscreen` rules, and headless CI verification. |
+   | **Mode B: Interactive `/browser` Agent (`chrome_devtools` MCP)** *(Recommended for UX & Visuals)* | **~5,000 – 20,000+ tokens** (Heavy) | Multi-turn subagent reasoning loops, full accessibility tree inspection, and multimodal image screenshots. | Qualitative visual design, theme & typography aesthetics, complex multi-step user workflows (forms, modals, drag-and-drop), and rendering quirks uncapturable by raw numbers. |
+
+   - **Mode Selection Policy**:
+     - **For sizing, coordinate alignment, overflow, or responsive bugs**: Default to **Mode A (`cdp_inspect.py`)** to conserve context tokens and get exact pixel measurements.
+     - **For human-visible aesthetic reviews or complex interactive clicks**: Propose **Mode B (`/browser`)**, noting the higher token profile so the user can decide.
+   - **Environment Setup & Step 2a Pre-Flight (Required for Mode B)**:
+     - If `chrome_devtools` MCP or `/browser` fails with `exec: "npx": executable file not found in %PATH%`:
+       - Probe whether Node.js is already installed (e.g. `C:\Program Files\nodejs\node.exe`).
+       - If installed, immediately advise the user to restart the IDE/CLI so child processes inherit `nodejs` into `%PATH%`.
+       - If not installed, provide the package manager one-liner (`winget install OpenJS.NodeJS.LTS` / `brew install node`).
+       - Ensure remote debugging is active in Chrome (`chrome://inspect/#remote-debugging` -> "Enable remote debugging") and user clicks "Allow" on the Chrome banner.
+   - **Step 2b — Zero-Overhead Python CDP Execution (`scripts/cdp_inspect.py`)**:
+     - Execute directly with zero `npx` overhead across Windows, macOS, and Linux:
        ```bash
        python "<skill_dir>/scripts/cdp_inspect.py" --url http://localhost:8000 --audit-layout --selectors "<css_selectors>"
        ```
-     - It automatically checks `DevToolsActivePort` across Windows (`%LOCALAPPDATA%\Google\Chrome\User Data\DevToolsActivePort`), macOS (`~/Library/Application Support/Google/Chrome/DevToolsActivePort`), and Linux (`~/.config/google-chrome/DevToolsActivePort`) to inspect the user's **live open Chrome tab**, or accepts `--headless` for an isolated, auto-cleaned temporary headless run.
+     - Auto-attaches to the user's live Chrome tab via `DevToolsActivePort`, or pass `--headless` for an isolated, auto-cleaned headless run.
+     - Supports `--click <selector>`, `--eval <js>`, and `--screenshot <path>`.
 3. **Socratic Symptom & Lifecycle Interview (`ask_question`)**:
    - Whenever a bug report includes behavioral or resource-management choices (e.g., *"Should pausing on tab switch auto-resume when returning to the tab, or require manual resume? Should background backend streams also hibernate when no client tab is viewing them?"*), use `ask_question` to lock in the exact UX and resource policy with the user *before* coding.
    - Build a **Symptom-to-Root-Cause Matrix** (mapping Symptom #1..#N → Root Cause → Exact File/Line → Live Verification Check) and present it in **Phase 5**.
