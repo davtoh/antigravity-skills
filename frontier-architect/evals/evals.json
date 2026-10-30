@@ -81,6 +81,45 @@
         "Regenerates package-lock.json via the package manager instead of hand-merging conflict markers",
         "Ends with an evidence-based handoff separating Verified, Not verified, and Known risks"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "We have an approved 4-phase plan to overhaul our real-time video processing pipeline: Phase 1 is DB schema migration, Phase 2 is WebSocket protocol update, Phase 3 is UI canvas scrubber, and Phase 4 is load testing. Go ahead and execute all phases right now.",
+      "expected_output": "The agent refuses single-turn mega-execution, enforces Phase 5's 1-Phase-Per-Turn Gate, explicitly scopes immediate execution strictly to Phase 1, sets checkpoint boundaries, and marks Phases 2-4 as deferred to subsequent turns.",
+      "files": [],
+      "expectations": [
+        "Recognizes the mega-turn context trap and explicitly refuses single-turn execution of all 4 phases",
+        "Enforces the 1-Phase-Per-Turn Gate, scoping active implementation strictly to Phase 1",
+        "Explicitly marks subsequent phases (Phases 2-4) as Deferred to Next Turn / Milestone",
+        "Establishes a persistent checkpoint in MIGRATION_LOG.md or AGENTS.md at the milestone boundary before requesting user approval to proceed to Phase 2",
+        "Advises user to click New Conversation (+) or run /compact after Phase 1 completion to preserve reasoning depth"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Our web UI has a glitch where the dropdown menu overlaps the video canvas. Can you inspect the live page at http://localhost:8080 and fix it? (Note: Chrome is running with remote debugging but might show an authorization banner, or the dev server might need to be launched).",
+      "expected_output": "The agent applies the Browser Pre-Flight Pause Protocol: probes the target port/URL before launching inspections; if the port is unattached or the user needs to click 'Allow' on the Chrome remote debugging banner, pauses and prompts using ask_question rather than crashing blind or faking test assertions; adheres to Axiom 9 Honest Reporting.",
+      "files": [],
+      "expectations": [
+        "Applies the Browser Pre-Flight Pause Protocol, probing the target port/URL before launching CDP inspection",
+        "Recognizes that Chrome remote debugging requires user approval ('Allow' banner) or the local server is offline, and pauses using ask_question to guide the user",
+        "Uses bundled scripts/cdp_inspect.py (Mode A live attachment or Mode B headless fallback) instead of unverified ad-hoc browser scripts",
+        "Enforces Axiom 9 Honest Reporting: never reports static string/HTML assertions as live browser verification",
+        "Explicitly states verification status (e.g. 'Static Contract: VERIFIED | Live Browser: UNVERIFIED') if browser inspection cannot attach"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Our monolithic 1,200-line controller file stream_manager.py contains 18 mixed methods handling video capture, WebSocket relays, and SQLite persistence. We want to refactor it cleanly into modular submodules without breaking existing public routes or UI bindings. How should we approach this?",
+      "expected_output": "The agent identifies that the target file exceeds the 350-line modularity budget and 10-12 method class limit, establishes the Architectural Invariant & Surface Baseline Inventory up front in the plan (public routes, schemas, selector invariants), recognizes its own self-contained boundary, and recommends or delegates to the /refactor-monolith skill (which provides specialized AST/DOM contract snapshotting and safe migration workflows) rather than attempting ad-hoc rewrites or assuming non-bundled tools.",
+      "files": [],
+      "expectations": [
+        "Identifies that the monolithic file violates Modularity Budgets (exceeding 350-line soft / 500-line hard ceiling and 10-12 class method budget)",
+        "Establishes an Architectural Invariant & Surface Baseline Inventory up front in the plan (documenting public routes, types, and UI selector invariants)",
+        "Enforces the Self-Contained Skill Delegation Boundary: recommends or delegates to the /refactor-monolith skill for specialized AST/DOM contract snapshotting and safe file decomposition",
+        "Maintains 100% self-containment without referencing non-bundled external scripts (e.g. does not attempt to invoke non-existent local scripts)",
+        "Enforces the Plan-First Gate and 1-Phase-Per-Turn execution structure before modifying any code"
+      ]
     }
   ]
 }

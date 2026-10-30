@@ -184,6 +184,12 @@ Before modifying production files on any multi-step task:
 
 1. **Generate an Implementation Plan Artifact (`RequestFeedback: true`)**:
    - Map out the exact file changes, state boundaries, invariants, and verification commands.
+   - **The 1-Phase-Per-Turn Execution Gate (Context Hygiene)**:
+     - For multi-phase campaigns, present the complete roadmap but **explicitly scope immediate execution to Phase 1 only**. Mark subsequent phases as *Deferred to Next Turn / Milestone*.
+     - Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, update `MIGRATION_LOG.md`, and pause to keep context crisp.
+   - **Architectural Invariant & Surface Baseline Inventory**:
+     - Before modifying existing systems, identify and document all public surface invariants in the plan: public API routes/payload schemas, exported symbols/types, state machine transitions, and critical UI selectors (`#main-canvas`, `.control-bar`).
+     - **Skill Delegation Boundary for Monolith Decomposition**: If the task specifically requires decomposing oversized legacy files or classes exceeding the modularity budget into modular submodules while performing deep AST/DOM contract snapshotting, explicitly recommend or delegate to the specialized `/refactor-monolith` skill (which provides dedicated surface scanners and contract diff tooling; if not installed locally, it can be acquired from `https://github.com/davtoh/antigravity-skills`). If `/refactor-monolith` is unavailable and cannot be installed, proceed self-contained by isolating public interfaces, writing manual regression test harnesses before editing, and decomposing incrementally.
    - **Enforce the Modularity & SRP Budget Gate ("Split-Before-You-Grow")**:
      - Check the current line count and class method count of every target file before planning edits.
      - **File Budget**: Soft warning at **350 lines**, hard split ceiling at **500 lines**.
@@ -211,9 +217,13 @@ Execute the approved plan in tight, verifiable increments rather than a single m
    - **Step 3**: UI layout & styling → *Verify with build + browser/visual tools.*
 2. **Run Heavy Tests Asynchronously**:
    - Kick off slow integration suites, builds, or E2E runs as background tasks (`WaitMsBeforeAsync: 500`) so workspace momentum never freezes.
-3. **Visual, DOM & Container Verification for UI/Runtime**:
-   - **Container Deployment Check**: If the app runs in Docker, ensure updated code/assets are actually active in the container (`docker cp` or `docker compose restart`/`up -d --build`) and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
-   - **Live Browser & Bounding-Box Check**: Use `chrome_devtools` MCP (if Node/`npx` is configured) or run `scripts/cdp_inspect.py --url $APP_URL --audit-layout --selectors "<selectors>"` to assert DOM bounding boxes, overflow flags, media/button states, and zero console errors in a single command.
+3. **Visual, DOM & Container Verification for UI/Runtime (3-Tier Verification Ladder)**:
+   - **Tier 1 (Static & Type Contract Parity)**: Run the project's native verification commands (typecheckers, linters, unit tests, and route/contract test suites like `pytest`, `npm test`, `tsc --noEmit`, `mypy`, or `cargo test`) to ensure zero syntax errors, zero broken type contracts, and full pass rate before launching servers.
+   - **Tier 2 (Container Deployment Check)**: If the app runs in Docker, ensure updated code/assets are active in the container (`docker cp` or `docker compose restart`/`up -d --build`) and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
+   - **Tier 3 (Live Browser & Bounding-Box Check)**:
+     - **Pre-Flight Pause Protocol**: Check if `$APP_URL` is responding and if Chrome remote debugging requires user approval ("Allow" banner). If not ready, pause and prompt the user via `ask_question` rather than failing blind.
+     - Execute `scripts/cdp_inspect.py --url $APP_URL --audit-layout --selectors "<selectors>"` to assert DOM bounding boxes, overflow flags, media/button states, and zero console errors in a single command.
+     - **Axiom 9 Honest Reporting**: If live browser inspection cannot run, state plainly: *"Static Contract: VERIFIED | Live Browser: UNVERIFIED (Server offline or unattached)."* Never report static string assertions as live browser verification.
    - **CPU & Orphan Process Clean-Room Gate**: Before ending the turn, check `scripts/docker_audit.py` output to confirm zero orphan processes or runaway background loops are spiking CPU when tabs are idle/switched.
 4. **Stop-Loss on Failed Fixes (Anti-Thrash Rule)**:
    - If the same symptom survives two fix attempts, stop editing. A third guess on the same theory usually piles on more changes without understanding more. Revert or isolate your speculative changes, go back to Phase 1B evidence (live DOM, logs, container state), write down which hypothesis was wrong and why, and then either form a new hypothesis backed by evidence or escalate (Phase 2 model tier / `/boost`) with a summary of what you've already ruled out.
