@@ -38,6 +38,18 @@
         "Applies the 5-Step Zero-Regression Decomposition Protocol with facade re-exports",
         "Verifies with unit tests and code_health_audit.py, then marks the milestone [x] in MIGRATION_LOG.md"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "We have a 1,350-line frame_processor.py containing CLI parsing, config loaders, telemetry reporters, and a tight per-frame NumPy/OpenCV hot loop that shares pre-allocated buffers. We also hit circular import failures twice when a teammate tried splitting the hot loop earlier. Please use /plan (or our custom architectural planner) to plan the decomposition first, warn us if splitting any part would hurt performance, and define how to handle mid-refactoring failures or strategy changes without breaking anything.",
+      "expected_output": "The model honors the requested planning workflow (/plan or custom planner) before modifying production code, runs code_health_audit.py, warns that splitting the tight per-frame buffer hot loop across modules would degrade performance and memory locality, proposes a Hot/Cold split (keeping the hot kernel cohesive while extracting cold CLI, config, and telemetry helpers behind a backward-compatible facade), and defines the mid-execution anti-thrash stop-loss (halting on >=2 failures, advising safe revert of unstable edits, and escalating via /plan or /grill-me to pivot strategy).",
+      "files": [],
+      "expectations": [
+        "Honors the user-specified planner (/plan or custom architectural planner) by presenting a structured pre-flight decomposition plan and waiting for approval before modifying production code",
+        "Explicitly warns about the performance and memory-locality degradation risk of splitting the tight per-frame hot loop across files, proposing a Hot/Cold split instead",
+        "Defines a mid-execution escalation and anti-thrash protocol that halts after repeated failures, advises reverting broken speculative edits, and pivots strategy or consults the user via /grill-me or /plan",
+        "Preserves 100% backward-compatible imports via a re-export facade while enforcing quantitative modularity budgets (<=350 lines, <=10-12 methods)"
+      ]
     }
   ]
 }

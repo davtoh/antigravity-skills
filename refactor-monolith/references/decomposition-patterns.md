@@ -10,6 +10,7 @@ This reference provides project-agnostic, language-transferable blueprints for d
 3. [Pattern 3: God Class Decomposition (Composition vs. Cohesive Mixins)](#3-pattern-3-god-class-decomposition-composition-vs-cohesive-mixins)
 4. [Pattern 4: Frontend Script & Stylesheet Decomposition](#4-pattern-4-frontend-script--stylesheet-decomposition)
 5. [Circular Dependency Prevention Rules](#5-circular-dependency-prevention-rules)
+6. [Performance Guards, Mid-Flight Escalation & Safe Revert ("Do No Harm")](#6-performance-guards-mid-flight-escalation--safe-revert-do-no-harm)
 
 ---
 
@@ -177,3 +178,21 @@ flowchart TD
 
 1. **Lower layers never import from higher layers**: A Level 1 repository or Level 0 utility must **never** import from `app.py` or `__init__.py`.
 2. **Extract Shared Types to Level 0**: If Module A and Module B both need a shared class, enum, or constant, place that definition in a Level 0 leaf file (`types.py` or `constants.py`).
+
+---
+
+## 6. Performance Guards, Mid-Flight Escalation & Safe Revert ("Do No Harm")
+
+Modularity should never degrade runtime performance, memory locality, or reliability. Apply these guards before and during every extraction slice:
+
+### A. When Splitting Hurts Performance (Warn & Pivot Strategy)
+- **Tight Hot Loops & Vectorized Buffers**: Splitting a tightly coupled inner loop (e.g., per-frame computer vision kernels, audio DSP buffers, NumPy/SIMD array mutations, or high-frequency frame parsers) across multiple classes or files can introduce function-call overhead, object allocation churn, or loss of inlining/JIT locality.
+- **Excessive Serialization / Wrapper Indirection**: Converting direct in-memory state sharing into deep multi-layer DTO copying on a critical latency path degrades throughput.
+- **Required Action**:
+  1. **Warn the user explicitly** before forcing an artificial split that would produce a slower or worse implementation.
+  2. **Propose a Hot/Cold Split**: Keep the latency-critical hot path cohesive inside a single focused engine module, and extract only the **cold paths** (configuration loading, CLI parsing, file I/O, logging, report formatting, and error diagnostics).
+
+### B. Anti-Thrash Revert & Strategy Pivot (On Repeated Failures or Deadlocks)
+- If a slice extraction fails verification $\ge 2$ times or uncovers deep cyclic state coupling:
+  1. **Halt and Advise Revert**: Do not layer speculative workarounds onto broken state. Advise reverting the failed slice (`git checkout -- <modified_files>` or removing the partial submodule) to restore the last verified green state.
+  2. **Isolate & Escalate**: Summarize why the current strategy failed (e.g., shared mutable state, dynamic monkeypatching, or import-time side effects) and either use a planning/interview workflow (`/plan`, `/grill-me`, or the user's preferred architectural skill) or present concrete alternative strategies for user sign-off.

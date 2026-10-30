@@ -1,7 +1,7 @@
 ---
 name: refactor-monolith
 description: >-
-  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" exceeding 350-500 lines), overly complex classes ("God Classes" exceeding 10-12 methods), or entire monolithic projects into clean, modular architectures. Automatically adapts between Single-File Fast-Track Mode (directly refactoring a specific file or small scope) and Project-Wide Campaign Mode (designing a layered directory structure, persisting a phased roadmap in MIGRATION_LOG.md, and migrating part-by-part with automatic resume). Make sure to use this skill whenever the user asks to split large files, refactor a monolith, modularize a project, continue a refactoring migration, reduce class or method count, audit codebase modularity, or apply Single Responsibility Principle (SRP) without breaking existing imports or tests.
+  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" exceeding 350-500 lines), overly complex classes ("God Classes" exceeding 10-12 methods), or entire monolithic projects into clean, modular architectures. Automatically adapts between Single-File Fast-Track Mode, Project-Wide Campaign Mode (with MIGRATION_LOG.md auto-resume), and optional user-specified planning workflows (/plan, /grill-me, or custom architectural skills), while enforcing mid-execution performance guards, anti-thrash stop-loss, and safe revert guidance. Make sure to use this skill whenever the user asks to split large files, refactor a monolith, modularize a project, continue a refactoring migration, reduce class or method count, audit codebase modularity, or apply Single Responsibility Principle (SRP) without breaking existing imports or tests.
 ---
 
 # Refactor Monolith: Adaptive Decomposition & Modularity Engine
@@ -114,6 +114,31 @@ After **each extraction slice**:
 1. Run the project's automated test suite (`pytest`, `python -m unittest discover tests`, `npm test`, `dart test`, `go test ./...`) to confirm zero regressions.
 2. Re-run `code_health_audit.py` on the modified file and newly extracted submodules to verify line and method counts are within budget.
 3. In **Mode B (`PROJECT_CAMPAIGN`)**, mark the completed slice `[x]` in `MIGRATION_LOG.md` with before/after line counts and note the next pending `[ ]` slice so the user can continue effortlessly in the next turn or session.
+
+---
+
+## Universal Planner & Runtime Escalation Adapter (100% Portable)
+
+This skill works **100% standalone out of the box** with zero external skill dependencies, while seamlessly adapting whenever the user pairs it with built-in slash commands (`/plan`, `/grill-me`) or custom architectural/planning skills, or when mid-execution risks arise:
+
+### 1. Pre-Flight Planner Integration (When Requested by the User)
+- **Explicit Planner or Interview Pairing**: If the user invokes `/plan`, `/grill-me`, a custom architectural planning skill, or asks to *"plan first"* / *"interview me first"*:
+  - **For Plan-First Requests (`/plan` or custom planner)**: Run `code_health_audit.py` first, then route Step 2 (Cohesion Clustering, Layered DAG, and Strangler-Fig Facade Blueprint) into a formal implementation plan artifact (`RequestFeedback: true`) or the custom planner's structure (including 3-tier trade-offs if requested). **Pause and wait for explicit user approval before modifying production files.**
+  - **For Decision Interviews (`/grill-me` or clarification requests)**: Inspect the target AST first, then interview the user (`ask_question`) to resolve domain boundary ambiguities (e.g., active-record mixins vs. isolated repositories, sync vs. async interfaces, public API surface) before extracting slices.
+- **Standalone Native Execution (Default)**: When no external planner is specified, do not load or require external skills—use the native inline cohesion summary (Mode A) or `MIGRATION_LOG.md` phased roadmap (Mode B) with zero extra token overhead.
+
+### 2. Mid-Execution Escalation, Performance Guard & Safe Revert Protocol ("Do No Harm")
+During execution (Steps 2–5), never force a blind split that degrades the system. Monitor for these three conditions and escalate immediately:
+
+1. **Performance or Quality Degradation Guard ("Do No Harm")**:
+   - Before and during decomposition, evaluate whether splitting a cohesive block will produce a **worse or less performant version**—such as breaking tight numerical/vectorized hot loops across modules, adding serialization/IPC/import overhead in latency-critical paths, or introducing artificial wrapper indirection that hurts readability and throughput.
+   - **Action**: If splitting degrades runtime performance, memory locality, or clarity, **warn the user explicitly** with concrete technical reasoning, advise against blind splitting (keep the hot-path cohesive while extracting only peripheral cold helpers), and propose a safer alternative strategy.
+2. **Anti-Thrash Stop-Loss ($\ge 2$ Consecutive Verification Regressions)**:
+   - If unit tests, builds, or import checks fail twice in a row during a slice extraction, **stop editing immediately**—never make a third speculative guess on a broken state.
+   - **Action**: Advise reverting uncommitted speculative edits (or restore the pre-slice state cleanly), isolate the root cause (e.g., via a minimal diagnostic check in `scratch/`), and either propose a revised strategy or escalate via `/plan`, `/grill-me`, or the user's preferred planning skill.
+3. **Hidden Coupling, Circular Deadlocks, or Pivotal Design Forks**:
+   - If extracting a slice exposes deep hidden global state, unresolvable circular imports, or an unavoidable contract trade-off (e.g., breaking legacy call signatures vs. adapter shims), **pause the active slice**.
+   - **Action**: Warn the user that the current decomposition path faces structural friction, advise reverting any unstable partial slice edits, and use interactive questioning (`ask_question` / `/grill-me`) or re-planning (`/plan` or custom planner) to pivot the strategy safely.
 
 ---
 
