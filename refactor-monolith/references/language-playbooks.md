@@ -44,6 +44,23 @@ When a single `.tsx`/`.jsx` file exceeds 350–500 lines:
 2. **Extract Pure Sub-Components**: Move self-contained JSX sections (modals, table rows, filter bars, cards) into sibling components (`components/<Feature>Header.tsx`).
 3. **Extract Pure Helpers & Constants**: Move data formatters, validation schemas, and column definitions into `<feature>.utils.ts` or `<feature>.types.ts`.
 
+### Vanilla JavaScript Decomposition (Zero Bundler / Plain `<script>` Tags)
+When splitting plain browser scripts (`app.js`, `studio.js`) loaded directly via `<script src="...">` tags without a module bundler:
+1. **DOM ID Preservation Invariant**: Never rename or "clean up" element IDs in JavaScript. If `document.getElementById('studio-camera-select')` was used in the monolith, keep the exact string; renaming it to `camera-select` causes silent `null` dereferences in production.
+2. **Global Export Registry (`window.*`)**: Plain scripts do not share file-local closures. Any function or controller referenced by another script or by inline HTML attributes (`onclick="showSnapshotModal(...)"`, `<select onchange="...">`) **must be explicitly attached to `window`**:
+   ```javascript
+   // Ensure backward compatibility for legacy scripts & inline handlers
+   window.TrackerApp = window.TrackerApp || {};
+   window.TrackerApp.LivePlayer = LivePlayerController;
+   window.showSnapshotModal = showSnapshotModal;
+   window.App = { switchCamera: LivePlayerController.switchCamera };
+   ```
+3. **Script Load-Order Invariant**:
+   In `index.html`, arrange `<script>` tags in strict topological order:
+   `Level 0 (Utils / EventBus) -> Level 1 (Feature Controllers) -> Level 2 (Master App Bootstrapper)`.
+   Never load a master bootstrapper or modal controller before the feature module that registers its API.
+4. **Automated Parity Verification**: Run `contract_snapshot.py verify --before .refactor_baseline.json` after extracting every JS file to assert zero missing IDs and zero dropped `window.*` exports.
+
 ---
 
 ## 3. Stylesheets: CSS & SCSS (`.css`, `.scss`, `.less`)

@@ -1,26 +1,24 @@
 ---
 name: refactor-monolith
 description: >-
-  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" exceeding 350-500 lines), overly complex classes ("God Classes" exceeding 10-12 methods), or entire monolithic projects into clean, modular architectures across Python, JS/TS/React, CSS/SCSS, Dart/Flutter, Go, Rust, C#, and fallback languages. Automatically prunes vendor/minified assets, respects AGENTS.md and project rules, adapts between Single-File Fast-Track Mode, Project-Wide Campaign Mode (with MIGRATION_LOG.md auto-resume), and optional user-specified planners (/plan, /grill-me, or custom skills), while enforcing performance guards, anti-thrash stop-loss, and the "Leave at Best Working Version" safe bailout rule. Make sure to use this skill whenever the user asks to split large files, refactor a monolith, modularize a project, continue a refactoring migration, reduce class or method count, audit codebase modularity, or apply Single Responsibility Principle (SRP) without breaking existing imports or tests.
+  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" exceeding 350-500 lines), overly complex classes ("God Classes" exceeding 10-12 methods), or entire monolithic projects into clean, modular architectures across Python, JS/TS/React, CSS/SCSS, Dart/Flutter, Go, Rust, C#, and fallback languages. Automatically prunes vendor/minified assets, respects AGENTS.md and project rules, adapts between Single-File Fast-Track Mode, Project-Wide Campaign Mode (with MIGRATION_LOG.md auto-resume and 1-phase turn gates), and Post-Refactor Regression Recovery Mode (with git-ref diffing and parallel worktrees), while enforcing contract snapshots (Solutions A, B, C), performance guards, anti-thrash stop-loss, and the "Leave at Best Working Version" safe bailout rule. Make sure to use this skill whenever the user asks to split large files, refactor a monolith, modularize a project, continue a refactoring migration, reduce class or method count, audit codebase modularity, fix regressions caused by past refactorings, or apply Single Responsibility Principle (SRP) without breaking existing imports, DOM IDs, or tests.
 ---
 
-# Refactor Monolith: Adaptive Decomposition & Modularity Engine
+# Refactor Monolith: Adaptive Decomposition, Parity & Modularity Engine
 
-The **Refactor Monolith** skill provides a deterministic, 100% self-contained workflow for auditing codebase modularity and decomposing oversized "God Files" and "God Classes" into cohesive, maintainable modules—whether the user wants to **refactor a single file immediately** or **migrate an entire multi-language project part-by-part**.
+The **Refactor Monolith** skill provides a deterministic, 100% self-contained workflow for auditing codebase modularity, decomposing oversized "God Files" and "God Classes", and guaranteeing **zero behavioral regressions** across both backend endpoints and frontend DOM interactions.
 
 Why do naive file-splitting attempts fail?
-1. **Broken Import Graphs**: Moving classes, functions, or components without backward-compatible re-export facades breaks downstream callers and test suites.
-2. **Vendor & Compiled Asset Traps**: Blindly refactoring third-party libraries (`slick.js`, `bootstrap.css`) or compiled outputs (`main.css` generated from `scss/`) wastes tokens and corrupts upstream dependencies.
-3. **Big-Bang Rewrite Risk**: Splitting a 2,000-line file—or 12 files across a repo—in one unverified pass introduces circular dependencies, cascade regressions, and context exhaustion.
-4. **Lost Domain Knowledge**: Hasty copy-pasting strips mathematical docstrings, edge-case comments, and historical rationale.
+1. **The Frontend Test Blindspot**: Backend unit tests pass 100% while subtle UI behaviors break because element IDs (`getElementById`), global `window.*` exports, inline `on*=` handlers, or `<script>` load orders are silently dropped or renamed during decomposition.
+2. **Context-Exhausting Single Turns**: Attempting to execute an entire 4-phase, 15-slice migration in a single turn burns millions of tokens and causes attention degradation.
+3. **Broken Import Graphs & Circular Dependencies**: Moving classes or routes without backward-compatible re-export facades breaks downstream callers.
+4. **Ad-Hoc Shell Line-Counting Thrashing**: Abandoning structured audit CLIs for fragile inline PowerShell/Python commands causes quoting and syntax failures.
 
-This skill eliminates those risks with **Zero-Token Multi-Language Structural Auditing** (`scripts/code_health_audit.py`), **Adaptive Scope Routing**, **On-Demand Language Playbooks**, and the **"Best Working Version" Bailout Guarantee**.
+This skill eliminates those risks with **Zero-Token Structural Auditing** (`scripts/code_health_audit.py`), **Full-Surface Contract Snapshots** (`scripts/contract_snapshot.py`), **1-Phase Turn Gates**, **Git Worktree Recipes**, and the **"Best Working Version" Bailout Guarantee**.
 
 ---
 
 ## Quantitative Modularity Budgets
-
-Use these default thresholds (customizable via CLI flags or project `AGENTS.md`) when auditing or decomposing any repository:
 
 | Code Element | Healthy Target | Soft Warning (Refactor Trigger) | Hard Ceiling (Mandatory Split) | Remediation Strategy |
 | :--- | :--- | :--- | :--- | :--- |
@@ -31,123 +29,131 @@ Use these default thresholds (customizable via CLI flags or project `AGENTS.md`)
 
 ---
 
-## Phase 0: Project Rules Check & Adaptive Scope Detection
+## Phase 0: Project Rules Check, Scope Detection & Baseline Anchor
 
-Always begin with two zero-overhead checks before touching any code:
+Always execute these three zero-overhead steps before modifying any code:
 
 1. **Respect Project Memory & Rules (`AGENTS.md` / `.agents/rules/`)**:
-   - Check if the workspace has an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.agents/rules/` directory.
-   - **Project rules win**: Honor established directory conventions, test commands, linter rules, and modularity overrides. When updating `AGENTS.md`, **merge** new section maps cleanly—never overwrite existing team rules.
-2. **Run the Multi-Language Auditor (`scripts/code_health_audit.py`)**:
-   - The auditor automatically filters out third-party vendor/minified/generated files (`slick.js`, `*.min.js`, `bootstrap/`, `migrations/`) and extracts structural metrics using four zero-dependency modes:
-     - `ast`: Deep Python AST class/method/function analysis (`.py`).
-     - `brace`: Zero-token class, struct, `impl`, React component, and method span analysis (`.js`, `.ts`, `.tsx`, `.jsx`, `.dart`, `.go`, `.rs`, `.cs`).
-     - `stylesheet`: CSS/SCSS section header, `:root`, `@media`/`@keyframes`, and selector prefix cluster analysis (`.css`, `.scss`, `.less`).
-     - `fallback`: Heuristic keyword/block span detection for unfamiliar languages.
+   - Check if the workspace has an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.agents/rules/` directory. Honor established conventions.
+2. **Run the Multi-Language Structural Auditor (`scripts/code_health_audit.py`)**:
+   - Run `python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir` to inspect lines grouped by directory.
+   - Use `--compact` for quick file status, or `--split-preview <file>:<line>[:window]` to preview lines around extraction points.
+   - **Strict Rule**: Never write ad-hoc PowerShell or Python inline scripts to count lines; always use `code_health_audit.py`.
+3. **Anchor Git State & Capture Pre-Refactor Contract (`scripts/contract_snapshot.py`)**:
+   - Run `python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>` to record the clean Git SHA and worktree recipe.
+   - Run `python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir> --out .refactor_baseline.json` to lock in all DOM element IDs, `<select>` dropdowns, `window.*` exports, inline handlers, and API routes before a single line is edited.
 
 ```mermaid
 flowchart TD
-    Start["User Invokes /refactor-monolith"] --> Rules["Check AGENTS.md / Project Rules +\nRun scripts/code_health_audit.py"]
-    Rules --> ScopeCheck{"Target Scope & Audit Mode?"}
+    Start["User Invokes /refactor-monolith"] --> Rules["Phase 0: Project Rules + code_health_audit.py (--by-dir) +\ncontract_snapshot.py (anchor & capture)"]
+    Rules --> ScopeCheck{"Target Scope & Mode?"}
 
-    ScopeCheck -->|"Specific file/class named OR\nRecommended Mode == SINGLE_FILE (<=2 critical files)"| ModeA["Mode A: Single-File Fast-Track\nGo straight to 5-Step Decomposition\nand execute refactor in this turn"]
+    ScopeCheck -->|"Targeting bug fixes from past refactor\nOR --git-ref <sha> provided"| ModeC["Mode C: Post-Refactor Regression Recovery\nCompare current tree vs. --git-ref <sha> or git worktree\nPinpoint broken IDs/globals -> Generate Smoke Test -> Fix"]
 
-    ScopeCheck -->|"Whole project/dir targeted AND\nRecommended Mode == PROJECT_CAMPAIGN (>2 critical files)"| LogCheck{"Existing Roadmap in\nMIGRATION_LOG.md?"}
+    ScopeCheck -->|"Specific file/class named OR\nRecommended Mode == SINGLE_FILE"| ModeA["Mode A: Single-File Fast-Track\nExecute 5-Step Workflow with per-slice verify\nFinish within current turn"]
 
-    LogCheck -->|"No roadmap yet"| InitCampaign["Mode B1: Initialize Project Campaign\n1. Propose Layered Directory Structure\n2. Write Phased Checklist to MIGRATION_LOG.md\n3. Merge Monolith Freeze into AGENTS.md\n4. Execute Phase 1, Slice 1"]
-    LogCheck -->|"Roadmap exists with\npending [ ] items"| ResumeCampaign["Mode B2: Auto-Resume Next Part\nAutomatically pick next pending [ ] item\nin MIGRATION_LOG.md -> Execute 5-Step Refactor\n-> Mark [x] & Checkpoint"]
+    ScopeCheck -->|"Whole project targeted AND\nRecommended Mode == PROJECT_CAMPAIGN"| LogCheck{"Existing Roadmap in\nMIGRATION_LOG.md?"}
+
+    LogCheck -->|"No roadmap yet"| InitCampaign["Mode B1: Initialize Project Campaign\n1. Surface Map via contract_snapshot.py inspect\n2. Authorize Phase 1 ONLY (1-Phase Turn Gate)\n3. Execute Phase 1, Slice 1..N -> Step 5 Verify -> STOP"]
+    LogCheck -->|"Roadmap exists with\npending [ ] items"| ResumeCampaign["Mode B2: Auto-Resume Next Phase\nPick next pending Phase -> Execute Slices -> Step 5 Verify -> STOP"]
 ```
 
-### Mode A: Single-File / Small-Scope Fast-Track (`SINGLE_FILE`)
-- **Trigger**: The user names a specific file/class (e.g., *"split `server.py`"*, *"refactor `DataStore`"*) **OR** `code_health_audit.py` reports `Recommended Mode: SINGLE_FILE` ($\le 2$ critical files).
-- **Action**: Do **not** generate multi-file project roadmaps. Immediately run `code_health_audit.py --path <target_file> --show-methods`, outline the cohesion clusters and facade re-export plan concisely, and **execute the 5-Step Decomposition Workflow directly**.
+---
 
-### Mode B: Project-Wide Phased Campaign & Auto-Resume (`PROJECT_CAMPAIGN`)
-- **Trigger**: The user targets an entire repository/directory or asks to *"refactor the project"* / *"continue the migration"*, **AND** `code_health_audit.py` reports `Recommended Mode: PROJECT_CAMPAIGN` ($> 2$ critical files).
-- **Action**:
-  1. **Check `MIGRATION_LOG.md` First (Zero-Prompt Auto-Resume)**:
-     - If `MIGRATION_LOG.md` already contains a Monolith Decomposition Roadmap with unchecked `[ ]` milestones, **automatically select the next unchecked milestone** without asking the user which file to do next. Announce the selected milestone and execute it via the 5-Step Workflow.
-  2. **Initialize the Project Architecture & Roadmap (If Not Yet Created)**:
-     - Establish or refine the project's **Recommended Layered Structure** (adapting idioms to the project's language/framework):
-       - **Level 0 — Leaf Models, Schemas & Pure Utils** (`models/`, `schemas/`, `utils/`): Zero internal service/router imports.
-       - **Level 1 — Persistence & External Adapters** (`repositories/`, `clients/`): Focused data access modules or domain mixins ($\le 10$–$12$ methods per class).
-       - **Level 2 — Domain Services & Core Workers** (`services/`, `core/`, `workflows/`): Business orchestration and state machines decoupled from HTTP/UI.
-       - **Level 3 — Transport, Routers & UI Components** (`routers/`, `controllers/`, `views/`, `components/`, `static/css/components/`): Thin handlers ($\le 15$–$25$ lines) and modular frontend assets.
-       - **Level 4 — Entrypoints & Facades** (`app.py`, `__init__.py`, `index.ts`, `mod.rs`): App factory, router mounting, and backward-compatible re-exports.
-     - Group first-party breached files (excluding compiled outputs that have upstream sources like `scss/` $\rightarrow$ `main.css`) into **4 Dependency-Ordered Phases** (Phase 1: Persistence & Leaf Primitives $\rightarrow$ Phase 2: Core Domain & Workers $\rightarrow$ Phase 3: API Routers & Entrypoints $\rightarrow$ Phase 4: Frontend Scripts & Styles) and write the checklist to `MIGRATION_LOG.md`.
-     - Merge a **Monolith Freeze & Target Directory Map** into `AGENTS.md` so concurrent feature work never re-bloats frozen files.
-     - **Execute Phase 1, Slice 1 immediately** (or pause for user approval if major architectural ambiguity exists), verify all tests pass, and mark `[x]` in `MIGRATION_LOG.md`.
+## Execution Modes & Turn-Boundary Discipline
+
+### Mode A: Single-File Fast-Track (`SINGLE_FILE`)
+- **Trigger**: Specific file/class named **OR** `code_health_audit.py` reports `Recommended Mode: SINGLE_FILE` ($\le 2$ critical files).
+- **Action**: Outline cohesion clusters concisely, extract submodules one by one, run `contract_snapshot.py verify` after each slice, and complete in the current turn.
+
+### Mode B: Project Campaign with 1-Phase Turn Gates (`PROJECT_CAMPAIGN`)
+- **Trigger**: Entire project targeted **AND** `code_health_audit.py` reports `Recommended Mode: PROJECT_CAMPAIGN` ($> 2$ critical files).
+- **The 1-Phase-Per-Turn Execution Rule**:
+  - **Never execute all 4 phases in a single turn.** Attempting mega-executions burns context and compounds regressions.
+  - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1**. Mark Phases 2–4 as *Deferred to Next Turn*.
+  - When Phase 1 completes Step 5 verification, update `MIGRATION_LOG.md`, present the clean commit command, and **stop**. Advise the user to commit and start a fresh turn (or run `/compact`) before proceeding to Phase 2.
+
+### Mode C: Post-Refactor Regression Recovery (`REGRESSION_RECOVERY`)
+- **Trigger**: The user reports that a previous refactor broke functionality (e.g. dropdowns, modals, event listeners), or asks to diagnose/remedy refactoring regressions.
+- **Workflow**:
+  1. Identify the pre-refactor golden commit SHA (e.g. `HEAD~1` or pre-refactor commit).
+  2. Run `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref <pre_refactor_sha>` to immediately pinpoint every renamed ID, dropped `window.*` export, and broken handler.
+  3. Optionally spin up a parallel worktree (`git worktree add ../pre_refactor <sha>`) for side-by-side behavioral comparison.
+  4. Generate a permanent contract smoke test (`contract_snapshot.py generate-smoke-test`) to lock in the required invariants.
+  5. Apply surgical fixes to restore all missing IDs, `window.*` exports, and event bindings.
 
 ---
 
 ## The 5-Step Zero-Regression Decomposition Workflow
 
-Whether executing a single file in **Mode A** or the active milestone slice in **Mode B**, follow these 5 steps rigorously:
-
-### Step 1: Zero-Token Structural Audit
-Run `scripts/code_health_audit.py` to get the structural outline without reading thousands of raw lines into context:
-
+### Step 1: Zero-Token Structural & Directory Audit
 ```bash
-# Audit repository (auto-prunes vendor/minified files) and detect Recommended Mode
-python "<skill_dir>/scripts/code_health_audit.py" --path <target_repo_or_dir> --top 15
+# Check directory-level line aggregation and breach summary
+python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir
 
-# Inspect exact class/struct/selector clusters and oversized functions inside the target file
+# Inspect class/method/rule details of the active file
 python "<skill_dir>/scripts/code_health_audit.py" --path <target_file> --show-methods
 ```
 
-### Step 2: Cohesion Clustering, Language Playbook Selection & Facade Design
-1. **Load Only the Needed Reference (Token Hygiene)**:
-   - For general architecture, routers, God classes, and DAG rules: consult [`references/decomposition-patterns.md`](./references/decomposition-patterns.md).
-   - **Only when the active file is non-Python** (`.js`, `.ts`, `.tsx`, `.jsx`, `.css`, `.scss`, `.dart`, `.go`, `.rs`, `.cs`) or `Parser: fallback`: load [`references/language-playbooks.md`](./references/language-playbooks.md) for language-native facade idioms and compiled-asset checks. Do **not** load it for Python-only tasks.
-2. **Identify Responsibility Clusters**:
-   - *Web / API Monoliths*: Group endpoints by resource noun and separate HTTP transport (`routers/`) from business orchestration (`services/`).
-   - *Data / Persistence Monoliths*: Separate connection lifecycle/schema init from domain-specific CRUD queries (`repositories/` or cohesive domain mixins).
-   - *Frontend Script & Style Monoliths*: Verify the file is not a compiled output of an upstream `.scss`/`.ts` source first; then split by UI component, custom hook, or ITCSS layer (`tokens`, `layout`, `components/`).
-3. **Enforce the Zero-Breaking-Import Contract**:
-   - Always keep the original module path (or convert `module.py` $\rightarrow$ `module/__init__.py`, `api.ts` $\rightarrow$ barrel `export *`, Rust `pub use`, Dart `export`/`part`, or Go/C# same-package/partial files) so 100% of existing imports and tests continue working unmodified.
+### Step 2: Cohesion Clustering, Surface Map & Facade Design
+1. **Interactive Surface Map**: Run `contract_snapshot.py inspect --path <target_dir>` to list all `<select>` IDs, modals, inline handlers, and global exports that must remain intact.
+2. **Load On-Demand References**:
+   - Web routes, God classes, and DAG rules: [`references/decomposition-patterns.md`](./references/decomposition-patterns.md).
+   - Non-Python files (`.js`, `.ts`, `.css`, `.dart`, `.go`, `.rs`, `.cs`): [`references/language-playbooks.md`](./references/language-playbooks.md).
+3. **The Zero-Breaking-Import & Zero-Broken-DOM Invariant**:
+   - Python: Keep original module path as a re-export facade; use the **Bidirectional Proxy Pattern** in `dependencies.py` if tests monkeypatch module globals.
+   - JavaScript (Vanilla): Never rename DOM element IDs; preserve all `window.<Namespace>` exports; ensure `<script src="...">` load order satisfies dependencies.
 
 ### Step 3: Atomic Slice Extraction (One Cluster at a Time)
-Extract **one cohesive cluster per slice**:
-1. Create the new focused module below the **350-line soft limit**, with classes $\le$ **10–12 methods** and functions $\le$ **40 lines**.
-2. Move the cohesive functions/methods/rules and their required imports.
-3. **Strictly Preserve Comments & Docstrings**: Carry over every docstring, mathematical formula annotation, edge-case explanation, and reference URL verbatim.
+1. Create the new module below the **350-line target** (classes $\le 10$–$12$ methods, functions $\le 40$ lines).
+2. Move cohesive logic and imports. Use `--split-preview <file>:<line>` to check boundaries safely.
+3. **Preserve Comments & Math**: Carry over all mathematical formulas, OpenCV coordinates, and rationale verbatim.
 
-### Step 4: Wire Facade & Guard Against Circular Imports
-1. Re-export the extracted symbols in the original facade file (or mount the router/mixin/partial).
-2. **Prevent Circular Dependencies**: Enforce a strict Directed Acyclic Graph (`Facade/Entrypoint -> Routers/UI -> Services -> Repositories -> Leaf Models/Utils`). Submodules must **never** import back from the top-level monolith facade.
+### Step 4: Wire Facade & Per-Slice Contract Verification
+1. Re-export extracted symbols in the monolith facade.
+2. Guard against circular imports: enforce strict DAG (`Facade -> Routers/UI -> Services -> Repositories -> Leaf Utils`).
+3. **Immediate Slice Verification**:
+   ```bash
+   python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --before .refactor_baseline.json --strict
+   ```
+   If any DOM ID was dropped or global export lost, fix it *now* before starting the next slice.
 
-### Step 5: Closed-Loop Test, Budget & Checkpoint Verification
-After **each extraction slice**:
-1. Run the project's automated test suite (`pytest`, `python -m unittest discover tests`, `npm test`, `dart test`, `go test ./...`, `cargo test`, `dotnet test`) to confirm zero regressions.
-2. Re-run `code_health_audit.py` on the modified file and extracted submodules to verify line and method counts are within budget.
-3. In **Mode B (`PROJECT_CAMPAIGN`)**, mark the completed slice `[x]` in `MIGRATION_LOG.md` with before/after line counts and note the next pending `[ ]` slice.
+### Step 5: 3-Tier Closed-Loop Verification Ladder
+
+Execute verification in three strictly ordered tiers:
+
+```text
+Tier 1: Static Contracts & Automated Tests (Always, 100% Self-Contained)
+  ├── 1. Automated unit test suite (pytest, python -m unittest discover tests, npm test)
+  ├── 2. Structural line budgets (code_health_audit.py --path <target_dir> --strict)
+  ├── 3. DOM & API contract parity (contract_snapshot.py verify --before .refactor_baseline.json --strict)
+  └── 4. Generate permanent regression test (contract_snapshot.py generate-smoke-test)
+
+Tier 2: Container Sync Audit (If Docker / Containerized)
+  └── Probe docker_audit.py (via probe-tools) to verify host-to-container MD5 sync and zero CPU runaway.
+
+Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
+  ├── 1. Check if cdp_inspect.py is discovered via probe-tools.
+  ├── 2. Probe if $APP_URL is reachable.
+  └── 3. Pre-Flight Pause Protocol: If unreachable or Chrome remote debugging requires authorization ("Allow" banner):
+         Pause and prompt the user via ask_question:
+         - Option 1: "I have started the server and approved the remote debugging prompt — proceed with live check."
+         - Option 2: "Proceed using self-contained static contract verification."
+  └── 4. Axiom 9 Honest Reporting: If Option 2 is chosen, explicitly state:
+         "Static Contract: VERIFIED | Live Browser: UNVERIFIED (Server offline / remote debugging unattached)."
+```
 
 ---
 
-## Self-Contained Planner Adapter & "Best Working Version" Bailout Protocol
+## Anti-Thrash Stop-Loss & "Best Working Version" Safe Bailout
 
-This skill is **100% self-contained** and requires no external skills to be installed. It also integrates cleanly with built-in slash commands (`/plan`, `/grill-me`), optional user-invoked skills, or language servers when available:
-
-### 1. Pre-Flight Planner & Unknown-Language Guard (Never Act Blindly)
-- **Explicit Planner or Interview Pairing**: If the user invokes `/plan`, `/grill-me`, a custom planning skill, or asks to *"plan first"* / *"interview me first"*:
-  - **Plan-First (`/plan` or custom planner)**: Run `code_health_audit.py` first, then present Step 2 (Cohesion Clusters, Layered DAG, and Facade Blueprint) in a formal plan artifact (`RequestFeedback: true`) and **wait for user approval before editing files**.
-  - **Decision Interview (`/grill-me` or ambiguity)**: Use `ask_question` to resolve domain boundary choices (e.g., mixins vs. services, upstream SCSS vs. compiled CSS) before coding.
-- **Unfamiliar / `fallback` Languages**: When `code_health_audit.py` reports `Parser: fallback` or encounters an unfamiliar framework/DSL, **never guess module semantics or split blindly**. Check available compiler/LSP tools first, and if structural boundaries or import rules are uncertain, consult the user via `ask_question` or `/plan` before modifying code.
-
-### 2. Mid-Execution Escalation, Performance Guard & "Leave at Best Working Version" Rule
-Monitor every slice for these three conditions and act immediately:
-
-1. **Performance or Quality Degradation Guard ("Do No Harm")**:
-   - Evaluate whether splitting a block will produce a **slower, worse, or more fragile version**—such as breaking tight vectorized/numerical hot loops (NumPy/OpenCV/DSP/game loops), adding IPC/serialization overhead on latency-critical paths, or breaking CSS cascade specificity.
-   - **Action**: Warn the user with concrete technical reasoning, keep the hot-path cohesive while extracting only peripheral cold helpers (CLI, config, I/O, telemetry), and propose a safer alternative.
-2. **Anti-Thrash Stop-Loss ($\ge 2$ Consecutive Verification Regressions)**:
-   - If unit tests, builds, or import checks fail twice in a row during a slice extraction, **stop editing immediately**—never make a third speculative guess on broken state.
-3. **The "Leave at Best Working Version" Bailout Guarantee**:
-   - When a complex split, fallback language case, or circular coupling resists clean extraction—or when the refactored result fails tests or fails to demonstrably improve maintainability over the previous state:
-   - **Mandatory Action**:
-     1. **Revert unstable edits immediately** (`git checkout -- <files>` or remove partial submodules) to restore the **best working previous version**.
-     2. Explain clearly to the user what structural constraint or regression occurred.
-     3. Recommend either **leaving the file at its best working version** or trying an alternative strategy via `/plan` or `/grill-me`—and **do not force further attempts unless the user explicitly instructs you to continue**.
+1. **Performance Guard ("Do No Harm")**: Never artificially split a hot path (NumPy array mutations, video frame loops, tight DSP). Apply the **Hot/Cold Split**: keep the hot loop cohesive, extract only cold helpers.
+2. **Anti-Thrash Stop-Loss**: If a slice fails tests or contract parity twice in a row, stop editing immediately.
+3. **The "Leave at Best Working Version" Bailout**:
+   - If a complex split resists clean extraction without fragile hacks:
+     1. Revert unstable edits immediately (`git checkout -- <files>` or remove partial submodules).
+     2. Restore the last verified working version.
+     3. Explain the structural invariant to the user and recommend keeping the file at its best working version.
 
 ---
 
@@ -155,32 +161,37 @@ Monitor every slice for these three conditions and act immediately:
 
 ### Pre-Run Verification One-Liners
 ```bash
-# 1. Verify auditor CLI readiness
+# 1. Verify auditor and snapshot CLI readiness
 python "<skill_dir>/scripts/code_health_audit.py" --help
+python "<skill_dir>/scripts/contract_snapshot.py" --help
 
-# 2. Run a strict self-check on the refactor-monolith skill directory itself
+# 2. Run self-check on skill directory itself
 python "<skill_dir>/scripts/code_health_audit.py" --path "<skill_dir>" --strict
-
-# 3. Run the automated unit test suite
 python -m unittest discover -s "<skill_dir>/tests" -v
 ```
 
 ### Scenario Combinations Matrix
 | Scenario / Objective | Mode / Target | Key Parameters | Exact Runnable Command |
 | :--- | :--- | :--- | :--- |
-| **Project Triage (Vendor-Pruned)** | Detect `SINGLE_FILE` vs `PROJECT_CAMPAIGN` | `--path <dir> --top 15` | `python "<skill_dir>/scripts/code_health_audit.py" --path . --top 15` |
-| **Deep Single-File Inspection** | Method, struct, or CSS cluster breakdown | `--path <file> --show-methods` | `python "<skill_dir>/scripts/code_health_audit.py" --path src/app.py --show-methods` |
-| **Include Vendor / Minified Assets** | Audit third-party & bundled files too | `--path <dir> --include-vendor` | `python "<skill_dir>/scripts/code_health_audit.py" --path . --include-vendor` |
-| **Custom Strictness Thresholds** | Stricter file & class caps | `--warn-file-lines 250 --max-class-methods 8` | `python "<skill_dir>/scripts/code_health_audit.py" --path src --warn-file-lines 250 --max-class-methods 8` |
-| **Machine-Readable CI Output** | JSON report with `recommended_mode` & `parser_mode` | `--path <dir> --json` | `python "<skill_dir>/scripts/code_health_audit.py" --path src --json` |
-| **Pre-Commit Enforcement Gate** | Non-zero exit code on hard breach | `--path <dir> --strict` | `python "<skill_dir>/scripts/code_health_audit.py" --path src --strict` |
+| **Directory-Level Triage** | Group line counts by subfolder | `--path <dir> --by-dir` | `python "<skill_dir>/scripts/code_health_audit.py" --path . --by-dir` |
+| **Split Point Preview** | View lines around split safely | `--split-preview <file>:<line>[:window]` | `python "<skill_dir>/scripts/code_health_audit.py" --split-preview src/app.py:280:10` |
+| **Record Reference Anchor & Worktree** | Git commit anchor & parallel worktree recipe | `anchor --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" anchor --path .` |
+| **Capture Baseline Contract** | Snapshot before refactoring | `capture --path <dir> --out <file>` | `python "<skill_dir>/scripts/contract_snapshot.py" capture --path . --out .refactor_baseline.json` |
+| **Interactive Surface Map** | Inventory of selects, modals, globals, routes | `inspect --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path .` |
+| **Per-Slice & Checkpoint Verification** | Diff against baseline contract | `verify --path <dir> --before <file> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --before .refactor_baseline.json --strict` |
+| **Post-Refactor Regression Audit** | Diff live tree directly against pre-refactor Git SHA | `verify --path <dir> --git-ref <sha> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref HEAD~1 --strict` |
+| **Generate Permanent Contract Test** | Emit unittest regression suite | `generate-smoke-test --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path . --out tests/test_refactor_contract.py` |
+| **Discover Optional Tools** | Probe cdp_inspect & docker_audit | `probe-tools` | `python "<skill_dir>/scripts/contract_snapshot.py" probe-tools` |
+| **Pre-Commit Strict Gate** | Exit 1 on critical breach | `--path <dir> --strict` | `python "<skill_dir>/scripts/code_health_audit.py" --path src --strict` |
 
 ---
 
 ## Built-In Scripts, Tests & On-Demand Reference Library
 
-- **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone, zero-dependency, cross-platform CLI auditor. Automatically detects `SINGLE_FILE` vs. `PROJECT_CAMPAIGN` mode, prunes vendor/minified files, and reports file, class, and function breaches.
-- **[`scripts/language_analyzers.py`](./scripts/language_analyzers.py)**: Zero-dependency structural scanners for C-style brace languages (`.js`, `.ts`, `.tsx`, `.jsx`, `.dart`, `.go`, `.rs`, `.cs`), stylesheets (`.css`, `.scss`), unknown fallback languages, and vendor/generated file filters.
-- **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite covering Python AST, multi-language brace/CSS/fallback parsing, vendor filtering, and CLI execution.
-- **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Consult during Step 2 and Step 3 for architectural patterns to split web routers, God classes, persistence layers, and circular dependency graphs.
-- **[`references/language-playbooks.md`](./references/language-playbooks.md)**: Load **only on-demand** when decomposing non-Python files (`.js`/`.ts`/React, `.css`/`.scss`, `.dart`/Flutter, `.go`, `.rs`, `.cs`) or handling `fallback`/compiled assets.
+- **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone multi-language structural auditor. Supports `--by-dir`, `--compact`, `--split-preview`, and prunes vendor/minified assets.
+- **[`scripts/surface_scanners.py`](./scripts/surface_scanners.py)**: Zero-dependency surface scanners extracting DOM IDs, interactive selects, inline handlers, `window.*` globals, Python routes, mutable globals, and CSS custom properties.
+- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, regression diff engine, and automated contract smoke-test generator.
+- **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite for structural parsing.
+- **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, lost globals, and regression detection.
+- **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Web routers, God classes, Bidirectional Proxy Pattern for monkeypatched globals, and circular dependency rules.
+- **[`references/language-playbooks.md`](./references/language-playbooks.md)**: Vanilla JS invariants, ITCSS stylesheet decomposition, Go/Rust/Dart/C# playbooks, and safe rollback recipes.

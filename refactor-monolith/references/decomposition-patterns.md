@@ -144,7 +144,48 @@ __all__ = ["DataStore"]
 
 ---
 
-## 4. Pattern 4: Frontend Script & Stylesheet Decomposition
+## 4. Pattern 4: The Bidirectional Proxy Bridge (For Monkeypatched Test Globals)
+
+When moving module-level singletons (e.g. `stream_manager`, `camera_pool`, `db`) out of `app.py` into a dedicated `dependencies.py`, legacy test suites that monkeypatch `app.module_var = mock_obj` will silently fail if extracted routers read directly from isolated internal `_module_var`.
+
+To preserve 100% test compatibility without circular imports, wire a **Bidirectional Proxy Bridge**:
+
+```python
+# dependencies.py — Bidirectional Proxy Pattern
+from typing import Optional
+
+_camera_pool: Optional[CameraPool] = None
+
+def get_camera_pool() -> Optional[CameraPool]:
+    """Resolve CameraPool, checking app module override first."""
+    try:
+        import sys
+        app_mod = sys.modules.get("my_project.app")
+        if app_mod and getattr(app_mod, "camera_pool", None) is not None:
+            return app_mod.camera_pool
+    except Exception:
+        pass
+    return _camera_pool
+
+def set_camera_pool(pool: Optional[CameraPool]) -> None:
+    """Update active CameraPool and synchronize back to app module globals."""
+    global _camera_pool
+    _camera_pool = pool
+    try:
+        import sys
+        app_mod = sys.modules.get("my_project.app")
+        if app_mod:
+            app_mod.camera_pool = pool
+    except Exception:
+        pass
+```
+
+> [!TIP]
+> By querying `sys.modules.get(...)`, this lookup avoids triggering a circular top-level `import my_project.app` while guaranteeing that test fixtures setting `app.camera_pool = mock` propagate instantly to extracted router dependencies.
+
+---
+
+## 5. Pattern 5: Frontend Script & Stylesheet Decomposition
 
 ### A. Monolithic JavaScript / TypeScript (`app.js` $\rightarrow$ ES Modules)
 Split 1,000+ line browser scripts by responsibility using native ES modules (`type="module"`):
