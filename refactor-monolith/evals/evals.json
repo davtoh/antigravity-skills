@@ -50,6 +50,18 @@
         "Defines a mid-execution escalation and anti-thrash protocol that halts after repeated failures, advises reverting broken speculative edits, and pivots strategy or consults the user via /grill-me or /plan",
         "Preserves 100% backward-compatible imports via a re-export facade while enforcing quantitative modularity budgets (<=350 lines, <=10-12 methods)"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "We ran a modularity audit on our multi-language enterprise web repo and saw static/css/main.css (3,548 lines, alongside static/scss/theme/_home.scss), static/js/slick.js (2,892 lines), src/dashboard/OrderController.ts (920 lines with 16 methods and React hooks), services/tracker.go (1,100 lines), and a legacy_rules.dsl file in an unfamiliar syntax where splitting broke tests twice. Please audit and plan the refactoring while respecting our AGENTS.md rules, keeping token usage lean, and handling vendor files, compiled assets, and difficult/unknown language cases safely.",
+      "expected_output": "The model respects AGENTS.md rules, runs code_health_audit.py (which automatically prunes vendor asset static/js/slick.js and parses TS/Go/CSS/fallback structures with zero token overhead), verifies whether static/css/main.css is compiled from static/scss/theme/ before touching it, consults references/language-playbooks.md on-demand for TypeScript barrel exports/hooks and Go same-package file splitting, and applies the 'Leave at Best Working Version' safe bailout protocol to legacy_rules.dsl after repeated test failures.",
+      "files": [],
+      "expectations": [
+        "Identifies and excludes third-party vendor/minified files (static/js/slick.js) and checks whether static/css/main.css is a compiled output of static/scss/theme/ before splitting it directly",
+        "Respects AGENTS.md and project rules while keeping refactor-monolith 100% self-contained (not requiring external custom skills to be installed)",
+        "Uses code_health_audit.py multi-language structural modes (brace, stylesheet, ast, fallback) and loads references/language-playbooks.md on-demand for language-idiomatic facades (TS barrel export * + custom hooks, Go same-package file split, ITCSS order)",
+        "Applies the Unknown Language Guard and 'Leave at Best Working Version' safe bailout rule to legacy_rules.dsl—refusing to split blindly, reverting failed attempts to the best working previous version, and advising the user unless forced to continue"
+      ]
     }
   ]
 }
