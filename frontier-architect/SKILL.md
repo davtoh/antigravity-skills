@@ -252,3 +252,9 @@ Load these reference files only when needed for the active phase:
 - **[`references/flash-opus-harness.md`](./references/flash-opus-harness.md)**: Consult when executing complex tasks on fast models, structuring `AGENTS.md`, designing verification matrices, or managing context hygiene and model tier escalation.
 - **[`references/sota-patterns.md`](./references/sota-patterns.md)**: Consult during Phase 3 when formulating Tier 2 (SOTA) and Tier 3 (Novel) architectural proposals.
 - **[`references/spike-protocol.md`](./references/spike-protocol.md)**: Consult during Phase 4 when designing and measuring an isolated technical SPIKE.
+
+### Skill Self-Testing & Benchmark Suite (`tests/`)
+Consult only when modifying, validating, or elevating the `frontier-architect` skill itself:
+- **[`tests/README.md`](./tests/README.md)**: Dual-tier testing architecture, pre-run verification one-liners, and scenario combinations matrix.
+- **Fast Deterministic Check**: Run `python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py"` to verify all 20 script unit tests and eval expectations without consuming LLM tokens.
+- **Benchmark & Regression CLI**: Run `python skills/frontier-architect/tests/run_benchmark.py` to compare against historical snapshots. For generative multi-agent benchmarking, invoke `/skill-creator`.
