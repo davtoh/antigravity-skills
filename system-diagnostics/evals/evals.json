@@ -1,0 +1,65 @@
+{
+  "skill_name": "system-diagnostics",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Run a comprehensive health audit of our application across our source codebase, active Docker services, and running frontend to verify everything is in sync and healthy before we begin refactoring.",
+      "expected_output": "Executes diagnose.py all to perform a 3-tier system diagnostic audit across static surface, Docker container runtime, and browser UI layout with an Axiom 9 summary.",
+      "files": [],
+      "expectations": [
+        "Executes a unified 3-tier diagnostic audit combining surface/tests, Docker container runtime, and browser UI layout via diagnose.py all",
+        "Summarizes results under Axiom 9 Honest Verification Reporting (VERIFIED, UNVERIFIED, or SKIPPED)",
+        "Auto-probes local dev server ports and active Docker containers without requiring hardcoded configuration",
+        "Supports --strict flag to exit with return code 1 if any diagnostic tier fails"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Our web application has a visual bug where the main video player clips out of the container when resizing, and a user is looking at it right now in Chrome. Inspect the live tab, measure bounding boxes, and check for layout overflows.",
+      "expected_output": "Executes diagnose.py ui with --live and --audit-layout to inspect live DOM bounding boxes and detect overflows via zero-dependency CDP.",
+      "files": [],
+      "expectations": [
+        "Uses diagnose.py ui with --live to attach to the user's active visible Chrome tab via DevToolsActivePort",
+        "Runs --audit-layout to inspect DOM bounding boxes, computed styles, and scroll dimensions",
+        "Detects layout overflows and horizontal viewport blowouts without Node or npm dependencies",
+        "Supports headless mode (--headless) for isolated background verification in CI environments"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We updated our Python backend and static assets, but the Docker container seems to be running outdated code and spiking CPU. Check the container CPU usage, active processes, and verify if our modified files are actually in sync inside the container.",
+      "expected_output": "Executes diagnose.py container with --sync-check to inspect container CPU, top processes, and host-vs-container MD5 file sync.",
+      "files": [],
+      "expectations": [
+        "Runs diagnose.py container to snapshot container CPU, memory, and active processes via docker stats and docker top",
+        "Verifies host-vs-container MD5 file synchronization using --sync-check to catch stale mounted files",
+        "Scans recent container logs for unhandled Tracebacks and exceptions using --lines",
+        "Auto-probes active Docker containers if --container is omitted"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Before we rename IDs or refactor our routes, give me a full inventory of all HTML element IDs, interactive dropdowns, JavaScript window globals, and backend Python routes in our project.",
+      "expected_output": "Executes diagnose.py surface with --show-ids and --show-routes or --json to produce a static AST contract inventory.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py surface to statically extract HTML element IDs, selects, and modals without running servers",
+        "Discovers window.* global exports and DOM queries in JavaScript and TypeScript files",
+        "Extracts backend Python HTTP routes (@app.get, @app.post) from source files",
+        "Counts CSS !important occurrences to protect stylesheet specificity budgets"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Run our project's unit test suite using the project's local virtual environment without needing to manually activate the shell virtualenv.",
+      "expected_output": "Executes diagnose.py tests to auto-discover local virtualenv python and run the test suite.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py tests to auto-discover local virtual environment interpreters (.venv, venv, env)",
+        "Runs unit and integration tests via discovered Python without manual path activations",
+        "Forwards test arguments cleanly to unittest or pytest",
+        "Handles missing virtualenv by falling back cleanly to system Python"
+      ]
+    }
+  ]
+}

@@ -24,3 +24,5 @@ skill-creator/eval-data/
 # Whitelist registered skills
 !/frontier-architect/
 !/refactor-monolith/
+!/system-diagnostics/
+!/app-debugger/
