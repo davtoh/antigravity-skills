@@ -189,6 +189,32 @@ def _save_checkpoint(state_file: Path, state: dict[str, Any], note: str, sha: st
     return 0
 
 
+def _dispatch_state_action(
+    target: Path,
+    state_file: Path,
+    state: dict[str, Any],
+    action: str,
+    phase: Any,
+    phase_title: str,
+    status: str,
+    sha: str,
+    note: str,
+    as_json: bool,
+) -> int:
+    """Dispatch campaign state mutations or display."""
+    p_val = int(phase) if phase and str(phase).isdigit() else None
+    if action == "checkpoint":
+        return _save_checkpoint(state_file, state, note, sha, target)
+    if action == "advance":
+        return _advance_campaign_state(target, state_file, state, p_val, status, sha)
+    if action == "set":
+        return _set_campaign_state(state_file, state, p_val, phase_title, status, sha)
+    if as_json:
+        print(json.dumps(state, indent=2))
+        return 0
+    return _print_campaign_summary(state)
+
+
 def cmd_state(
     target: Path,
     action: str,
@@ -204,7 +230,6 @@ def cmd_state(
     """Initialize, inspect, or advance persistent refactoring campaign state."""
     rdir = get_refactor_dir(target)
     state_file = rdir / "state.json"
-
     if action == "init":
         return _init_campaign_state(target, state_file, plan, phases, phase_title)
 
@@ -218,22 +243,9 @@ def cmd_state(
         print(f"Error reading {state_file}: {err}", file=sys.stderr)
         return 1
 
-    if action == "checkpoint":
-        return _save_checkpoint(state_file, state, note, sha, target)
-
-    if action == "advance":
-        p_val = int(phase) if phase and str(phase).isdigit() else None
-        return _advance_campaign_state(target, state_file, state, p_val, status, sha)
-
-    if action == "set":
-        p_val = int(phase) if phase and str(phase).isdigit() else None
-        return _set_campaign_state(state_file, state, p_val, phase_title, status, sha)
-
-    if as_json:
-        print(json.dumps(state, indent=2))
-        return 0
-
-    return _print_campaign_summary(state)
+    return _dispatch_state_action(
+        target, state_file, state, action, phase, phase_title, status, sha, note, as_json
+    )
 
 
 def _parse_phase_sort_key(key: str) -> float:

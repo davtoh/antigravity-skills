@@ -48,7 +48,15 @@
     "should_trigger": true
   },
   {
+    "query": "Hey, this 700-line React component DashboardView.tsx is getting unwieldy with 14 state hooks, chart rendering, and table formatting. Can you help me break it down into smaller subcomponents without changing behavior?",
+    "should_trigger": true
+  },
+  {
     "query": "Can you help me fix a syntax error in my Python function where it throws IndexError: list index out of range on line 42?",
+    "should_trigger": false
+  },
+  {
+    "query": "Can you refactor this function to use a list comprehension instead of a for loop to make it more Pythonic?",
     "should_trigger": false
   },
   {

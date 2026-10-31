@@ -149,16 +149,8 @@ def _check_missing_smoke_test(target: Path) -> None:
         print("Run `contract_snapshot.py generate-smoke-test --out tests/test_refactor_contract.py` to lock in parity.")
 
 
-def cmd_verify(
-    target: Path,
-    before_file: str = "",
-    git_ref: str = "",
-    strict: bool = False,
-    run_ui: bool = False,
-    run_docker: bool = False,
-    app_url: str = "",
-) -> int:
-    """Diff current codebase contract against baseline or historical git commit."""
+def _resolve_baseline_contract(target: Path, before_file: str, git_ref: str) -> CodebaseContract | None:
+    """Locate and load pre-refactor baseline contract from file, .refactor, or git ref."""
     before_path = None
     if before_file and Path(before_file).is_file():
         before_path = Path(before_file)
@@ -171,10 +163,44 @@ def cmd_verify(
             before_path = legacy_candidate
 
     if before_path:
-        before = CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
-    elif git_ref:
-        before = build_contract(target, git_ref)
-    else:
+        return CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
+    if git_ref:
+        return build_contract(target, git_ref)
+    return None
+
+
+def _execute_live_audits(
+    target: Path, run_ui: bool, run_docker: bool, app_url: str, strict: bool, opt_tools: dict[str, str]
+) -> tuple[int, int, str, str]:
+    """Run Tier 2 and Tier 3 live UI/Docker verifications."""
+    ui_status, docker_status = "SKIPPED", "SKIPPED"
+    ui_code, docker_code = 0, 0
+    if run_ui:
+        ui_code = cmd_verify_ui(target, url=app_url, strict=strict)
+        ui_status = "VERIFIED (Zero layout overflow)" if ui_code == 0 else "FAILED"
+    elif opt_tools.get("cdp_inspect"):
+        ui_status = "SKIPPED (Use verify --ui or verify-ui --url $APP_URL)"
+
+    if run_docker:
+        docker_code = cmd_audit_container(target)
+        docker_status = "VERIFIED (Container synced)" if docker_code == 0 else "FAILED"
+    elif opt_tools.get("docker_audit"):
+        docker_status = "SKIPPED (Use verify --docker or audit-container)"
+    return ui_code, docker_code, ui_status, docker_status
+
+
+def cmd_verify(
+    target: Path,
+    before_file: str = "",
+    git_ref: str = "",
+    strict: bool = False,
+    run_ui: bool = False,
+    run_docker: bool = False,
+    app_url: str = "",
+) -> int:
+    """Diff current codebase contract against baseline or historical git commit."""
+    before = _resolve_baseline_contract(target, before_file, git_ref)
+    if not before:
         print("Error: provide --before <file.json> or --git-ref <sha> to verify against (or ensure .refactor/baseline.json exists).", file=sys.stderr)
         return 2
 
@@ -191,30 +217,9 @@ def cmd_verify(
         print("  [Self-Contained Mode] Built-in static contract verifier active. (Optional live tools not found)")
 
     _check_missing_smoke_test(target)
-
-    # 3-Tier Verification Matrix (Axiom 9)
-    ui_status = "SKIPPED"
-    docker_status = "SKIPPED"
-
-    ui_code = 0
-    if run_ui:
-        ui_code = cmd_verify_ui(target, url=app_url, strict=strict)
-        ui_status = "VERIFIED (Zero layout overflow)" if ui_code == 0 else "FAILED"
-    elif opt_tools.get("cdp_inspect"):
-        ui_status = "SKIPPED (Use verify --ui or verify-ui --url $APP_URL)"
-
-    docker_code = 0
-    if run_docker:
-        docker_code = cmd_audit_container(target)
-        docker_status = "VERIFIED (Container synced)" if docker_code == 0 else "FAILED"
-    elif opt_tools.get("docker_audit"):
-        docker_status = "SKIPPED (Use verify --docker or audit-container)"
-
-    print_verification_matrix(issues, ui_status, docker_status)
-
-    if strict and (issues or ui_code != 0 or docker_code != 0):
-        return 1
-    return 0
+    ui_code, docker_code, ui_st, doc_st = _execute_live_audits(target, run_ui, run_docker, app_url, strict, opt_tools)
+    print_verification_matrix(issues, ui_st, doc_st)
+    return 1 if (strict and (issues or ui_code != 0 or docker_code != 0)) else 0
 
 
 def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
@@ -224,11 +229,8 @@ def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--git-ref", default="", help="Historical git commit/branch.")
 
 
-def build_cli_parser() -> argparse.ArgumentParser:
-    """Construct the CLI argument parser."""
-    p = argparse.ArgumentParser(description="Cross-platform codebase contract snapshot and regression auditor.")
-    sub = p.add_subparsers(dest="subcommand", required=True)
-
+def _register_contract_subparsers(sub: Any) -> None:
+    """Register core contract diff and state commands."""
     p_anc = sub.add_parser("anchor", help="Identify git reference anchor and worktree recipe.")
     p_anc.add_argument("--path", default=".", help="Target repository directory.")
     p_anc.add_argument("--worktree-dir", default="", help="Optional worktree path.")
@@ -239,13 +241,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     p_ins = sub.add_parser("inspect", help="Display Interactive Surface Inventory.")
     _add_common_path_args(p_ins)
-    p_ins.add_argument("--show-routes", action="store_true", help="List all detected backend API routes with file locations.")
+    p_ins.add_argument("--show-routes", action="store_true", help="List all detected backend API routes.")
 
     p_ver = sub.add_parser("verify", help="Diff contracts and check regressions.")
     _add_common_path_args(p_ver)
     p_ver.add_argument("--strict", action="store_true", help="Exit 1 on critical discrepancy.")
-    p_ver.add_argument("--ui", action="store_true", help="Run live CDP browser layout verification alongside static diff.")
-    p_ver.add_argument("--docker", action="store_true", help="Run container sync audit alongside static diff.")
+    p_ver.add_argument("--ui", action="store_true", help="Run live CDP browser layout verification.")
+    p_ver.add_argument("--docker", action="store_true", help="Run container sync audit.")
     p_ver.add_argument("--url", default="", help="Application URL for live UI verification.")
 
     p_smk = sub.add_parser("generate-smoke-test", help="Generate permanent unittest contract test.")
@@ -255,7 +257,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_st = sub.add_parser("state", help="Manage in-repo .refactor campaign state across conversation turns.")
     _add_state_cli_args(p_st)
 
-    p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools (cdp_inspect, docker_audit, virtualenv).")
+
+def _register_auxiliary_subparsers(sub: Any) -> None:
+    """Register tool discovery, test execution, and CSS inspection commands."""
+    p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools.")
     p_prb.add_argument("--path", default=".", help="Target repository directory.")
 
     p_css = sub.add_parser("inspect-css", help="Inspect stylesheet sections, @imports, CRLF, and !important.")
@@ -265,7 +270,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     p_tst = sub.add_parser("run-tests", help="Run test suite using auto-detected virtualenv interpreter.")
     p_tst.add_argument("--path", default=".", help="Target repository directory.")
-    p_tst.add_argument("test_args", nargs="*", help="Arguments forwarded to unittest (e.g. discover tests).")
+    p_tst.add_argument("test_args", nargs="*", help="Arguments forwarded to unittest.")
 
     p_vui = sub.add_parser("verify-ui", help="Run CDP browser layout and overflow inspection.")
     p_vui.add_argument("--path", default=".", help="Target repository directory.")
@@ -278,8 +283,46 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_doc.add_argument("--path", default=".", help="Target repository directory.")
     p_doc.add_argument("--container", default="", help="Target container name.")
     p_doc.add_argument("--workdir", default="/app", help="Container working directory.")
-    p_doc.add_argument("--sync-check", nargs="*", default=[], help="Files to verify MD5 sync against container.")
+    p_doc.add_argument("--sync-check", nargs="*", default=[], help="Files to verify MD5 sync.")
+
+
+def build_cli_parser() -> argparse.ArgumentParser:
+    """Construct the CLI argument parser."""
+    p = argparse.ArgumentParser(description="Cross-platform codebase contract snapshot and regression auditor.")
+    sub = p.add_subparsers(dest="subcommand", required=True)
+    _register_contract_subparsers(sub)
+    _register_auxiliary_subparsers(sub)
     return p
+
+
+def _dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
+    """Dispatch parsed subcommand to corresponding implementation function."""
+    if subcmd == "anchor":
+        return cmd_anchor(target, getattr(args, "worktree_dir", ""))
+    if subcmd == "capture":
+        return cmd_capture(target, getattr(args, "out", ""), getattr(args, "git_ref", ""))
+    if subcmd == "inspect":
+        return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
+    if subcmd == "inspect-css":
+        return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
+    if subcmd == "run-tests":
+        return cmd_run_tests(target, getattr(args, "test_args", []))
+    if subcmd == "verify-ui":
+        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), getattr(args, "headless", False), getattr(args, "strict", False))
+    if subcmd == "audit-container":
+        return cmd_audit_container(target, getattr(args, "container", ""), getattr(args, "workdir", "/app"), getattr(args, "sync_check", []))
+    if subcmd == "verify":
+        return cmd_verify(target, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
+    if subcmd == "generate-smoke-test":
+        return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
+    if subcmd == "state":
+        return cmd_state(
+            target, action=args.action, plan=getattr(args, "plan", ""), phases=getattr(args, "phases", 4),
+            phase=getattr(args, "phase", None), phase_title=getattr(args, "phase_title", ""),
+            status=getattr(args, "status", ""), sha=getattr(args, "sha", ""), note=getattr(args, "note", ""),
+            as_json=getattr(args, "json", False),
+        )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -294,48 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         if not tools:
             print("  (None detected; running in 100% self-contained mode)")
         return 0
-
-    target = Path(args.path).resolve()
-    if args.subcommand == "anchor":
-        return cmd_anchor(target, getattr(args, "worktree_dir", ""))
-    if args.subcommand == "capture":
-        return cmd_capture(target, getattr(args, "out", ""), getattr(args, "git_ref", ""))
-    if args.subcommand == "inspect":
-        return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
-    if args.subcommand == "inspect-css":
-        return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
-    if args.subcommand == "run-tests":
-        return cmd_run_tests(target, getattr(args, "test_args", []))
-    if args.subcommand == "verify-ui":
-        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), getattr(args, "headless", False), getattr(args, "strict", False))
-    if args.subcommand == "audit-container":
-        return cmd_audit_container(target, getattr(args, "container", ""), getattr(args, "workdir", "/app"), getattr(args, "sync_check", []))
-    if args.subcommand == "verify":
-        return cmd_verify(
-            target,
-            getattr(args, "before", ""),
-            getattr(args, "git_ref", ""),
-            args.strict,
-            getattr(args, "ui", False),
-            getattr(args, "docker", False),
-            getattr(args, "url", ""),
-        )
-    if args.subcommand == "generate-smoke-test":
-        return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
-    if args.subcommand == "state":
-        return cmd_state(
-            target,
-            action=args.action,
-            plan=getattr(args, "plan", ""),
-            phases=getattr(args, "phases", 4),
-            phase=getattr(args, "phase", None),
-            phase_title=getattr(args, "phase_title", ""),
-            status=getattr(args, "status", ""),
-            sha=getattr(args, "sha", ""),
-            note=getattr(args, "note", ""),
-            as_json=getattr(args, "json", False),
-        )
-    return 0
+    return _dispatch_cli(args.subcommand, target, args)
 
 
 if __name__ == "__main__":

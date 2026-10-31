@@ -75,25 +75,26 @@ def _print_file_details(rep: FileReport, show_methods: bool) -> None:
             print(f"   [Func  {fn.status}] {fn.qualname} (L{fn.start_line}-L{fn.end_line}, {fn.lines}L)")
 
 
-def preview_split(spec: str) -> int:
-    """Safely print source lines around a proposed split line (path:line[:window])."""
-    # Handle Windows drive letters like C:\path\to\file:lineno[:window]
+def _parse_split_spec(spec: str) -> tuple[Path, str, int] | None:
+    """Parse spec into (file_path, line_s, window). Supports Windows drive letters."""
     if len(spec) > 2 and spec[1] == ":" and spec[0].isalpha():
         rparts = spec[2:].rsplit(":", 2)
         if len(rparts) < 2:
-            print("Usage: --split-preview <file_path>:<line_number>[:window_lines]", file=sys.stderr)
-            return 2
-        fpath = Path(spec[:2] + rparts[0])
-        line_s = rparts[1]
-        window = int(rparts[2]) if len(rparts) > 2 else 12
-    else:
-        parts = spec.rsplit(":", 2)
-        if len(parts) < 2:
-            print("Usage: --split-preview <file_path>:<line_number>[:window_lines]", file=sys.stderr)
-            return 2
-        fpath = Path(parts[0])
-        line_s = parts[1]
-        window = int(parts[2]) if len(parts) > 2 else 12
+            return None
+        return Path(spec[:2] + rparts[0]), rparts[1], int(rparts[2]) if len(rparts) > 2 else 12
+    parts = spec.rsplit(":", 2)
+    if len(parts) < 2:
+        return None
+    return Path(parts[0]), parts[1], int(parts[2]) if len(parts) > 2 else 12
+
+
+def preview_split(spec: str) -> int:
+    """Safely print source lines around a proposed split line (path:line[:window])."""
+    parsed = _parse_split_spec(spec)
+    if not parsed:
+        print("Usage: --split-preview <file_path>:<line_number>[:window_lines]", file=sys.stderr)
+        return 2
+    fpath, line_s, window = parsed
 
     if not fpath.exists():
         print(f"Error: file not found: {fpath}", file=sys.stderr)
@@ -127,6 +128,25 @@ _BANNER_COMMENT_RE = re.compile(
 )
 
 
+def _extract_line_sections(lines: list[str]) -> list[tuple[int, str, str]]:
+    """Scan lines for comment banners, class definitions, and function declarations."""
+    found_sections = []
+    for idx, line in enumerate(lines, start=1):
+        m_banner = _BANNER_COMMENT_RE.match(line)
+        if m_banner:
+            title = m_banner.group(1).strip()
+            if not title.startswith(("!", "TODO", "FIXME", "eslint", "stylelint", "http", "type:")):
+                found_sections.append((idx, "Banner", title))
+                continue
+        if re.match(r'^\s*(?:export\s+)?class\s+([A-Za-z0-9_]+)', line):
+            m_cls = re.match(r'^\s*(?:export\s+)?class\s+([A-Za-z0-9_]+)', line)
+            found_sections.append((idx, "Class", m_cls.group(1)))
+        elif re.match(r'^(?:async\s+)?def\s+([A-Za-z0-9_]+)', line):
+            m_fn = re.match(r'^(?:async\s+)?def\s+([A-Za-z0-9_]+)', line)
+            found_sections.append((idx, "Function", m_fn.group(1)))
+    return found_sections
+
+
 def inspect_sections(file_path_str: str) -> int:
     """Outline structural sections, classes, and major comment banners of a file."""
     fpath = Path(file_path_str).resolve()
@@ -145,25 +165,7 @@ def inspect_sections(file_path_str: str) -> int:
     le_str = "CRLF (Windows \r\n)" if has_crlf else "LF (POSIX \n)"
     print(f"=== File Structural Outline: {fpath.name} ({len(lines)} lines | {le_str}) ===")
 
-    found_sections = []
-    for idx, line in enumerate(lines, start=1):
-        stripped = line.strip()
-        # 1. Match banner comments
-        m_banner = _BANNER_COMMENT_RE.match(line)
-        if m_banner:
-            title = m_banner.group(1).strip()
-            if not title.startswith(("!", "TODO", "FIXME", "eslint", "stylelint", "http", "type:")):
-                found_sections.append((idx, "Banner", title))
-                continue
-        # 2. Match class definitions
-        if re.match(r'^\s*(?:export\s+)?class\s+([A-Za-z0-9_]+)', line):
-            m_cls = re.match(r'^\s*(?:export\s+)?class\s+([A-Za-z0-9_]+)', line)
-            found_sections.append((idx, "Class", m_cls.group(1)))
-        # 3. Match top-level def / functions
-        elif re.match(r'^(?:async\s+)?def\s+([A-Za-z0-9_]+)', line):
-            m_fn = re.match(r'^(?:async\s+)?def\s+([A-Za-z0-9_]+)', line)
-            found_sections.append((idx, "Function", m_fn.group(1)))
-
+    found_sections = _extract_line_sections(lines)
     if not found_sections:
         print("No section banners or top-level declarations detected.")
         return 0

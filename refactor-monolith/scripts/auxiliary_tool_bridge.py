@@ -84,6 +84,24 @@ def cmd_run_tests(target: Path, extra_args: list[str]) -> int:
         return 1
 
 
+def _parse_cdp_output(output: str) -> int:
+    """Analyze CDP inspector output for JS exceptions and bounding box overflows."""
+    try:
+        data = json.loads(output)
+        if data.get("jsException"):
+            print(f"[CRITICAL UI REGRESSION] JavaScript exception on page: {data['jsException']}")
+            return 1
+        if data.get("hasOverflow") or data.get("overflowingElements"):
+            print("[CRITICAL UI REGRESSION] Element layout overflow detected!")
+            print(json.dumps(data.get("overflowingElements", data), indent=2))
+            return 1
+    except json.JSONDecodeError:
+        pass
+
+    print(output if output else "[Live Browser UI] OK: Bounding boxes and layout clean. Zero CSS overflow detected.")
+    return 0
+
+
 def cmd_verify_ui(
     target: Path,
     url: str = "",
@@ -118,25 +136,9 @@ def cmd_verify_ui(
         proc = subprocess.run(cmd, cwd=target, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
         output = proc.stdout.strip() or proc.stderr.strip()
         if proc.returncode != 0:
-            print(f"[CRITICAL UI REGRESSION] cdp_inspect returned exit code {proc.returncode}:")
-            print(output)
+            print(f"[CRITICAL UI REGRESSION] cdp_inspect returned exit code {proc.returncode}:\n{output}")
             return 1
-
-        # Check for JSON payload and layout overflow flags
-        try:
-            data = json.loads(output)
-            if data.get("jsException"):
-                print(f"[CRITICAL UI REGRESSION] JavaScript exception on page: {data['jsException']}")
-                return 1
-            if data.get("hasOverflow") or data.get("overflowingElements"):
-                print("[CRITICAL UI REGRESSION] Element layout overflow detected!")
-                print(json.dumps(data.get("overflowingElements", data), indent=2))
-                return 1
-        except json.JSONDecodeError:
-            pass
-
-        print(output if output else "[Live Browser UI] OK: Bounding boxes and layout clean. Zero CSS overflow detected.")
-        return 0
+        return _parse_cdp_output(output)
     except Exception as err:
         print(f"[Live Browser UI] Error executing cdp_inspect: {err}", file=sys.stderr)
         return 1 if strict else 0
