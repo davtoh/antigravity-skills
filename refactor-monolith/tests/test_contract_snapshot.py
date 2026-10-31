@@ -81,6 +81,28 @@ class TestSurfaceScanners(unittest.TestCase):
         self.assertIn("DOMContentLoaded", surf.event_listeners)
         self.assertIn("initModule", surf.es_exports)
 
+    def test_scan_js_surface_ignores_equality_comparisons_and_builtins(self):
+        js = """
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        if (window.location.protocol == 'http:') {}
+        if (window.activeUser !== null) {}
+        window.location.href = '/login';
+        window.document.title = 'Dashboard';
+        window.localStorage.token = 'abc';
+        window.App = { init: () => {} };
+        window.VideoScrubber.onTabEnter = () => {};
+        """
+        surf = scan_js_surface(js)
+        # Custom application exports must be preserved
+        self.assertIn("App", surf.global_exports)
+        self.assertIn("VideoScrubber.onTabEnter", surf.global_exports)
+        # Equality checks and browser built-in properties must NEVER be captured as exports
+        self.assertNotIn("location.protocol", surf.global_exports)
+        self.assertNotIn("location.href", surf.global_exports)
+        self.assertNotIn("document.title", surf.global_exports)
+        self.assertNotIn("localStorage.token", surf.global_exports)
+        self.assertNotIn("activeUser", surf.global_exports)
+
     def test_scan_python_surface(self):
         py = """
         from fastapi import APIRouter

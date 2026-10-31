@@ -112,16 +112,26 @@ def scan_html_surface(text: str) -> HtmlSurface:
 
 _JS_GET_ELEM_RE = re.compile(r'\b(?:document\.)?getElementById\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_QUERY_SEL_RE = re.compile(r'\bquerySelector(?:All)?\s*\(\s*["\']#([a-zA-Z0-9_\-]+)["\']\s*\)')
-_JS_GLOBAL_EXPORT_RE = re.compile(r'\b(?:window|globalThis)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)\s*=')
+_JS_GLOBAL_EXPORT_RE = re.compile(r'\b(?:window|globalThis)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)\s*=(?!=)')
 _JS_GLOBAL_READ_RE = re.compile(r'\b(?:window|globalThis)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)')
 _JS_EVENT_LISTENER_RE = re.compile(r'\baddEventListener\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']')
 _JS_ES_EXPORT_RE = re.compile(r'^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([a-zA-Z0-9_]+)', re.MULTILINE)
+
+# Standard browser DOM interfaces on window that must never be treated as custom app exports
+_JS_BUILTIN_WINDOW_PROPS = frozenset({
+    "location", "document", "navigator", "history", "console",
+    "localStorage", "sessionStorage", "screen", "performance",
+    "visualViewport", "crypto", "indexedDB", "customElements",
+    "innerWidth", "innerHeight", "outerWidth", "outerHeight",
+    "scrollX", "scrollY", "pageXOffset", "pageYOffset",
+})
 
 
 def scan_js_surface(text: str) -> JsSurface:
     """Extract DOM queries, window exports/reads, and event listener attachments."""
     queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text))
-    exports = set(_JS_GLOBAL_EXPORT_RE.findall(text))
+    raw_exports = set(_JS_GLOBAL_EXPORT_RE.findall(text))
+    exports = {exp for exp in raw_exports if exp.split(".")[0] not in _JS_BUILTIN_WINDOW_PROPS}
     reads = set(_JS_GLOBAL_READ_RE.findall(text))
     events = set(_JS_EVENT_LISTENER_RE.findall(text))
     es_exp = set(_JS_ES_EXPORT_RE.findall(text))
