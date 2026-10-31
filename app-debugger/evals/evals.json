@@ -1,0 +1,66 @@
+{
+  "skill_name": "app-debugger",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Our web application has multiple issues: the main video player clips outside the container on window resize, and clicking the model filter resets the selection with an error. Walk me through debugging and fixing both issues.",
+      "expected_output": "Prompts via ask_question Pre-Flight Gate (if mode ambiguous), reproduces empirically using run_diagnose.py, constructs a Symptom-to-Root-Cause Matrix, applies surgical fixes, proves resolution via closed-loop re-run, and produces a Markdown Artifact with RequestFeedback: true.",
+      "files": [],
+      "expectations": [
+        "Enforces the 4-step workflow: Pre-Flight Gate, Reproduce First, Symptom-to-Root-Cause Matrix, and Surgical Fix & Verify",
+        "Uses ask_question to offer choices between Live Chrome Tab, Headless Background Sandbox, and Backend & Runtime Only when mode is not specified",
+        "Captures empirical proof via run_diagnose.py before modifying any code",
+        "Constructs a Symptom-to-Root-Cause Matrix mapping each symptom to failing evidence, root cause, file/line, and verification check",
+        "Employs Dual Output reporting by generating a structured Markdown Artifact for complex multi-symptom bugs"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "I have Chrome open right now on http://localhost:8000 looking at our app, and the video canvas is overflowing the layout horizontally. Debug the live tab, find the CSS causing the overflow, and fix it.",
+      "expected_output": "Detects user's explicit preference for the live tab, skips ask_question, executes run_diagnose.py ui --live --audit-layout to measure bounding boxes, identifies root cause, fixes layout defensively, and verifies resolution.",
+      "files": [],
+      "expectations": [
+        "Skips ask_question because user explicitly requested live tab inspection",
+        "Executes run_diagnose.py ui with --live and --audit-layout to inspect live DOM bounding boxes and layout overflows via CDP",
+        "Applies defensive CSS containment (such as min-width: 0 or overflow containment) without breaking layout rules",
+        "Re-runs layout inspection post-fix to achieve closed-loop verification with hasOverflow: false"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our Docker backend is crashing on startup with a 500 error, and the CPU is pegged at 100%. I suspect the container is running stale code that was not updated. Diagnose and resolve this container failure.",
+      "expected_output": "Executes run_diagnose.py container with --lines and --sync-check to inspect tracebacks and verify host-vs-container MD5 sync, isolates the failing traceback, and verifies the runtime fix.",
+      "files": [],
+      "expectations": [
+        "Executes run_diagnose.py container with --sync-check to detect host-vs-container MD5 file drift",
+        "Scans recent container logs for unhandled Tracebacks and exceptions using --lines",
+        "Diagnoses whether the crash is caused by code drift or runtime loop without speculative edits",
+        "Verifies container health and reports status under Axiom 9 Honest Verification Reporting"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "After our recent HTML cleanup, clicking the submit button throws a ReferenceError in the console. Scan the surface for broken element IDs and event handlers, map the root cause, and fix the script.",
+      "expected_output": "Executes run_diagnose.py surface --show-ids to compare HTML element IDs against JavaScript queries, maps the broken ID in the Symptom Matrix, repairs the selector, and runs tests.",
+      "files": [],
+      "expectations": [
+        "Executes run_diagnose.py surface --show-ids to statically inventory HTML element IDs and interactive controls",
+        "Identifies mismatch between DOM element ID and JavaScript query selector or event listener",
+        "Maps symptom to root cause in the Symptom-to-Root-Cause Matrix with exact target file and line",
+        "Runs unit test suite via run_diagnose.py tests to confirm zero regressions"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "There's a simple syntax typo in our config loader causing an ImportError on startup. Fix it quickly.",
+      "expected_output": "Executes run_diagnose.py tests to reproduce the ImportError, applies surgical one-line fix, re-runs tests to verify, and responds with concise inline Markdown without generating artifact overhead.",
+      "files": [],
+      "expectations": [
+        "Follows Dual Output rules by providing a concise inline Markdown response for simple single-step bugs",
+        "Avoids unnecessary artifact creation overhead for simple single-symptom bug fixes",
+        "Verifies resolution cleanly via run_diagnose.py tests",
+        "Adheres to Modularity Budgets with surgical, minimal edits"
+      ]
+    }
+  ]
+}
