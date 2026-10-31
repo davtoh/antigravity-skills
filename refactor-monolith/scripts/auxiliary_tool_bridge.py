@@ -172,7 +172,7 @@ def cmd_verify_ui(
     target: Path,
     url: str = "",
     selectors: str = "",
-    headless: bool = False,
+    headless: bool = True,
     strict: bool = False,
 ) -> int:
     """Bridge to frontier-architect cdp_inspect.py to verify live layout and overflow."""

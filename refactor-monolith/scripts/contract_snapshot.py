@@ -282,7 +282,7 @@ def _register_tool_subparsers(sub: Any) -> None:
     p_vui.add_argument("--path", default=".", help="Target repository directory.")
     p_vui.add_argument("--url", default="", help="Application URL (defaults to $APP_URL).")
     p_vui.add_argument("--selectors", default="", help="CSS selectors to inspect.")
-    p_vui.add_argument("--headless", action="store_true", help="Launch isolated headless Chrome.")
+    p_vui.add_argument("--live", action="store_true", help="Attach to live visible Chrome (requires clicking Allow). Default: headless.")
     p_vui.add_argument("--strict", action="store_true", help="Exit 1 on layout error or overflow.")
 
     p_doc = sub.add_parser("audit-container", help="Run Docker CPU and file sync auditor.")
@@ -352,7 +352,8 @@ def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace)
     if subcmd == "run-tests":
         return cmd_run_tests(target, getattr(args, "test_args", []))
     if subcmd == "verify-ui":
-        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), getattr(args, "headless", False), getattr(args, "strict", False))
+        is_headless = not getattr(args, "live", False)
+        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), is_headless, getattr(args, "strict", False))
     if subcmd == "audit-container":
         return cmd_audit_container(target, getattr(args, "container", ""), getattr(args, "workdir", "/app"), getattr(args, "sync_check", []))
     if subcmd == "diagnose":

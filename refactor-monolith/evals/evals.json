@@ -62,6 +62,32 @@
         "Uses code_health_audit.py multi-language structural modes (brace, stylesheet, ast, fallback) and loads references/language-playbooks.md on-demand for language-idiomatic facades (TS barrel export * + custom hooks, Go same-package file split, ITCSS order)",
         "Applies the Unknown Language Guard and 'Leave at Best Working Version' safe bailout rule to legacy_rules.dsl—refusing to split blindly, reverting failed attempts to the best working previous version, and advising the user unless forced to continue"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "After refactoring our dashboard, users report that the page is stuck in an infinite reload loop and certain canvas overlays are misaligned. Please diagnose the regressions without guesswork, check AST/DOM contract parity, Docker container sync, and live UI layout using 3-tier verification.",
+      "expected_output": "The model detects Mode C (Fix Mode / Regression Diagnostic Mode) and immediately runs contract_snapshot.py diagnose as Step 1. It executes Tier 1 AST/DOM contract diffing against baseline.json to detect lost globals or ID mutations, runs Tier 2 Docker sync check, and runs Tier 3 headless CDP layout verification. It identifies the root cause (e.g. self-referential window assignment or lost tab lifecycle callback) and applies surgical fixes without writing ad-hoc scripts.",
+      "files": [],
+      "expectations": [
+        "Detects Mode C (Fix Mode) and executes contract_snapshot.py diagnose as Step 1 instead of guessing or writing ad-hoc CDP scripts",
+        "Checks Tier 1 AST and DOM contracts against baseline.json to detect missing globals or broken element IDs",
+        "Runs Tier 2 container sync and Tier 3 headless CDP layout check to verify zero layout overflow or JS exceptions",
+        "Avoids infinite reload traps by ensuring window property re-assignments are not generated for built-ins",
+        "Reports verification results honestly using the 3-tier Axiom 9 matrix"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "We are on Windows and our legacy monolith has CRLF line endings. In a prior refactoring attempt, the agent blew up into 200+ tool steps and lost track of edits when edit_file failed on CRLF mismatches. Please refactor this safely, respect the Turn Ceiling gate (stopping and committing after 1-2 monoliths), and normalize line endings before patching.",
+      "expected_output": "The model checks file line endings with normalize-eol or split-preview, normalizes or preserves EOL using contract_snapshot.py patch / normalize-eol, safely injects any new modular scripts using inject-scripts, and halts after 1-2 monolith slices (<=20-25 tool calls) with a Turn Ceiling stop banner advising the user to commit and resume in a fresh chat.",
+      "files": [],
+      "expectations": [
+        "Detects Windows CRLF line endings and uses contract_snapshot.py normalize-eol or patch to prevent edit_file target mismatch failures",
+        "Uses contract_snapshot.py inject-scripts to add modular script tags into HTML without multiline shell quoting errors",
+        "Enforces the Turn Ceiling Gate: stops after 1-2 monoliths (<=20-25 tool calls) to prevent context compaction and 200+ step token explosions",
+        "Checkpoints campaign state with contract_snapshot.py state --checkpoint before halting",
+        "Instructs the user to stage/commit verified slices and continue in a fresh session with /refactor-monolith continue"
+      ]
     }
   ]
 }

@@ -232,9 +232,11 @@ Tier 2: Container Sync Audit (If Docker / Containerized)
   └── python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path <dir> --container <name> --sync-check <files...>
 
 Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
-  ├── 1. Run live layout audit via CDP bridge:
-  │      python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --audit-layout --headless
-  └── 2. Axiom 9 Honest Reporting: If server is offline, report:
+  ├── 1. Run live layout audit via CDP bridge (Defaults to 100% Unattended Headless, 0 clicks/prompts):
+  │      python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL
+  ├── 2. Optional: Attach to visible live Chrome (prompts user for 'Allow' on first connection):
+  │      python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live
+  └── 3. Axiom 9 Honest Reporting: If server is offline, report:
          "Tier 1: VERIFIED | Tier 2: SKIPPED | Tier 3: SKIPPED (Server offline / URL unset)"
 ```
 
@@ -297,7 +299,8 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Line-Ending Agnostic Patch** | Search/replace without shell quoting issues | `patch --file <f> --find ".." --replace ".."` | `python "<skill_dir>/scripts/contract_snapshot.py" patch --file index.html --find "old" --replace "new"` |
 | **Safe HTML Script Injector** | Insert modular <script> tags safely into HTML | `inject-scripts --html <f> --scripts ..` | `python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html index.html --before app.js --scripts /static/js/a.js` |
 | **Venv Automated Test Runner** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . discover tests` |
-| **Headless CDP Layout Audit** | Tier 3 UI verification via frontier-architect | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --audit-layout --headless` |
+| **Headless CDP Layout Audit** | Tier 3 UI verification (100% automated, default) | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL` |
+| **Live Browser UI Audit** | Attach to open visible Chrome (requires Allow) | `verify-ui --url <url> --live` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live` |
 | **Container Sync & Health Check** | Tier 2 Docker container file sync check | `audit-container --container <name>` | `python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path . --container tracker --sync-check app.py` |
 | **Generate Scoped Contract Test** | Emit unittest regression suite scoped to target | `generate-smoke-test --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path <dir> --out tests/test_refactor_contract.py` |
 | **Discover Optional Tools** | Probe cdp_inspect & docker_audit | `probe-tools` | `python "<skill_dir>/scripts/contract_snapshot.py" probe-tools` |
