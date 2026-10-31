@@ -155,15 +155,50 @@ def _set_campaign_state(state_file: Path, state: dict[str, Any], phase: int | No
     return 0
 
 
+def _add_state_cli_args(p_st: Any) -> None:
+    """Configure arguments for campaign state subcommand."""
+    p_st.add_argument("--path", default=".", help="Target repository directory.")
+    p_st.add_argument("--action", choices=["init", "show", "status", "advance", "set", "checkpoint"], default="show", help="Action.")
+    p_st.add_argument("--init", dest="action", action="store_const", const="init", help="Initialize new campaign state.")
+    p_st.add_argument("--advance", dest="action", action="store_const", const="advance", help="Mark current phase completed and advance.")
+    p_st.add_argument("--show", dest="action", action="store_const", const="show", help="Display current campaign progress.")
+    p_st.add_argument("--status-cmd", dest="action", action="store_const", const="status", help="Alias for show.")
+    p_st.add_argument("--checkpoint", dest="action", action="store_const", const="checkpoint", help="Record intermediate slice checkpoint.")
+    p_st.add_argument("--note", default="", help="Note or description for intermediate slice checkpoint.")
+    p_st.add_argument("--target", default="", help="Refactoring target directory.")
+    p_st.add_argument("--plan", default="", help="Path to refactoring plan markdown.")
+    p_st.add_argument("--phases", type=int, default=4, help="Total phases in campaign.")
+    p_st.add_argument("--phase", default=None, help="Specific phase number/sub-phase to update/advance.")
+    p_st.add_argument("--phase-title", default="", help="Title for the active phase.")
+    p_st.add_argument("--status", default="", help="Status string (e.g. completed, in_progress, pending).")
+    p_st.add_argument("--sha", default="", help="Commit SHA to record.")
+    p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
+
+
+def _save_checkpoint(state_file: Path, state: dict[str, Any], note: str, sha: str, target: Path) -> int:
+    """Save an intermediate slice checkpoint into state.json."""
+    c_sha = sha or get_git_sha(target)
+    state["last_checkpoint"] = {
+        "note": note or "Intermediate slice verified",
+        "sha": c_sha,
+    }
+    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    sha_str = f" ({c_sha[:7]})" if c_sha else ""
+    print(f"Saved campaign checkpoint: {note or 'Intermediate slice'}{sha_str}")
+    print("[Turn Budget Tip] If this turn has reached 20-25 tool calls, commit and run `/refactor-monolith continue` in a fresh chat.")
+    return 0
+
+
 def cmd_state(
     target: Path,
     action: str,
     plan: str = "",
     phases: int = 4,
-    phase: int | None = None,
+    phase: Any = None,
     phase_title: str = "",
     status: str = "",
     sha: str = "",
+    note: str = "",
     as_json: bool = False,
 ) -> int:
     """Initialize, inspect, or advance persistent refactoring campaign state."""
@@ -183,17 +218,29 @@ def cmd_state(
         print(f"Error reading {state_file}: {err}", file=sys.stderr)
         return 1
 
+    if action == "checkpoint":
+        return _save_checkpoint(state_file, state, note, sha, target)
+
     if action == "advance":
-        return _advance_campaign_state(target, state_file, state, phase, status, sha)
+        p_val = int(phase) if phase and str(phase).isdigit() else None
+        return _advance_campaign_state(target, state_file, state, p_val, status, sha)
 
     if action == "set":
-        return _set_campaign_state(state_file, state, phase, phase_title, status, sha)
+        p_val = int(phase) if phase and str(phase).isdigit() else None
+        return _set_campaign_state(state_file, state, p_val, phase_title, status, sha)
 
     if as_json:
         print(json.dumps(state, indent=2))
         return 0
 
     return _print_campaign_summary(state)
+
+
+def _parse_phase_sort_key(key: str) -> float:
+    try:
+        return float(key)
+    except ValueError:
+        return 999.0
 
 
 def _print_campaign_summary(state: dict[str, Any]) -> int:
@@ -209,10 +256,14 @@ def _print_campaign_summary(state: dict[str, Any]) -> int:
     print(f"Campaign Status:   {st.upper()} (Active: Phase {act} of {tot})")
     print(f"Plan Document:     {state.get('plan_path', '.refactor/plan.md')}")
     print(f"Baseline Snapshot: {state.get('baseline_contract', '.refactor/baseline.json')}")
+    if state.get("last_checkpoint"):
+        chk = state["last_checkpoint"]
+        sha_str = f" ({chk.get('sha')[:7]})" if chk.get("sha") else ""
+        print(f"Last Checkpoint:   {chk.get('note', '')}{sha_str}")
 
     print("\n--- Phases Overview ---")
-    for p_num, p_info in sorted(phases_map.items(), key=lambda x: int(x[0])):
-        icon = _format_phase_icon(p_info.get("status") == "completed", int(p_num) == act)
+    for p_num, p_info in sorted(phases_map.items(), key=lambda x: _parse_phase_sort_key(x[0])):
+        icon = _format_phase_icon(p_info.get("status") == "completed", str(p_num) == str(act))
         sha_str = f" ({p_info.get('sha')[:7]})" if p_info.get("sha") else ""
         print(f"  {icon} Phase {p_num}: {p_info.get('title', '')} [{p_info.get('status', 'pending')}]{sha_str}")
 

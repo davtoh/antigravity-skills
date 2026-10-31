@@ -232,5 +232,38 @@ class TestSourceFileAuditAndCli(unittest.TestCase):
         self.assertEqual(recommend_mode(two_huge_monoliths), "PROJECT_CAMPAIGN")
 
 
+    def test_inspect_sections_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f = Path(tmpdir) / "module.py"
+            f.write_text(
+                '# ==========================================================================\n'
+                '# Database Pipeline Service\n'
+                '# ==========================================================================\n'
+                'class DatabasePipeline:\n'
+                '    def connect(self): pass\n\n'
+                'def run_pipeline():\n'
+                '    pass\n',
+                encoding="utf-8",
+            )
+            with patch("sys.stdout", new_callable=io.StringIO) as out:
+                code = main(["--inspect-sections", str(f)])
+                self.assertEqual(code, 0)
+                val = out.getvalue()
+                self.assertIn("Database Pipeline Service", val)
+                self.assertIn("DatabasePipeline", val)
+                self.assertIn("run_pipeline", val)
+
+    def test_split_preview_reports_crlf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f = Path(tmpdir) / "crlf_file.py"
+            f.write_bytes(b"line 1\r\nline 2\r\nline 3\r\n")
+            with patch("sys.stdout", new_callable=io.StringIO) as out:
+                code = main(["--split-preview", f"{f}:2:1"])
+                self.assertEqual(code, 0)
+                val = out.getvalue()
+                self.assertIn("CRLF", val)
+                self.assertIn("SPLIT POINT", val)
+
+
 if __name__ == "__main__":
     unittest.main()

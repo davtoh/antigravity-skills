@@ -14,9 +14,13 @@ from pathlib import Path
 
 from scripts.contract_snapshot import (
     CodebaseContract,
+    cmd_audit_container,
     cmd_generate_smoke_test,
     cmd_inspect,
+    cmd_inspect_css,
+    cmd_run_tests,
     cmd_state,
+    cmd_verify_ui,
     diff_contracts,
     discover_optional_tools,
     get_refactor_dir,
@@ -262,15 +266,9 @@ class TestCampaignAndTools(unittest.TestCase):
             self.assertEqual(code_all, 0)
 
     def test_format_phase_icon_fallback(self):
-        # Normal UTF-8 check
-        icon_done = _format_phase_icon(is_completed=True, is_active=False)
-        self.assertIn(icon_done, ["✅", "[x]"])
-
-        icon_act = _format_phase_icon(is_completed=False, is_active=True)
-        self.assertIn(icon_act, ["▶️", "[>]"])
-
-        icon_pend = _format_phase_icon(is_completed=False, is_active=False)
-        self.assertIn(icon_pend, ["⏳", "[ ]"])
+        self.assertIn(_format_phase_icon(is_completed=True, is_active=False), ["✅", "[x]"])
+        self.assertIn(_format_phase_icon(is_completed=False, is_active=True), ["▶️", "[>]"])
+        self.assertIn(_format_phase_icon(is_completed=False, is_active=False), ["⏳", "[ ]"])
 
     def test_discover_virtualenv(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -286,6 +284,63 @@ class TestCampaignAndTools(unittest.TestCase):
             tools = discover_optional_tools(base)
             self.assertIn("virtualenv_python", tools)
             self.assertEqual(tools["virtualenv_python"], str(py_exe))
+
+    def test_inspect_css_file_and_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            css_dir = base / "css"
+            css_dir.mkdir()
+            css_file = css_dir / "tokens.css"
+            css_file.write_text(
+                '/* ==========================================================================\n'
+                '   Theme Tokens\n'
+                '   ========================================================================== */\n'
+                '@import url("base.css");\n'
+                ':root {\n'
+                '  --primary: #00ffff;\n'
+                '}\n'
+                '.btn-bad {\n'
+                '  color: red !important;\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            # Test inspect single file
+            code_file = cmd_inspect_css(css_file, show_all=True)
+            self.assertEqual(code_file, 0)
+
+            # Test inspect directory
+            code_dir = cmd_inspect_css(css_dir, show_all=True)
+            self.assertEqual(code_dir, 0)
+
+            # Test strict mode on file with !important
+            code_strict = cmd_inspect_css(css_file, strict=True)
+            self.assertEqual(code_strict, 1)
+
+    def test_campaign_state_checkpoint_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            rdir = base / ".refactor"
+            rdir.mkdir()
+            state_file = rdir / "state.json"
+            # Init state
+            cmd_state(base, action="init", plan=str(rdir / "plan.md"), phases=3, phase_title="Phase 1")
+            
+            # Save checkpoint
+            code = cmd_state(base, action="checkpoint", note="Slice 1.2 completed")
+            self.assertEqual(code, 0)
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertIn("last_checkpoint", data)
+            self.assertEqual(data["last_checkpoint"]["note"], "Slice 1.2 completed")
+
+    def test_verify_ui_and_docker_skipped_gracefully(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            # When tools are not present or URL not set, should skip gracefully with exit code 0
+            code_ui = cmd_verify_ui(base, url="", strict=False)
+            self.assertEqual(code_ui, 0)
+
+            code_docker = cmd_audit_container(base, container="", workdir="/app")
+            self.assertEqual(code_docker, 0)
 
 
 if __name__ == "__main__":

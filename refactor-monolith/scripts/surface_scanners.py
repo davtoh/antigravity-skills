@@ -64,6 +64,9 @@ class CssSurface:
     keyframes: list[str] = field(default_factory=list)
     fullscreen_rules: list[str] = field(default_factory=list)
     import_urls: list[str] = field(default_factory=list)
+    important_occurrences: list[dict[str, Any]] = field(default_factory=list)
+    section_banners: list[dict[str, Any]] = field(default_factory=list)
+    has_crlf: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -238,15 +241,36 @@ _CSS_FULLSCREEN_RE = re.compile(r'([^{]*:fullscreen[^{]*)', re.IGNORECASE)
 _CSS_IMPORT_RE = re.compile(r'@import\s+(?:url\s*\(\s*["\']?([^"\')]+)["\']?\s*\)|["\']([^"\']+)["\'])')
 
 
+_CSS_BANNER_RE = re.compile(
+    r'^\s*/\*+\s*(?:[=\-_*#~]{3,}\s*)?([A-Za-z0-9][A-Za-z0-9\s.,&/\(\)\'\"\-]{2,60}?)(?:\s*[=\-_*#~]{3,})?\*+/\s*$'
+)
+
+
 def scan_css_surface(text: str) -> CssSurface:
     """Extract custom properties, keyframes, fullscreen rules, and count !important."""
     vars_found = sorted(set(_CSS_VAR_RE.findall(text)))
-    important_cnt = len(_CSS_IMPORTANT_RE.findall(text))
     keyframes = sorted(set(_CSS_KEYFRAME_RE.findall(text)))
     fullscreen = [m.strip() for m in _CSS_FULLSCREEN_RE.findall(text)]
     imports: list[str] = []
     for m in _CSS_IMPORT_RE.findall(text):
         imports.append(m[0] or m[1])
+
+    has_crlf = "\r\n" in text
+    lines = text.splitlines()
+
+    important_occurrences: list[dict[str, Any]] = []
+    section_banners: list[dict[str, Any]] = []
+
+    for idx, line in enumerate(lines, start=1):
+        if _CSS_IMPORTANT_RE.search(line):
+            important_occurrences.append({"line": idx, "content": line.strip()})
+        m_banner = _CSS_BANNER_RE.match(line)
+        if m_banner:
+            title = m_banner.group(1).strip()
+            if not title.startswith(("!", "TODO", "FIXME", "eslint", "stylelint", "http")):
+                section_banners.append({"line": idx, "title": title})
+
+    important_cnt = len(_CSS_IMPORTANT_RE.findall(text))
 
     return CssSurface(
         custom_properties=vars_found,
@@ -254,4 +278,7 @@ def scan_css_surface(text: str) -> CssSurface:
         keyframes=keyframes,
         fullscreen_rules=fullscreen,
         import_urls=imports,
+        important_occurrences=important_occurrences,
+        section_banners=section_banners,
+        has_crlf=has_crlf,
     )

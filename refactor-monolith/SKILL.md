@@ -98,15 +98,21 @@ flowchart TD
 
 ### Mode B1: Initialize Project Campaign (`PROJECT_CAMPAIGN`)
 - **Trigger**: Entire project targeted **AND** `code_health_audit.py` reports `Recommended Mode: PROJECT_CAMPAIGN` ($> 2$ critical files).
-- **The 1-Phase-Per-Turn Execution Rule**:
-  - **Never execute all 4 phases in a single turn.** Attempting mega-executions burns context and compounds regressions.
-  - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1**. Mark Phases 2–4 as *Deferred to Next Turn*.
+- **The 1-Phase-Per-Turn Execution Rule & 25-Step Budget**:
+  - **Never execute all phases in a single turn.** Attempting mega-executions burns context and compounds regressions.
+  - **The 25-Tool-Call Turn Ceiling**: If an active phase contains $> 4\text{--}6$ file extractions (e.g. 16 stylesheets or multiple JS modules), do NOT extract all files in one turn. Sub-slice into batches (e.g. Slices 1–3 Tokens/Layout, then Slices 4–6 Features).
+  - If a turn approaches 20–25 tool calls, save an intermediate checkpoint:
+    ```bash
+    python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
+    ```
+    Present a clean commit command, and advise the user to run `/refactor-monolith continue` in a fresh chat.
+  - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1 (or Phase 1.1)**. Mark subsequent phases as *Deferred to Next Turn*.
   - Save the plan to `.refactor/plan.md` (or workspace root `dashboard_refactor_plan.md`) so it survives chat resets.
   - Initialize campaign tracking:
     ```bash
     python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <target_dir> --plan .refactor/plan.md --phases 4 --phase-title "<Phase 1 Title>"
     ```
-  - When Phase 1 completes Step 5 verification:
+  - When the phase completes Step 5 verification:
     ```bash
     python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1
     ```
@@ -119,7 +125,8 @@ flowchart TD
   1. Inspect campaign state: `python "<skill_dir>/scripts/contract_snapshot.py" state --show`.
   2. Read `.refactor/plan.md` to load the objectives and file targets for the active phase.
   3. Report resumption to the user: *"Resuming refactoring campaign for `<target>` at Phase X (`<Title>`). Authorizing Phase X only."*
-  4. Execute active phase slices -> run Step 5 verification ladder -> advance state via `state --advance` -> present commit command and stop.
+  4. If Phase X contains $> 4\text{--}6$ extractions, execute the first sub-batch, run Step 5 verification, save checkpoint (`state --checkpoint`), and offer to commit before proceeding to avoid cumulative token explosion.
+  5. Execute active phase slices -> run Step 5 verification ladder -> advance state via `state --advance` -> present commit command and stop.
 
 ### Mode C: Post-Refactor Regression Recovery (`REGRESSION_RECOVERY`)
 - **Trigger**: The user reports that a previous refactor broke functionality (e.g. dropdowns, modals, event listeners), or asks to diagnose/remedy refactoring regressions.
@@ -142,16 +149,24 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir
 # Inspect class/method/rule details of the active file
 python "<skill_dir>/scripts/code_health_audit.py" --path <target_file> --show-methods
 
+# Outline sections, classes, and banner comments without ad-hoc scripts
+python "<skill_dir>/scripts/code_health_audit.py" --inspect-sections <file>
+
 # Audit multiple targets simultaneously
 python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 ```
 
 ### Step 2: Cohesion Clustering, Surface Map & Facade Design
 1. **Interactive Surface Map**: Run `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path <target_dir>` (or pass `--show-routes` to list all backend endpoints with line ranges and handlers) to catalog all `<select>` IDs, modals, inline handlers, global exports, and API routes before modifying code.
-2. **Load On-Demand References**:
+2. **Stylesheet & Specificity Audit**: If refactoring CSS/SCSS or frontend stylesheets, run:
+   ```bash
+   python "<skill_dir>/scripts/contract_snapshot.py" inspect-css --path <css_file_or_dir>
+   ```
+   This catalogs all `@import` rules, section banners, CRLF line endings, and exact line numbers of all `!important` occurrences without running brittle inline grep/Python commands.
+3. **Load On-Demand References**:
    - Web routes, God classes, and DAG rules: [`references/decomposition-patterns.md`](./references/decomposition-patterns.md).
    - Non-Python files (`.js`, `.ts`, `.css`, `.dart`, `.go`, `.rs`, `.cs`): [`references/language-playbooks.md`](./references/language-playbooks.md).
-3. **The Zero-Breaking-Import & Zero-Broken-DOM Invariant**:
+4. **The Zero-Breaking-Import & Zero-Broken-DOM Invariant**:
    - Python: Keep original module path as a re-export facade; use the **Bidirectional Proxy Pattern** in `dependencies.py` if tests monkeypatch module globals.
    - JavaScript (Vanilla): Never rename DOM element IDs; preserve all `window.<Namespace>` exports; ensure `<script src="...">` load order satisfies dependencies.
 
@@ -159,7 +174,10 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 1. Create the new module below the **350-line target** (classes $\le 10$–$12$ methods, functions $\le 40$ lines).
 2. Move cohesive logic and imports. Use `--split-preview <file>:<line>` to check boundaries safely.
 3. **Preserve Comments & Math**: Carry over all mathematical formulas, OpenCV coordinates, and rationale verbatim.
-4. **CRLF Line-Ending Resilience on Windows**: If modifying existing files on Windows, beware of CRLF (`\r\n`) line endings that cause `edit_file` target mismatches. Keep edits focused or normalize file line endings cleanly.
+4. **CRLF Line-Ending & Tooling Discipline on Windows**:
+   - Check line endings via `--split-preview` or `inspect-css` before editing.
+   - If `edit_file` fails with `target content not found`, **DO NOT** attempt multiline PowerShell inline Python replacement commands (`python -c "target = '''...'''"`)—PowerShell parsing fails on nested brackets and quotes.
+   - Instead, use `read_file` to capture exact whitespace, or use whole-file `write_file` or `Copy-Item`.
 
 > [!WARNING]
 > **Anti-Mega-Batch Rule (Atomic Slicing Gate)**:
@@ -179,27 +197,24 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 
 ### Step 5: 3-Tier Closed-Loop Verification Ladder
 
-Execute verification in three strictly ordered tiers:
+Execute verification in three strictly ordered tiers complying with **Axiom 9 (Honest Verification Reporting)**:
 
 ```text
 Tier 1: Static Contracts & Automated Tests (Always, 100% Self-Contained)
-  ├── 1. Automated unit test suite (pytest, python -m unittest discover tests, npm test)
+  ├── 1. Automated unit test suite via virtualenv:
+  │      python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> discover tests
   ├── 2. Structural line budgets (code_health_audit.py --path <target_dir> --strict)
   ├── 3. DOM & API contract parity (contract_snapshot.py verify --path <target_dir> --strict)
   └── 4. Generate permanent regression test (contract_snapshot.py generate-smoke-test --path <target_dir>)
 
 Tier 2: Container Sync Audit (If Docker / Containerized)
-  └── Probe docker_audit.py (via probe-tools) to verify host-to-container MD5 sync and zero CPU runaway.
+  └── python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path <dir> --container <name> --sync-check <files...>
 
 Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
-  ├── 1. Check if cdp_inspect.py is discovered via probe-tools.
-  ├── 2. Probe if $APP_URL is reachable.
-  └── 3. Pre-Flight Pause Protocol: If unreachable or Chrome remote debugging requires authorization ("Allow" banner):
-         Pause and prompt the user via ask_question:
-         - Option 1: "I have started the server and approved the remote debugging prompt — proceed with live check."
-         - Option 2: "Proceed using self-contained static contract verification."
-  └── 4. Axiom 9 Honest Reporting: If Option 2 is chosen, explicitly state:
-         "Static Contract: VERIFIED | Live Browser: UNVERIFIED (Server offline / remote debugging unattached)."
+  ├── 1. Run live layout audit via CDP bridge:
+  │      python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --audit-layout --headless
+  └── 2. Axiom 9 Honest Reporting: If server is offline, report:
+         "Tier 1: VERIFIED | Tier 2: SKIPPED | Tier 3: SKIPPED (Server offline / URL unset)"
 ```
 
 > [!IMPORTANT]
@@ -209,8 +224,8 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 > - Or simply **end your turn by calling no more tools** and let the system reactively notify you when the background task completes.
 
 > [!TIP]
-> **Virtual Environment Awareness**:
-> Run `python "<skill_dir>/scripts/contract_snapshot.py" probe-tools --path <target_dir>` to check for local `.venv`, `venv`, or `env` interpreters. If a virtual environment is detected, invoke its Python interpreter (e.g. `.\\.venv\\Scripts\\python.exe` or `./.venv/bin/python`) when running local test suites to prevent `ModuleNotFoundError` on workspace packages.
+> **Virtual Environment Test Runner**:
+> Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> discover tests` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`), preventing `ImportError` or `ModuleNotFoundError` on host interpreters.
 
 ---
 
@@ -245,14 +260,20 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Directory-Level Triage** | Group line counts by subfolder | `--path <dir> --by-dir` | `python "<skill_dir>/scripts/code_health_audit.py" --path . --by-dir` |
 | **Multi-Target Audit** | Multiple files/dirs in one run | `--path <f1> <d2>` | `python "<skill_dir>/scripts/code_health_audit.py" --path src/main.py src/services/` |
 | **Split Point Preview** | View lines around split safely | `--split-preview <file>:<line>[:window]` | `python "<skill_dir>/scripts/code_health_audit.py" --split-preview src/app.py:280:10` |
+| **Section & Banner Outline** | Inspect classes/banners without inline code | `--inspect-sections <file>` | `python "<skill_dir>/scripts/code_health_audit.py" --inspect-sections src/main.py` |
 | **Record Reference Anchor & Worktree** | Git commit anchor & parallel worktree recipe | `anchor --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" anchor --path .` |
 | **Capture Baseline Contract** | Snapshot to .refactor/baseline.json | `capture --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" capture --path .` |
 | **Interactive Surface Map** | Inventory of selects, modals, globals, routes | `inspect --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path .` |
+| **Stylesheet & Specificity Audit** | Audit @imports, banners, CRLF & !important | `inspect-css --path <file_or_dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" inspect-css --path styles/` |
 | **Init Campaign State** | Track campaign in .refactor/state.json | `state --init` | `python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <dir> --plan .refactor/plan.md --phases 4` |
 | **Show Campaign Progress** | Check active phase and status | `state --show` | `python "<skill_dir>/scripts/contract_snapshot.py" state --show` |
+| **Save Phase Checkpoint** | Save sub-phase note & prevent token drain | `state --checkpoint` | `python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Slices 1-3 complete"` |
 | **Advance Campaign Phase** | Mark phase complete and advance | `state --advance` | `python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1` |
 | **Per-Slice & Checkpoint Verification** | Diff against baseline contract | `verify --path <dir> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path <dir> --strict` |
 | **Post-Refactor Regression Audit** | Diff live tree directly against pre-refactor Git SHA | `verify --path <dir> --git-ref <sha> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref HEAD~1 --strict` |
+| **Venv Automated Test Runner** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . discover tests` |
+| **Headless CDP Layout Audit** | Tier 3 UI verification via frontier-architect | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --audit-layout --headless` |
+| **Container Sync & Health Check** | Tier 2 Docker container file sync check | `audit-container --container <name>` | `python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path . --container tracker --sync-check app.py` |
 | **Generate Scoped Contract Test** | Emit unittest regression suite scoped to target | `generate-smoke-test --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path <dir> --out tests/test_refactor_contract.py` |
 | **Discover Optional Tools** | Probe cdp_inspect & docker_audit | `probe-tools` | `python "<skill_dir>/scripts/contract_snapshot.py" probe-tools` |
 | **Pre-Commit Strict Gate** | Exit 1 on critical breach | `--path <dir> --strict` | `python "<skill_dir>/scripts/code_health_audit.py" --path src --strict` |
@@ -262,9 +283,13 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 ## Built-In Scripts, Tests & On-Demand Reference Library
 
 - **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone multi-language structural auditor. Supports multi-target `--path`, `--by-dir`, `--compact`, `--split-preview`, and prunes vendor/minified assets and `.refactor`.
+- **[`scripts/audit_reporters.py`](./scripts/audit_reporters.py)**: Formatted terminal reporters for structural audits, directory breakdowns, split point previews, and section/banner comment outlines.
 - **[`scripts/surface_scanners.py`](./scripts/surface_scanners.py)**: Zero-dependency surface scanners extracting DOM IDs, interactive selects, inline handlers, `window.*` globals, Python routes, mutable globals, and CSS custom properties.
-- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, regression diff engine, and auxiliary tool probe.
-- **[`scripts/campaign_manager.py`](./scripts/campaign_manager.py)**: Persistent cross-turn `.refactor/state.json` campaign manager and directory provisioner.
+- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, CLI command router, and Tier 1-3 verification coordinator.
+- **[`scripts/contract_diff_engine.py`](./scripts/contract_diff_engine.py)**: Surface contract extraction, git tree extraction, and regression diffing engine.
+- **[`scripts/auxiliary_tool_bridge.py`](./scripts/auxiliary_tool_bridge.py)**: Virtualenv test runner, CDP browser verification bridge, container sync auditor, and Axiom 9 verification matrix.
+- **[`scripts/css_inspector.py`](./scripts/css_inspector.py)**: Deep CSS/SCSS inspector analyzing `@import` chains, banner sections, CRLF line endings, and exact `!important` occurrences.
+- **[`scripts/campaign_manager.py`](./scripts/campaign_manager.py)**: Persistent cross-turn `.refactor/state.json` campaign manager, sub-phase checkpointing, and directory provisioner.
 - **[`scripts/smoke_test_generator.py`](./scripts/smoke_test_generator.py)**: Automated regression-locking unittest generator enforcing DOM and CSS contract invariants.
 - **[`scripts/language_analyzers.py`](./scripts/language_analyzers.py)**: Multi-language AST, brace, and stylesheet parsers for Python, JS/TS, Dart, Go, Rust, and C#.
 - **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite for structural parsing, multi-target audit, and `.refactor` pruning.

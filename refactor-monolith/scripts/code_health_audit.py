@@ -42,6 +42,12 @@ from language_analyzers import (  # noqa: E402
     analyze_stylesheet,
     is_vendor_or_generated,
 )
+from audit_reporters import (  # noqa: E402
+    inspect_sections,
+    preview_split,
+    print_by_dir_summary,
+    print_text_summary,
+)
 
 SUPPORTED_EXTENSIONS: frozenset[str] = (
     frozenset({".py"}) | BRACE_EXTENSIONS | STYLE_EXTENSIONS
@@ -255,103 +261,6 @@ def recommend_mode(reports: list[FileReport], max_lines: int = 500) -> str:
     return "SINGLE_FILE"
 
 
-def print_by_dir_summary(reports: list[FileReport], thresholds: AuditThresholds) -> None:
-    """Print directory-level aggregated summary of files, lines, and breaches."""
-    dir_groups: dict[str, list[FileReport]] = defaultdict(list)
-    for r in reports:
-        p = Path(r.rel_path).parent.as_posix()
-        dir_groups[p if p else "."].append(r)
-    print(f"{'Directory / Subsystem':<38} {'Files':>6} {'Total Lines':>12}  {'Status'}\n" + "-" * 78)
-    for d_name in sorted(dir_groups.keys()):
-        group = dir_groups[d_name]
-        total_l = sum(r.lines for r in group)
-        crit = sum(1 for r in group if r.status == "CRITICAL")
-        warn = sum(1 for r in group if r.status == "WARNING")
-        status = f"{crit} Critical, {warn} Warn" if crit or warn else "OK (All within budget)"
-        print(f"{d_name:<38} {len(group):>6} {total_l:>11,}L  {status}")
-
-
-def print_text_summary(
-    reports: list[FileReport], thresholds: AuditThresholds, top_n: int,
-    show_methods: bool, compact: bool = False, by_dir: bool = False
-) -> None:
-    """Format and print a human-readable modularity audit table."""
-    ranked = sorted(reports, key=lambda r: r.lines, reverse=True)
-    crit = sum(1 for r in reports if r.status == "CRITICAL")
-    warn = sum(1 for r in reports if r.status == "WARNING")
-    mode = recommend_mode(reports, thresholds.max_file_lines)
-    print(f"=== Modularity Audit ({len(reports)} files | Critical: {crit} | Warning: {warn}) ===")
-    print(
-        f"Budgets: File <= {thresholds.warn_file_lines}/{thresholds.max_file_lines}L | "
-        f"Class <= {thresholds.warn_class_methods}/{thresholds.max_class_methods}M | "
-        f"Func <= {thresholds.max_func_lines}L | Recommended Mode: {mode}\n"
-    )
-    if by_dir:
-        print_by_dir_summary(reports, thresholds)
-        return
-    print(f"{'Status':<10} {'Lines':>7}  {'Parser':<10} {'Path'}\n" + "-" * 78)
-    for rep in ranked[:top_n]:
-        print(f"{rep.status:<10} {rep.lines:>7}  {rep.parser_mode:<10} {rep.rel_path}")
-        if not compact:
-            _print_file_details(rep, show_methods)
-
-
-def _print_file_details(rep: FileReport, show_methods: bool) -> None:
-    """Print class and function breach details for a single file report."""
-    cls_list = rep.classes if show_methods else [c for c in rep.classes if c.status != "OK"][:4]
-    for cls in cls_list:
-        print(
-            f"   [Class {cls.status}] {cls.name} "
-            f"(L{cls.start_line}-L{cls.end_line}, {cls.lines}L, {cls.method_count} items)"
-        )
-        if show_methods and cls.methods:
-            preview = ", ".join(cls.methods[:12])
-            print(f"      Items: {preview}{' ...' if len(cls.methods) > 12 else ''}")
-    fn_limit = 12 if show_methods else 4
-    for fn in rep.oversized_functions[:fn_limit]:
-        if show_methods or fn.status == "CRITICAL":
-            print(f"   [Func  {fn.status}] {fn.qualname} (L{fn.start_line}-L{fn.end_line}, {fn.lines}L)")
-
-
-def preview_split(spec: str) -> int:
-    """Safely print source lines around a proposed split line (path:line[:window])."""
-    # Handle Windows drive letters like C:\path\to\file:lineno[:window]
-    if len(spec) > 2 and spec[1] == ":" and spec[0].isalpha():
-        rparts = spec[2:].rsplit(":", 2)
-        if len(rparts) < 2:
-            print("Usage: --split-preview <file_path>:<line_number>[:window_lines]", file=sys.stderr)
-            return 2
-        fpath = Path(spec[:2] + rparts[0])
-        line_s = rparts[1]
-        window = int(rparts[2]) if len(rparts) > 2 else 12
-    else:
-        parts = spec.rsplit(":", 2)
-        if len(parts) < 2:
-            print("Usage: --split-preview <file_path>:<line_number>[:window_lines]", file=sys.stderr)
-            return 2
-        fpath = Path(parts[0])
-        line_s = parts[1]
-        window = int(parts[2]) if len(parts) > 2 else 12
-
-    if not fpath.exists():
-        print(f"Error: file not found: {fpath}", file=sys.stderr)
-        return 2
-    try:
-        lineno = int(line_s)
-        lines = fpath.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception as err:
-        print(f"Error reading {fpath}: {err}", file=sys.stderr)
-        return 2
-    start = max(0, lineno - window - 1)
-    end = min(len(lines), lineno + window)
-    print(f"=== Split Preview: {fpath.name} around line {lineno} (L{start+1}-L{end}) ===")
-    for idx in range(start, end):
-        cur = idx + 1
-        marker = "==> [SPLIT POINT]" if cur == lineno else "   "
-        print(f"{marker} {cur:>5} | {lines[idx]}")
-    return 0
-
-
 def build_arg_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
     p = argparse.ArgumentParser(description="Cross-platform modularity & AST budget auditor.")
@@ -366,6 +275,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--compact", action="store_true", help="Compact file view without function details.")
     p.add_argument("--by-dir", action="store_true", help="Group and summarize line counts by directory.")
     p.add_argument("--split-preview", help="Preview lines around split: <file>:<line>[:window]")
+    p.add_argument("--inspect-sections", help="Outline sections, classes, and banner comments: <file>")
     p.add_argument("--include-vendor", action="store_true", help="Include vendor/minified files.")
     p.add_argument("--json", action="store_true", help="Emit JSON output.")
     p.add_argument("--strict", action="store_true", help="Exit 1 on CRITICAL breach.")
@@ -395,6 +305,8 @@ def _collect_reports(
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for code_health_audit."""
     args = build_arg_parser().parse_args(argv)
+    if args.inspect_sections:
+        return inspect_sections(args.inspect_sections)
     if args.split_preview:
         return preview_split(args.split_preview)
     raw_paths = args.path if isinstance(args.path, list) else [args.path]
@@ -419,7 +331,8 @@ def main(argv: list[str] | None = None) -> int:
             "thresholds": asdict(thresholds), "files": [asdict(r) for r in ranked],
         }, indent=2))
     else:
-        print_text_summary(reports, thresholds, top_limit, args.show_methods, args.compact, args.by_dir)
+        mode = recommend_mode(reports, thresholds.max_file_lines)
+        print_text_summary(reports, thresholds, top_limit, args.show_methods, args.compact, args.by_dir, mode=mode)
     return 1 if (args.strict and has_hard_breach(reports)) else 0
 
 

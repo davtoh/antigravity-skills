@@ -34,6 +34,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 from campaign_manager import (  # noqa: E402
+    _add_state_cli_args,
     _format_phase_icon,
     cmd_state,
     get_git_sha,
@@ -50,233 +51,23 @@ from surface_scanners import (  # noqa: E402
     scan_js_surface,
     scan_python_surface,
 )
-
-IGNORED_DIRS: frozenset[str] = frozenset({
-    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    "dist", "build", "_build", "out", "target", ".idea", ".vscode",
-    "scratch", "coverage", "htmlcov", "migrations", ".refactor",
-})
-
-
-@dataclass
-class CodebaseContract:
-    """Aggregated contract of interactive and public architectural surfaces."""
-    commit_sha: str = ""
-    html_ids: list[str] = field(default_factory=list)
-    select_ids: list[str] = field(default_factory=list)
-    inline_handlers: list[dict[str, str]] = field(default_factory=list)
-    script_order: list[str] = field(default_factory=list)
-    js_queried_ids: list[str] = field(default_factory=list)
-    js_global_exports: list[str] = field(default_factory=list)
-    python_routes: list[dict[str, str]] = field(default_factory=list)
-    python_globals: list[str] = field(default_factory=list)
-    css_important_count: int = 0
-    css_custom_properties: list[str] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CodebaseContract:
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
-
-
-def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
-    """Execute a git command safely and return (exit_code, output)."""
-    try:
-        proc = subprocess.run(
-            ["git", *args],
-            cwd=cwd or Path.cwd(),
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            errors="replace",
-        )
-        return proc.returncode, proc.stdout.strip()
-    except Exception as err:
-        return 1, str(err)
-
-
-def read_file_content(path: Path, git_ref: str = "", cwd: Path | None = None) -> str:
-    """Read file content either from the live filesystem or from a git ref."""
-    if not git_ref:
-        try:
-            return path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return ""
-    code, out = _run_git(["show", f"{git_ref}:{path.as_posix()}"], cwd=cwd)
-    return out if code == 0 else ""
-
-
-def iter_repo_files(base_dir: Path, git_ref: str = "") -> list[Path]:
-    """List source files in target directory, pruning ignored directories and git commits."""
-    if git_ref:
-        code, out = _run_git(["ls-tree", "-r", "--name-only", git_ref], cwd=base_dir)
-        if code != 0:
-            return []
-        res: list[Path] = []
-        for line in out.splitlines():
-            line = line.strip()
-            if line and not any(part in IGNORED_DIRS for part in Path(line).parts):
-                res.append(Path(line))
-        return res
-    return [
-        p for p in base_dir.rglob("*")
-        if p.is_file() and not any(part in IGNORED_DIRS for part in p.parts)
-    ]
-
-
-def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
-    """Extract full contract from disk or historical git tree."""
-    contract = CodebaseContract(commit_sha=git_ref or get_git_sha(target_dir))
-    files = iter_repo_files(target_dir, git_ref)
-    acc: dict[str, Any] = {
-        "ids": set(), "selects": set(), "handlers": [], "scripts": [],
-        "queried": set(), "globals": set(), "routes": [], "py_globals": set(),
-        "css_vars": set(), "important": 0,
-    }
-    for f in sorted(files):
-        sfx = f.suffix.lower()
-        if sfx in {".html", ".js", ".ts", ".jsx", ".tsx", ".py", ".css", ".scss"}:
-            text = read_file_content(f if git_ref else target_dir / f, git_ref, cwd=target_dir)
-            if text:
-                rel_p = str(f.as_posix() if hasattr(f, "as_posix") else f).replace("\\", "/")
-                _dispatch_scan(sfx, text, acc, rel_path=rel_p)
-
-    contract.html_ids = sorted(acc["ids"])
-    contract.select_ids = sorted(acc["selects"])
-    contract.inline_handlers = acc["handlers"]
-    contract.script_order = acc["scripts"]
-    contract.js_queried_ids = sorted(acc["queried"])
-    contract.js_global_exports = sorted(acc["globals"])
-    contract.python_routes = acc["routes"]
-    contract.python_globals = sorted(acc["py_globals"])
-    contract.css_important_count = acc["important"]
-    contract.css_custom_properties = sorted(acc["css_vars"])
-    return contract
-
-
-def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any], rel_path: str = "") -> None:
-    """Route file text to surface scanner and aggregate results."""
-    if sfx == ".html":
-        h = scan_html_surface(text)
-        acc["ids"].update(h.ids)
-        acc["selects"].update(h.selects)
-        acc["handlers"].extend(h.inline_handlers)
-        acc["scripts"].extend(h.script_srcs)
-    elif sfx in {".js", ".ts", ".jsx", ".tsx"}:
-        j = scan_js_surface(text)
-        acc["queried"].update(j.queried_ids)
-        acc["globals"].update(j.global_exports)
-    elif sfx == ".py":
-        p = scan_python_surface(text, rel_path=rel_path)
-        acc["routes"].extend(p.routes)
-        acc["py_globals"].update(p.mutable_globals)
-    elif sfx in {".css", ".scss"}:
-        c = scan_css_surface(text)
-        acc["important"] += c.important_count
-        acc["css_vars"].update(c.custom_properties)
-
-
-def diff_contracts(before: CodebaseContract, after: CodebaseContract) -> list[str]:
-    """Compare before and after contracts and return list of critical discrepancies."""
-    issues: list[str] = []
-
-    # 1. DOM Discrepancy & Regression Detection:
-    # A regression occurs when:
-    # a) An HTML ID present before the refactor is removed from HTML after, AND JavaScript still queries it.
-    # b) JavaScript queries an ID that is newly missing in HTML compared to the baseline contract.
-    before_missing = set(before.js_queried_ids) - set(before.html_ids) if before.js_queried_ids else set()
-    current_missing = set(after.js_queried_ids) - set(after.html_ids)
-    newly_missing = current_missing - before_missing
-    removed_html_ids = (set(before.html_ids) - set(after.html_ids)) & set(after.js_queried_ids)
-
-    critical_dom_ids = sorted(newly_missing | removed_html_ids)
-    for mid in critical_dom_ids:
-        if mid in removed_html_ids:
-            issues.append(f"[CRITICAL DOM] Element id='{mid}' present before refactor was removed from HTML, but JS still queries #{mid}!")
-        else:
-            issues.append(f"[CRITICAL DOM] JS queries #{mid} via getElementById/querySelector, but id='{mid}' is missing in HTML!")
-
-    # 2. Interactive Select Dropdown Regressions:
-    for sel in sorted(set(before.select_ids) - set(after.select_ids)):
-        issues.append(f"[CRITICAL SELECT] Interactive dropdown #{sel} present before refactor was removed or renamed!")
-
-    # 3. Global window.* Exports Regressions:
-    for g in sorted(set(before.js_global_exports) - set(after.js_global_exports)):
-        issues.append(f"[CRITICAL GLOBAL] Pre-refactor window.{g} export was lost during decomposition!")
-
-    _check_handlers_and_routes(before, after, issues)
-
-    # 4. CSS Specificity Creep:
-    if after.css_important_count > before.css_important_count:
-        issues.append(f"[CRITICAL CSS] !important count increased from {before.css_important_count} to {after.css_important_count}!")
-
-    return issues
-
-
-def _check_handlers_and_routes(before: CodebaseContract, after: CodebaseContract, issues: list[str]) -> None:
-    """Validate that inline event handlers and Python routes were preserved."""
-    for h in after.inline_handlers:
-        target = h["target"].split(".")[0]
-        if target not in {"document", "window", "event", "this", "console"} and target not in after.js_global_exports:
-            if not target.startswith(("let ", "var ", "const ", "if", "return")):
-                issues.append(f"[CRITICAL HANDLER] HTML inline {h['event']} references '{h['target']}' but it is not exported on window!")
-    before_routes = {f"{r.get('method')} {r.get('path')}" for r in before.python_routes}
-    after_routes = {f"{r.get('method')} {r.get('path')}" for r in after.python_routes}
-    for lost_r in sorted(before_routes - after_routes):
-        issues.append(f"[CRITICAL ROUTE] API route {lost_r} present before refactor is missing in refactored routers!")
-
-
-def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
-    home = Path.home()
-    candidates = {
-        "cdp_inspect": [
-            os.environ.get("CDP_INSPECT_PATH", ""),
-            str(base_target / "scripts" / "cdp_inspect.py"),
-            str(root / "scripts" / "cdp_inspect.py"),
-            str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "cdp_inspect.py"),
-        ],
-        "docker_audit": [
-            os.environ.get("DOCKER_AUDIT_PATH", ""),
-            str(base_target / "scripts" / "docker_audit.py"),
-            str(root / "scripts" / "docker_audit.py"),
-            str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "docker_audit.py"),
-        ],
-    }
-    found = {}
-    for name, paths in candidates.items():
-        for p in paths:
-            if p and Path(p).is_file():
-                found[name] = p
-                break
-    return found
-
-
-def _find_virtualenv_python(base_target: Path, root: Path) -> str:
-    candidates = [
-        base_target / ".venv", base_target / "venv", base_target / "env",
-        root / ".venv", root / "venv", root / "env",
-    ]
-    for v in candidates:
-        if v.is_dir():
-            py_bin = v / "Scripts" / "python.exe" if os.name == "nt" else v / "bin" / "python"
-            if py_bin.is_file():
-                return str(py_bin)
-    return ""
-
-
-def discover_optional_tools(target: Path | None = None) -> dict[str, str]:
-    """Locate optional auxiliary tools from sibling skills or workspace without hard dependencies."""
-    base_target = Path(target).resolve() if target else Path.cwd()
-    root = get_repo_root(base_target)
-    found = _find_candidate_tools(base_target, root)
-    py_bin = _find_virtualenv_python(base_target, root)
-    if py_bin:
-        found["virtualenv_python"] = py_bin
-    return found
+from auxiliary_tool_bridge import (  # noqa: E402
+    cmd_audit_container,
+    cmd_run_tests,
+    cmd_verify_ui,
+    discover_optional_tools,
+    print_verification_matrix,
+)
+from css_inspector import cmd_inspect_css  # noqa: E402
+from contract_diff_engine import (  # noqa: E402
+    IGNORED_DIRS,
+    CodebaseContract,
+    _run_git,
+    build_contract,
+    diff_contracts,
+    iter_repo_files,
+    read_file_content,
+)
 
 
 def cmd_anchor(target: Path, worktree_dir: str = "") -> int:
@@ -358,7 +149,15 @@ def _check_missing_smoke_test(target: Path) -> None:
         print("Run `contract_snapshot.py generate-smoke-test --out tests/test_refactor_contract.py` to lock in parity.")
 
 
-def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: bool = False) -> int:
+def cmd_verify(
+    target: Path,
+    before_file: str = "",
+    git_ref: str = "",
+    strict: bool = False,
+    run_ui: bool = False,
+    run_docker: bool = False,
+    app_url: str = "",
+) -> int:
     """Diff current codebase contract against baseline or historical git commit."""
     before_path = None
     if before_file and Path(before_file).is_file():
@@ -392,7 +191,30 @@ def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: b
         print("  [Self-Contained Mode] Built-in static contract verifier active. (Optional live tools not found)")
 
     _check_missing_smoke_test(target)
-    return 1 if (strict and issues) else 0
+
+    # 3-Tier Verification Matrix (Axiom 9)
+    ui_status = "SKIPPED"
+    docker_status = "SKIPPED"
+
+    ui_code = 0
+    if run_ui:
+        ui_code = cmd_verify_ui(target, url=app_url, strict=strict)
+        ui_status = "VERIFIED (Zero layout overflow)" if ui_code == 0 else "FAILED"
+    elif opt_tools.get("cdp_inspect"):
+        ui_status = "SKIPPED (Use verify --ui or verify-ui --url $APP_URL)"
+
+    docker_code = 0
+    if run_docker:
+        docker_code = cmd_audit_container(target)
+        docker_status = "VERIFIED (Container synced)" if docker_code == 0 else "FAILED"
+    elif opt_tools.get("docker_audit"):
+        docker_status = "SKIPPED (Use verify --docker or audit-container)"
+
+    print_verification_matrix(issues, ui_status, docker_status)
+
+    if strict and (issues or ui_code != 0 or docker_code != 0):
+        return 1
+    return 0
 
 
 def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
@@ -400,24 +222,6 @@ def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--path", default=".", help="Target repository directory.")
     parser.add_argument("--before", default="", help="Baseline JSON path.")
     parser.add_argument("--git-ref", default="", help="Historical git commit/branch.")
-
-
-def _add_state_cli_args(p_st: argparse.ArgumentParser) -> None:
-    """Configure arguments for campaign state subcommand."""
-    p_st.add_argument("--path", default=".", help="Target repository directory.")
-    p_st.add_argument("--action", choices=["init", "show", "status", "advance", "set"], default="show", help="Action.")
-    p_st.add_argument("--init", dest="action", action="store_const", const="init", help="Initialize new campaign state.")
-    p_st.add_argument("--advance", dest="action", action="store_const", const="advance", help="Mark current phase completed and advance.")
-    p_st.add_argument("--show", dest="action", action="store_const", const="show", help="Display current campaign progress.")
-    p_st.add_argument("--status-cmd", dest="action", action="store_const", const="status", help="Alias for show.")
-    p_st.add_argument("--target", default="", help="Refactoring target directory.")
-    p_st.add_argument("--plan", default="", help="Path to refactoring plan markdown.")
-    p_st.add_argument("--phases", type=int, default=4, help="Total phases in campaign.")
-    p_st.add_argument("--phase", type=int, default=None, help="Specific phase number to update/advance.")
-    p_st.add_argument("--phase-title", default="", help="Title for the active phase.")
-    p_st.add_argument("--status", default="", help="Status string (e.g. completed, in_progress, pending).")
-    p_st.add_argument("--sha", default="", help="Commit SHA to record.")
-    p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -440,6 +244,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_ver = sub.add_parser("verify", help="Diff contracts and check regressions.")
     _add_common_path_args(p_ver)
     p_ver.add_argument("--strict", action="store_true", help="Exit 1 on critical discrepancy.")
+    p_ver.add_argument("--ui", action="store_true", help="Run live CDP browser layout verification alongside static diff.")
+    p_ver.add_argument("--docker", action="store_true", help="Run container sync audit alongside static diff.")
+    p_ver.add_argument("--url", default="", help="Application URL for live UI verification.")
 
     p_smk = sub.add_parser("generate-smoke-test", help="Generate permanent unittest contract test.")
     _add_common_path_args(p_smk)
@@ -450,6 +257,28 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools (cdp_inspect, docker_audit, virtualenv).")
     p_prb.add_argument("--path", default=".", help="Target repository directory.")
+
+    p_css = sub.add_parser("inspect-css", help="Inspect stylesheet sections, @imports, CRLF, and !important.")
+    p_css.add_argument("--path", default=".", help="Target CSS file or directory.")
+    p_css.add_argument("--all", action="store_true", help="Display all section banners without truncation.")
+    p_css.add_argument("--strict", action="store_true", help="Exit 1 if any !important found.")
+
+    p_tst = sub.add_parser("run-tests", help="Run test suite using auto-detected virtualenv interpreter.")
+    p_tst.add_argument("--path", default=".", help="Target repository directory.")
+    p_tst.add_argument("test_args", nargs="*", help="Arguments forwarded to unittest (e.g. discover tests).")
+
+    p_vui = sub.add_parser("verify-ui", help="Run CDP browser layout and overflow inspection.")
+    p_vui.add_argument("--path", default=".", help="Target repository directory.")
+    p_vui.add_argument("--url", default="", help="Application URL (defaults to $APP_URL).")
+    p_vui.add_argument("--selectors", default="", help="CSS selectors to inspect.")
+    p_vui.add_argument("--headless", action="store_true", help="Launch isolated headless Chrome.")
+    p_vui.add_argument("--strict", action="store_true", help="Exit 1 on layout error or overflow.")
+
+    p_doc = sub.add_parser("audit-container", help="Run Docker CPU and file sync auditor.")
+    p_doc.add_argument("--path", default=".", help="Target repository directory.")
+    p_doc.add_argument("--container", default="", help="Target container name.")
+    p_doc.add_argument("--workdir", default="/app", help="Container working directory.")
+    p_doc.add_argument("--sync-check", nargs="*", default=[], help="Files to verify MD5 sync against container.")
     return p
 
 
@@ -473,8 +302,24 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_capture(target, getattr(args, "out", ""), getattr(args, "git_ref", ""))
     if args.subcommand == "inspect":
         return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
+    if args.subcommand == "inspect-css":
+        return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
+    if args.subcommand == "run-tests":
+        return cmd_run_tests(target, getattr(args, "test_args", []))
+    if args.subcommand == "verify-ui":
+        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), getattr(args, "headless", False), getattr(args, "strict", False))
+    if args.subcommand == "audit-container":
+        return cmd_audit_container(target, getattr(args, "container", ""), getattr(args, "workdir", "/app"), getattr(args, "sync_check", []))
     if args.subcommand == "verify":
-        return cmd_verify(target, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict)
+        return cmd_verify(
+            target,
+            getattr(args, "before", ""),
+            getattr(args, "git_ref", ""),
+            args.strict,
+            getattr(args, "ui", False),
+            getattr(args, "docker", False),
+            getattr(args, "url", ""),
+        )
     if args.subcommand == "generate-smoke-test":
         return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
     if args.subcommand == "state":
@@ -487,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
             phase_title=getattr(args, "phase_title", ""),
             status=getattr(args, "status", ""),
             sha=getattr(args, "sha", ""),
+            note=getattr(args, "note", ""),
             as_json=getattr(args, "json", False),
         )
     return 0
