@@ -13,8 +13,11 @@ from pathlib import Path
 
 from scripts.contract_snapshot import (
     CodebaseContract,
+    cmd_generate_smoke_test,
+    cmd_state,
     diff_contracts,
     discover_optional_tools,
+    get_refactor_dir,
 )
 from scripts.surface_scanners import (
     scan_css_surface,
@@ -112,6 +115,20 @@ class TestContractDiffEngine(unittest.TestCase):
         issues = diff_contracts(before, after)
         self.assertTrue(any("ghost-element" in iss for iss in issues))
 
+    def test_diff_ignores_preexisting_unmapped_dom_ids(self):
+        """Pre-existing unmapped JS queries present in baseline must not trigger false positive regression."""
+        before = CodebaseContract(html_ids=["cam-1"], js_queried_ids=["cam-1", "legacy-dead-id"])
+        after = CodebaseContract(html_ids=["cam-1"], js_queried_ids=["cam-1", "legacy-dead-id"])
+        issues = diff_contracts(before, after)
+        self.assertEqual(issues, [])
+
+    def test_diff_detects_removed_html_id_when_queried_by_js(self):
+        """If an HTML ID is deleted during refactoring while JS queries it, must trigger CRITICAL DOM."""
+        before = CodebaseContract(html_ids=["cam-1", "player-box"], js_queried_ids=["player-box"])
+        after = CodebaseContract(html_ids=["cam-1"], js_queried_ids=["player-box"])
+        issues = diff_contracts(before, after)
+        self.assertTrue(any("player-box" in iss for iss in issues))
+
     def test_diff_detects_lost_globals_and_selects(self):
         before = CodebaseContract(
             select_ids=["cam-select", "studio-cam-select"],
@@ -136,6 +153,51 @@ class TestContractDiffEngine(unittest.TestCase):
         after = CodebaseContract(css_important_count=5)
         issues = diff_contracts(before, after)
         self.assertTrue(any("!important count increased" in iss for iss in issues))
+
+    def test_state_management_lifecycle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            target = base / "dashboard"
+            target.mkdir()
+
+            # 1. Init state
+            code = cmd_state(target, action="init", plan=".refactor/plan.md", phases=3, phase_title="Domain Decoupling")
+            self.assertEqual(code, 0)
+            state_file = base / ".refactor" / "state.json"
+            self.assertTrue(state_file.exists())
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertEqual(state["active_phase"], 1)
+            self.assertEqual(state["total_phases"], 3)
+            self.assertEqual(state["phases"]["1"]["title"], "Domain Decoupling")
+
+            # 2. Advance phase
+            code = cmd_state(target, action="advance", sha="abcdef1")
+            self.assertEqual(code, 0)
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertEqual(state["active_phase"], 2)
+            self.assertEqual(state["phases"]["1"]["status"], "completed")
+            self.assertEqual(state["phases"]["1"]["sha"], "abcdef1")
+
+    def test_generate_smoke_test_scopes_root_and_excludes_ignored_dirs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            dashboard = base / "dashboard"
+            dashboard.mkdir()
+            (dashboard / "index.html").write_text('<select id="cam-sel"></select><div id="player"></div>', encoding="utf-8")
+            (dashboard / "styles.css").write_text('.c { color: red !important; }', encoding="utf-8")
+
+            out_test = base / "tests" / "test_refactor_contract.py"
+            code = cmd_generate_smoke_test(dashboard, out_file=str(out_test))
+            self.assertEqual(code, 0)
+            self.assertTrue(out_test.exists())
+
+            test_content = out_test.read_text(encoding="utf-8")
+            self.assertIn("cam-sel", test_content)
+            self.assertIn("dashboard", test_content)
+            self.assertIn('".refactor"', test_content)
+            self.assertIn('".venv"', test_content)
 
     def test_optional_tool_discovery_does_not_crash(self):
         tools = discover_optional_tools()

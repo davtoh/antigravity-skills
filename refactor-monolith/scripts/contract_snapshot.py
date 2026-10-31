@@ -3,6 +3,7 @@
 
 Captures and diffs AST, DOM, global export, and route contracts before and after
 refactoring across Python, HTML, JavaScript, and CSS without external dependencies.
+Manages persistent campaign state in .refactor/state.json across conversation turns.
 """
 
 from __future__ import annotations
@@ -27,6 +28,13 @@ from surface_scanners import (  # noqa: E402
     scan_python_surface,
 )
 
+IGNORED_DIRS: frozenset[str] = frozenset({
+    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "dist", "build", "_build", "out", "target", ".idea", ".vscode",
+    "scratch", "coverage", "htmlcov", "migrations", ".refactor",
+})
+
 
 @dataclass
 class CodebaseContract:
@@ -49,6 +57,31 @@ class CodebaseContract:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CodebaseContract:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
+def get_repo_root(target: Path | None = None) -> Path:
+    """Resolve repository root by looking for .git, .refactor, or fallback to target/cwd."""
+    start = (target or Path.cwd()).resolve()
+    cur = start if start.is_dir() else start.parent
+    for parent in [cur, *cur.parents]:
+        if (parent / ".git").exists() or (parent / ".refactor").exists():
+            return parent
+    return cur
+
+
+def get_refactor_dir(target: Path | None = None) -> Path:
+    """Get or create the .refactor state directory with a self-contained .gitignore."""
+    rdir = get_repo_root(target) / ".refactor"
+    rdir.mkdir(parents=True, exist_ok=True)
+    gitignore = rdir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(
+            "# Local refactoring campaign state, snapshots, and helper scripts\n"
+            "# Ignored by default so they never pollute git status; use `git add -f` if versioning is desired.\n"
+            "*\n",
+            encoding="utf-8",
+        )
+    return rdir
 
 
 def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
@@ -86,11 +119,21 @@ def read_file_content(path: Path, git_ref: str = "", cwd: Path | None = None) ->
 
 
 def iter_repo_files(base_dir: Path, git_ref: str = "") -> list[Path]:
-    """List source files in target directory, optionally from a historical git commit."""
+    """List source files in target directory, pruning ignored directories and git commits."""
     if git_ref:
         code, out = _run_git(["ls-tree", "-r", "--name-only", git_ref], cwd=base_dir)
-        return [Path(p) for p in out.splitlines() if p.strip()] if code == 0 else []
-    return [p for p in base_dir.rglob("*") if p.is_file() and ".git" not in p.parts]
+        if code != 0:
+            return []
+        res: list[Path] = []
+        for line in out.splitlines():
+            line = line.strip()
+            if line and not any(part in IGNORED_DIRS for part in Path(line).parts):
+                res.append(Path(line))
+        return res
+    return [
+        p for p in base_dir.rglob("*")
+        if p.is_file() and not any(part in IGNORED_DIRS for part in p.parts)
+    ]
 
 
 def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
@@ -147,16 +190,37 @@ def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any]) -> None:
 def diff_contracts(before: CodebaseContract, after: CodebaseContract) -> list[str]:
     """Compare before and after contracts and return list of critical discrepancies."""
     issues: list[str] = []
-    missing_ids = [i for i in after.js_queried_ids if after.html_ids and i not in after.html_ids]
-    for mid in sorted(missing_ids):
-        issues.append(f"[CRITICAL DOM] JS queries #{mid} via getElementById/querySelector, but id='{mid}' is missing in HTML!")
+
+    # 1. DOM Discrepancy & Regression Detection:
+    # A regression occurs when:
+    # a) An HTML ID present before the refactor is removed from HTML after, AND JavaScript still queries it.
+    # b) JavaScript queries an ID that is newly missing in HTML compared to the baseline contract.
+    before_missing = set(before.js_queried_ids) - set(before.html_ids) if before.js_queried_ids else set()
+    current_missing = set(after.js_queried_ids) - set(after.html_ids)
+    newly_missing = current_missing - before_missing
+    removed_html_ids = (set(before.html_ids) - set(after.html_ids)) & set(after.js_queried_ids)
+
+    critical_dom_ids = sorted(newly_missing | removed_html_ids)
+    for mid in critical_dom_ids:
+        if mid in removed_html_ids:
+            issues.append(f"[CRITICAL DOM] Element id='{mid}' present before refactor was removed from HTML, but JS still queries #{mid}!")
+        else:
+            issues.append(f"[CRITICAL DOM] JS queries #{mid} via getElementById/querySelector, but id='{mid}' is missing in HTML!")
+
+    # 2. Interactive Select Dropdown Regressions:
     for sel in sorted(set(before.select_ids) - set(after.select_ids)):
         issues.append(f"[CRITICAL SELECT] Interactive dropdown #{sel} present before refactor was removed or renamed!")
+
+    # 3. Global window.* Exports Regressions:
     for g in sorted(set(before.js_global_exports) - set(after.js_global_exports)):
         issues.append(f"[CRITICAL GLOBAL] Pre-refactor window.{g} export was lost during decomposition!")
+
     _check_handlers_and_routes(before, after, issues)
+
+    # 4. CSS Specificity Creep:
     if after.css_important_count > before.css_important_count:
         issues.append(f"[CRITICAL CSS] !important count increased from {before.css_important_count} to {after.css_important_count}!")
+
     return issues
 
 
@@ -213,9 +277,13 @@ def cmd_anchor(target: Path, worktree_dir: str = "") -> int:
 
 
 def cmd_capture(target: Path, out_file: str, git_ref: str = "") -> int:
-    """Capture codebase contract to JSON file."""
+    """Capture codebase contract to JSON file (defaults to .refactor/baseline.json)."""
     contract = build_contract(target, git_ref)
-    out_path = Path(out_file) if out_file else target / ".refactor_baseline.json"
+    if out_file:
+        out_path = Path(out_file)
+    else:
+        out_path = get_refactor_dir(target) / "baseline.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(contract.to_dict(), indent=2), encoding="utf-8")
     src = f"git ref {git_ref}" if git_ref else "live workspace"
     print(f"Contract captured from {src} -> {out_path} ({len(contract.html_ids)} IDs, {len(contract.select_ids)} Selects, {len(contract.js_global_exports)} Globals, {len(contract.python_routes)} Routes)")
@@ -244,11 +312,20 @@ def cmd_inspect(target: Path, git_ref: str = "", before_file: str = "") -> int:
 def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: bool = False) -> int:
     """Diff current codebase contract against baseline or historical git commit."""
     if before_file and Path(before_file).is_file():
-        before = CodebaseContract.from_dict(json.loads(Path(before_file).read_text(encoding="utf-8")))
+        before_path = Path(before_file)
+    elif not before_file and not git_ref and (get_refactor_dir(target) / "baseline.json").is_file():
+        before_path = get_refactor_dir(target) / "baseline.json"
+    elif not before_file and not git_ref and (target / ".refactor_baseline.json").is_file():
+        before_path = target / ".refactor_baseline.json"
+    else:
+        before_path = None
+
+    if before_path:
+        before = CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
     elif git_ref:
         before = build_contract(target, git_ref)
     else:
-        print("Error: provide --before <file.json> or --git-ref <sha> to verify against.", file=sys.stderr)
+        print("Error: provide --before <file.json> or --git-ref <sha> to verify against (or ensure .refactor/baseline.json exists).", file=sys.stderr)
         return 2
 
     after = build_contract(target)
@@ -270,15 +347,20 @@ def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: b
     else:
         print("  [Self-Contained Mode] Built-in static contract verifier active. (Optional live tools not found)")
 
-    test_files = [f for f in iter_repo_files(target) if "test" in f.name.lower()]
-    if not any("smoke" in f.name.lower() or "contract" in f.name.lower() for f in test_files):
+    # Search for tests in target, target/tests, and root tests/
+    repo_root = get_repo_root(target)
+    test_candidates: list[Path] = []
+    for search_dir in [target, target / "tests", target.parent / "tests", repo_root / "tests"]:
+        if search_dir.is_dir():
+            test_candidates.extend(iter_repo_files(search_dir))
+    if not any("smoke" in f.name.lower() or "contract" in f.name.lower() for f in test_candidates):
         print("\n[BLINDSPOT WARNING] No frontend contract smoke test found in tests/!")
         print("Run `contract_snapshot.py generate-smoke-test --out tests/test_refactor_contract.py` to lock in parity.")
 
     return 1 if (strict and issues) else 0
 
 
-def _build_smoke_template(select_ids: list[str], important_count: int) -> str:
+def _build_smoke_template(root_expr: str, select_ids: list[str], important_count: int, html_ids: list[str]) -> str:
     """Render unit test code string for contract smoke verification."""
     return f'''# Generated Contract Smoke Test - Enforces Zero-Regression Refactoring Parity
 import pathlib
@@ -288,25 +370,37 @@ import unittest
 class TestCodebaseContractInvariants(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.root = pathlib.Path(__file__).resolve().parent.parent
-        cls.html_text = "".join(p.read_text(encoding="utf-8", errors="replace") + "\\n" for p in cls.root.rglob("*.html") if ".git" not in p.parts)
-        cls.js_text = "".join(p.read_text(encoding="utf-8", errors="replace") + "\\n" for p in cls.root.rglob("*.js") if ".git" not in p.parts)
+        cls.root = {root_expr}
+        ignored = {{".git", ".venv", "venv", "env", "node_modules", "__pycache__", "_build", "build", "dist", ".refactor", "scratch"}}
+        cls.html_text = "".join(
+            p.read_text(encoding="utf-8", errors="replace") + "\\n"
+            for p in cls.root.rglob("*.html")
+            if not any(part in ignored for part in p.parts)
+        )
+        cls.js_text = "".join(
+            p.read_text(encoding="utf-8", errors="replace") + "\\n"
+            for p in cls.root.rglob("*.js")
+            if not any(part in ignored for part in p.parts)
+        )
 
     def test_dom_interactive_selects_exist(self):
         """Verify all critical <select> dropdown IDs exist in HTML."""
         for sel in {repr(select_ids)}:
             self.assertIn(f'id="{{sel}}"', self.html_text, f"Missing select dropdown #{{sel}} in HTML!")
 
-    def test_js_queries_match_existing_dom_ids(self):
-        """Verify every getElementById queried in JS actually exists in HTML."""
-        queried = set(re.findall(r'getElementById\\(["\\']([a-zA-Z0-9_\\-]+)["\\']\\)', self.js_text))
-        for q_id in sorted(queried):
-            if not q_id.startswith(("dynamic", "test")):
-                self.assertIn(f'id="{{q_id}}"', self.html_text, f"JS queries #{{q_id}} but it is missing in HTML!")
+    def test_dom_element_ids_preserved(self):
+        """Verify captured baseline HTML element IDs are preserved."""
+        for el_id in {repr(html_ids)}:
+            self.assertIn(f'id="{{el_id}}"', self.html_text, f"Critical DOM element id='{{el_id}}' was removed from HTML!")
 
     def test_zero_css_important_creep(self):
-        """Verify CSS does not exceed baseline !important threshold."""
-        css_text = "".join(p.read_text(encoding="utf-8", errors="replace") for p in self.root.rglob("*.css") if ".git" not in p.parts)
+        """Verify scoped CSS does not exceed baseline !important threshold."""
+        ignored = {{".git", ".venv", "venv", "env", "node_modules", "__pycache__", "_build", "build", "dist", ".refactor", "scratch"}}
+        css_text = "".join(
+            p.read_text(encoding="utf-8", errors="replace")
+            for p in self.root.rglob("*.css")
+            if not any(part in ignored for part in p.parts)
+        )
         count = len(re.findall(r'!important\\b', css_text, re.IGNORECASE))
         self.assertLessEqual(count, {important_count}, f"!important count increased to {{count}}!")
 
@@ -318,10 +412,145 @@ if __name__ == "__main__":
 def cmd_generate_smoke_test(target: Path, out_file: str, before_file: str = "", git_ref: str = "") -> int:
     """Generate standalone unittest file enforcing contract parity."""
     c = CodebaseContract.from_dict(json.loads(Path(before_file).read_text(encoding="utf-8"))) if before_file else build_contract(target, git_ref)
-    out_p = Path(out_file) if out_file else target / "tests" / "test_refactor_contract.py"
+    repo_root = get_repo_root(target)
+    out_p = Path(out_file) if out_file else repo_root / "tests" / "test_refactor_contract.py"
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    out_p.write_text(_build_smoke_template(c.select_ids, c.css_important_count), encoding="utf-8")
+
+    try:
+        rel_target = target.relative_to(repo_root)
+        if str(rel_target) in (".", ""):
+            root_expr = "pathlib.Path(__file__).resolve().parent.parent"
+        else:
+            root_expr = f'pathlib.Path(__file__).resolve().parent.parent / "{rel_target.as_posix()}"'
+    except ValueError:
+        root_expr = f'pathlib.Path(r"{target.as_posix()}")'
+
+    out_p.write_text(_build_smoke_template(root_expr, c.select_ids, c.css_important_count, c.html_ids), encoding="utf-8")
     print(f"Generated contract smoke test -> {out_p}")
+    return 0
+
+
+def cmd_state(
+    target: Path,
+    action: str,
+    plan: str = "",
+    phases: int = 4,
+    phase: int | None = None,
+    phase_title: str = "",
+    status: str = "",
+    sha: str = "",
+    as_json: bool = False,
+) -> int:
+    """Manage persistent campaign state in .refactor/state.json across conversation turns."""
+    rdir = get_refactor_dir(target)
+    state_file = rdir / "state.json"
+    repo_root = get_repo_root(target)
+
+    state: dict[str, Any] = {}
+    if state_file.is_file():
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
+
+    if action == "init":
+        target_rel = str(target.relative_to(repo_root).as_posix()) if target != repo_root else "."
+        plan_rel = str(Path(plan).relative_to(repo_root).as_posix()) if plan and Path(plan).is_absolute() else (plan or ".refactor/plan.md")
+        phase_dict = {}
+        for p in range(1, phases + 1):
+            phase_dict[str(p)] = {
+                "title": phase_title if p == 1 and phase_title else f"Phase {p}",
+                "status": "pending",
+                "sha": "",
+            }
+        state = {
+            "campaign": target.name if target != repo_root else "root",
+            "target_path": target_rel,
+            "active_phase": 1,
+            "total_phases": phases,
+            "plan_path": plan_rel,
+            "baseline_contract": ".refactor/baseline.json",
+            "status": "in_progress",
+            "phases": phase_dict,
+        }
+        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        print(f"Initialized refactoring campaign state -> {state_file}")
+        print(f"  Active Phase: 1 of {phases} | Target: {target_rel} | Plan: {plan_rel}")
+        return 0
+
+    if not state:
+        if action in ("show", "status"):
+            print("No active refactoring campaign found in .refactor/state.json.")
+            return 0
+        print("Error: .refactor/state.json not initialized. Run `contract_snapshot.py state --init --target <path> --plan <file>` first.", file=sys.stderr)
+        return 2
+
+    if action == "advance":
+        cur = phase or state.get("active_phase", 1)
+        total = state.get("total_phases", 4)
+        p_str = str(cur)
+        if p_str in state.get("phases", {}):
+            state["phases"][p_str]["status"] = status or "completed"
+            if sha:
+                state["phases"][p_str]["sha"] = sha
+            elif not state["phases"][p_str].get("sha"):
+                state["phases"][p_str]["sha"] = get_git_sha(target)
+        nxt = cur + 1
+        if nxt <= total:
+            state["active_phase"] = nxt
+            nxt_str = str(nxt)
+            if nxt_str in state.get("phases", {}):
+                state["phases"][nxt_str]["status"] = "active"
+            state["status"] = "in_progress"
+            print(f"Advanced campaign: Phase {cur} completed. Active Phase is now {nxt} of {total}.")
+        else:
+            state["status"] = "completed"
+            print(f"Refactoring campaign completed! All {total} phases verified and closed.")
+        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        return 0
+
+    if action == "set":
+        if phase is not None:
+            state["active_phase"] = phase
+            p_str = str(phase)
+            if p_str in state.get("phases", {}):
+                if status:
+                    state["phases"][p_str]["status"] = status
+                if phase_title:
+                    state["phases"][p_str]["title"] = phase_title
+                if sha:
+                    state["phases"][p_str]["sha"] = sha
+        if status and phase is None:
+            state["status"] = status
+        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        print(f"Updated campaign state: Active Phase {state.get('active_phase')}, status={state.get('status')}")
+        return 0
+
+    if as_json:
+        print(json.dumps(state, indent=2))
+        return 0
+
+    act = state.get("active_phase", 1)
+    tot = state.get("total_phases", 4)
+    st = state.get("status", "unknown")
+    phases_map = state.get("phases", {})
+    act_title = phases_map.get(str(act), {}).get("title", f"Phase {act}")
+
+    print("=== Active Refactoring Campaign State ===")
+    print(f"Target Subsystem:  {state.get('target_path', '.')}")
+    print(f"Campaign Status:   {st.upper()} (Active: Phase {act} of {tot})")
+    print(f"Plan Document:     {state.get('plan_path', '.refactor/plan.md')}")
+    print(f"Baseline Snapshot: {state.get('baseline_contract', '.refactor/baseline.json')}")
+    print("\n--- Phases Overview ---")
+    for p_num, p_info in sorted(phases_map.items(), key=lambda x: int(x[0])):
+        icon = "✅" if p_info.get("status") == "completed" else ("▶️" if int(p_num) == act else "⏳")
+        sha_str = f" ({p_info.get('sha')[:7]})" if p_info.get("sha") else ""
+        print(f"  {icon} Phase {p_num}: {p_info.get('title', '')} [{p_info.get('status', 'pending')}]{sha_str}")
+
+    if st != "completed":
+        print(f"\n--- Resumption Instruction for Next Chat ---")
+        print(f"To continue Phase {act} ({act_title}) in a fresh chat, tell the agent:")
+        print(f"  /refactor-monolith continue")
     return 0
 
 
@@ -341,7 +570,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_anc.add_argument("--path", default=".", help="Target repository directory.")
     p_anc.add_argument("--worktree-dir", default="", help="Optional worktree path.")
 
-    p_cap = sub.add_parser("capture", help="Capture contract to JSON file.")
+    p_cap = sub.add_parser("capture", help="Capture contract to JSON file (defaults to .refactor/baseline.json).")
     _add_common_path_args(p_cap)
     p_cap.add_argument("--out", default="", help="Output JSON path.")
 
@@ -355,6 +584,22 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_smk = sub.add_parser("generate-smoke-test", help="Generate permanent unittest contract test.")
     _add_common_path_args(p_smk)
     p_smk.add_argument("--out", default="", help="Output test file path.")
+
+    p_st = sub.add_parser("state", help="Manage in-repo .refactor campaign state across conversation turns.")
+    p_st.add_argument("--path", default=".", help="Target repository directory.")
+    p_st.add_argument("--action", choices=["init", "show", "status", "advance", "set"], default="show", help="Action.")
+    p_st.add_argument("--init", dest="action", action="store_const", const="init", help="Initialize new campaign state.")
+    p_st.add_argument("--advance", dest="action", action="store_const", const="advance", help="Mark current phase completed and advance.")
+    p_st.add_argument("--show", dest="action", action="store_const", const="show", help="Display current campaign progress.")
+    p_st.add_argument("--status-cmd", dest="action", action="store_const", const="status", help="Alias for show.")
+    p_st.add_argument("--target", default="", help="Refactoring target directory.")
+    p_st.add_argument("--plan", default="", help="Path to refactoring plan markdown.")
+    p_st.add_argument("--phases", type=int, default=4, help="Total phases in campaign.")
+    p_st.add_argument("--phase", type=int, default=None, help="Specific phase number to update/advance.")
+    p_st.add_argument("--phase-title", default="", help="Title for the active phase.")
+    p_st.add_argument("--status", default="", help="Status string (e.g. completed, in_progress, pending).")
+    p_st.add_argument("--sha", default="", help="Commit SHA to record.")
+    p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
 
     sub.add_parser("probe-tools", help="Discover optional auxiliary tools (cdp_inspect, docker_audit).")
     return p
@@ -383,6 +628,18 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_verify(target, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict)
     if args.subcommand == "generate-smoke-test":
         return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
+    if args.subcommand == "state":
+        return cmd_state(
+            target,
+            action=args.action,
+            plan=getattr(args, "plan", ""),
+            phases=getattr(args, "phases", 4),
+            phase=getattr(args, "phase", None),
+            phase_title=getattr(args, "phase_title", ""),
+            status=getattr(args, "status", ""),
+            sha=getattr(args, "sha", ""),
+            as_json=getattr(args, "json", False),
+        )
     return 0
 
 

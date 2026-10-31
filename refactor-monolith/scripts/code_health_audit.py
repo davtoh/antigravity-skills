@@ -39,7 +39,7 @@ IGNORED_DIRS: frozenset[str] = frozenset({
     ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
     "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
     "dist", "build", "_build", "out", "target", ".idea", ".vscode",
-    "scratch", "coverage", "htmlcov", "migrations",
+    "scratch", "coverage", "htmlcov", "migrations", ".refactor",
 })
 
 
@@ -343,7 +343,7 @@ def preview_split(spec: str) -> int:
 def build_arg_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
     p = argparse.ArgumentParser(description="Cross-platform modularity & AST budget auditor.")
-    p.add_argument("--path", default=".", help="Target file or directory path.")
+    p.add_argument("--path", nargs="+", default=["."], help="Target file(s) or directory path(s).")
     p.add_argument("--top", type=int, default=None, help="Max files to display (default: all up to 50).")
     p.add_argument("--warn-file-lines", type=int, default=350)
     p.add_argument("--max-file-lines", type=int, default=500)
@@ -361,17 +361,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _collect_reports(
-    target: Path, thresholds: AuditThresholds, include_vendor: bool
+    targets: list[Path], thresholds: AuditThresholds, include_vendor: bool
 ) -> list[FileReport]:
-    """Gather FileReports while filtering header-detected vendor/minified files."""
-    base_dir = target if target.is_dir() else target.parent
+    """Gather FileReports across targets while filtering header-detected vendor/minified files."""
     reports: list[FileReport] = []
-    for f in iter_source_files(target, include_vendor=include_vendor):
-        if not include_vendor and not target.is_file():
-            head = f.read_text(encoding="utf-8", errors="replace").splitlines()[:8]
-            if is_vendor_or_generated(f, f.relative_to(base_dir).parts, head):
+    seen_files: set[Path] = set()
+    for target in targets:
+        base_dir = target if target.is_dir() else target.parent
+        for f in iter_source_files(target, include_vendor=include_vendor):
+            if f in seen_files:
                 continue
-        reports.append(audit_file(f, base_dir, thresholds))
+            seen_files.add(f)
+            if not include_vendor and not target.is_file():
+                head = f.read_text(encoding="utf-8", errors="replace").splitlines()[:8]
+                if is_vendor_or_generated(f, f.relative_to(base_dir).parts, head):
+                    continue
+            reports.append(audit_file(f, base_dir, thresholds))
     return reports
 
 
@@ -380,15 +385,19 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     if args.split_preview:
         return preview_split(args.split_preview)
-    target = Path(args.path).resolve()
-    if not target.exists():
-        print(f"Error: path does not exist: {args.path}", file=sys.stderr)
-        return 2
+    raw_paths = args.path if isinstance(args.path, list) else [args.path]
+    targets: list[Path] = []
+    for rp in raw_paths:
+        tp = Path(rp).resolve()
+        if not tp.exists():
+            print(f"Error: path does not exist: {rp}", file=sys.stderr)
+            return 2
+        targets.append(tp)
     thresholds = AuditThresholds(
         args.warn_file_lines, args.max_file_lines,
         args.warn_class_methods, args.max_class_methods, args.max_func_lines,
     )
-    reports = _collect_reports(target, thresholds, args.include_vendor)
+    reports = _collect_reports(targets, thresholds, args.include_vendor)
     top_limit = args.top if args.top is not None else max(50, len(reports))
     if args.json:
         ranked = sorted(reports, key=lambda r: r.lines, reverse=True)[: top_limit]

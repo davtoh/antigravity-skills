@@ -158,6 +158,30 @@ class TestSourceFileAuditAndCli(unittest.TestCase):
             rel_vendor = [p.relative_to(base).as_posix() for p in iter_source_files(base, include_vendor=True)]
             self.assertIn("src/slick.js", rel_vendor)
 
+    def test_iter_source_files_prunes_refactor_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / "src").mkdir()
+            (base / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+            (base / ".refactor").mkdir()
+            (base / ".refactor" / "scratch.py").write_text("temp = 2\n", encoding="utf-8")
+
+            rel_default = [p.relative_to(base).as_posix() for p in iter_source_files(base)]
+            self.assertEqual(rel_default, ["src/app.py"])
+
+    def test_cli_supports_multiple_path_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            f1 = base / "file1.py"
+            f2 = base / "file2.py"
+            f1.write_text("def a(): pass\n", encoding="utf-8")
+            f2.write_text("def b(): pass\n", encoding="utf-8")
+            with patch("sys.stdout", new_callable=io.StringIO) as out:
+                code = main(["--path", str(f1), str(f2), "--json"])
+                self.assertEqual(code, 0)
+                payload = json.loads(out.getvalue())
+                self.assertEqual(payload["total_files"], 2)
+
     def test_audit_file_measures_lines(self) -> None:
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
             f.write("a = 1\nb = 2\nc = 3\n")
