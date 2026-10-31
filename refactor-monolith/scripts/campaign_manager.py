@@ -175,6 +175,24 @@ def _add_state_cli_args(p_st: Any) -> None:
     p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
 
 
+def print_turn_ceiling_alert(note: str = "") -> None:
+    """Print high-visibility turn ceiling gate instructions to prevent cumulative token burn."""
+    print("\n" + "=" * 70)
+    print("🛑 [TURN CEILING GATE: STOP AND COMMIT]")
+    print("-" * 70)
+    if note:
+        print(f"  Checkpoint / Batch Completed: {note}")
+    print("  CRITICAL EFFICIENCY & ATTENTION RULE:")
+    print("  Do not execute another extraction batch in this same conversation turn.")
+    print("  Exceeding 20-25 tool calls triggers context compaction, attention loss,")
+    print("  and 200+ step token explosions (e.g. hundreds of thousands of burned tokens).")
+    print("\n  REQUIRED ACTIONS BEFORE MORE EDITS:")
+    print("  1. Stage and commit verified slice: git commit -m '...'")
+    print("  2. Advance campaign state: contract_snapshot.py state --advance")
+    print("  3. STOP now and instruct user: 'Run /refactor-monolith continue in a fresh chat.'")
+    print("=" * 70 + "\n")
+
+
 def _save_checkpoint(state_file: Path, state: dict[str, Any], note: str, sha: str, target: Path) -> int:
     """Save an intermediate slice checkpoint into state.json."""
     c_sha = sha or get_git_sha(target)
@@ -185,7 +203,7 @@ def _save_checkpoint(state_file: Path, state: dict[str, Any], note: str, sha: st
     state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
     sha_str = f" ({c_sha[:7]})" if c_sha else ""
     print(f"Saved campaign checkpoint: {note or 'Intermediate slice'}{sha_str}")
-    print("[Turn Budget Tip] If this turn has reached 20-25 tool calls, commit and run `/refactor-monolith continue` in a fresh chat.")
+    print_turn_ceiling_alert(note)
     return 0
 
 

@@ -53,10 +53,16 @@ from surface_scanners import (  # noqa: E402
 )
 from auxiliary_tool_bridge import (  # noqa: E402
     cmd_audit_container,
+    cmd_diagnose,
     cmd_run_tests,
     cmd_verify_ui,
     discover_optional_tools,
     print_verification_matrix,
+)
+from file_patcher import (  # noqa: E402
+    cmd_normalize_eol,
+    inject_html_scripts,
+    patch_file_content,
 )
 from css_inspector import cmd_inspect_css  # noqa: E402
 from contract_diff_engine import (  # noqa: E402
@@ -258,8 +264,8 @@ def _register_contract_subparsers(sub: Any) -> None:
     _add_state_cli_args(p_st)
 
 
-def _register_auxiliary_subparsers(sub: Any) -> None:
-    """Register tool discovery, test execution, and CSS inspection commands."""
+def _register_tool_subparsers(sub: Any) -> None:
+    """Register tool discovery, test execution, CSS, and container audit parsers."""
     p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools.")
     p_prb.add_argument("--path", default=".", help="Target repository directory.")
 
@@ -286,13 +292,72 @@ def _register_auxiliary_subparsers(sub: Any) -> None:
     p_doc.add_argument("--sync-check", nargs="*", default=[], help="Files to verify MD5 sync.")
 
 
+def _register_diagnostic_and_patch_subparsers(sub: Any) -> None:
+    """Register diagnose, EOL normalizer, patch, and script injection parsers."""
+    p_diag = sub.add_parser("diagnose", help="Execute 1-command 3-tier diagnostic (AST/DOM contract, Docker sync, live CDP).")
+    _add_common_path_args(p_diag)
+    p_diag.add_argument("--url", default="", help="Application URL (auto-detected if omitted).")
+    p_diag.add_argument("--container", default="", help="Target container name (auto-detected if omitted).")
+    p_diag.add_argument("--strict", action="store_true", help="Exit 1 if any tier fails.")
+
+    p_eol = sub.add_parser("normalize-eol", help="Normalize line endings across text files to prevent CRLF mismatches.")
+    p_eol.add_argument("--path", default=".", help="Target repository directory or file.")
+    p_eol.add_argument("--to", choices=["lf", "crlf"], default="lf", help="Target line ending (default: lf).")
+
+    p_ptc = sub.add_parser("patch", help="Line-ending agnostic file search/replace.")
+    p_ptc.add_argument("--file", required=True, help="Path to file to patch.")
+    p_ptc.add_argument("--find", default="", help="Target text to find.")
+    p_ptc.add_argument("--replace", default="", help="Replacement text.")
+    p_ptc.add_argument("--find-file", default="", help="File containing target text.")
+    p_ptc.add_argument("--replace-file", default="", help="File containing replacement text.")
+    p_ptc.add_argument("--count", type=int, default=1, help="Max replacements (default: 1, 0 for all).")
+
+    p_inj = sub.add_parser("inject-scripts", help="Inject <script src='...'> tags into HTML safely.")
+    p_inj.add_argument("--html", required=True, help="Target HTML file.")
+    p_inj.add_argument("--scripts", nargs="+", required=True, help="Script paths/URLs to inject.")
+    p_inj.add_argument("--before", default="", help="Existing script name to inject before.")
+
+
 def build_cli_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
     p = argparse.ArgumentParser(description="Cross-platform codebase contract snapshot and regression auditor.")
     sub = p.add_subparsers(dest="subcommand", required=True)
     _register_contract_subparsers(sub)
-    _register_auxiliary_subparsers(sub)
+    _register_tool_subparsers(sub)
+    _register_diagnostic_and_patch_subparsers(sub)
     return p
+
+
+def _dispatch_patch_or_script_cmd(subcmd: str, args: argparse.Namespace) -> int:
+    """Handle patch, inject-scripts, and normalize-eol commands."""
+    if subcmd == "normalize-eol":
+        return cmd_normalize_eol(Path(getattr(args, "path", ".")), getattr(args, "to", "lf"))
+    if subcmd == "patch":
+        find_str = args.find or (Path(args.find_file).read_text(encoding="utf-8") if args.find_file else "")
+        replace_str = args.replace or (Path(args.replace_file).read_text(encoding="utf-8") if args.replace_file else "")
+        ok, msg = patch_file_content(Path(args.file), find_str, replace_str, args.count)
+        print(msg)
+        return 0 if ok else 1
+    if subcmd == "inject-scripts":
+        ok, msg = inject_html_scripts(Path(args.html), args.scripts, getattr(args, "before", ""))
+        print(msg)
+        return 0 if ok else 1
+    return 0
+
+
+def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace) -> int:
+    """Handle testing, inspection, and live verification commands."""
+    if subcmd == "inspect-css":
+        return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
+    if subcmd == "run-tests":
+        return cmd_run_tests(target, getattr(args, "test_args", []))
+    if subcmd == "verify-ui":
+        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), getattr(args, "headless", False), getattr(args, "strict", False))
+    if subcmd == "audit-container":
+        return cmd_audit_container(target, getattr(args, "container", ""), getattr(args, "workdir", "/app"), getattr(args, "sync_check", []))
+    if subcmd == "diagnose":
+        return cmd_diagnose(target, getattr(args, "url", ""), getattr(args, "container", ""), getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "strict", False))
+    return _dispatch_patch_or_script_cmd(subcmd, args)
 
 
 def _dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
@@ -303,14 +368,6 @@ def _dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
         return cmd_capture(target, getattr(args, "out", ""), getattr(args, "git_ref", ""))
     if subcmd == "inspect":
         return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
-    if subcmd == "inspect-css":
-        return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
-    if subcmd == "run-tests":
-        return cmd_run_tests(target, getattr(args, "test_args", []))
-    if subcmd == "verify-ui":
-        return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), getattr(args, "headless", False), getattr(args, "strict", False))
-    if subcmd == "audit-container":
-        return cmd_audit_container(target, getattr(args, "container", ""), getattr(args, "workdir", "/app"), getattr(args, "sync_check", []))
     if subcmd == "verify":
         return cmd_verify(target, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
     if subcmd == "generate-smoke-test":
@@ -322,6 +379,7 @@ def _dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
             status=getattr(args, "status", ""), sha=getattr(args, "sha", ""), note=getattr(args, "note", ""),
             as_json=getattr(args, "json", False),
         )
+    return _dispatch_auxiliary_cmd(subcmd, target, args)
     return 0
 
 

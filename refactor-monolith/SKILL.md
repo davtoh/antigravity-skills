@@ -98,15 +98,15 @@ flowchart TD
 
 ### Mode B1: Initialize Project Campaign (`PROJECT_CAMPAIGN`)
 - **Trigger**: Entire project targeted **AND** `code_health_audit.py` reports `Recommended Mode: PROJECT_CAMPAIGN` ($> 2$ critical files).
-- **The 1-Phase-Per-Turn Execution Rule & 25-Step Budget**:
-  - **Never execute all phases in a single turn.** Attempting mega-executions burns context and compounds regressions.
-  - **The 25-Tool-Call Turn Ceiling**: If an active phase contains $> 4\text{--}6$ file extractions (e.g. 16 stylesheets or multiple JS modules), do NOT extract all files in one turn. Sub-slice into batches (e.g. Slices 1–3 Tokens/Layout, then Slices 4–6 Features).
-  - If a turn approaches 20–25 tool calls, save an intermediate checkpoint:
+- **The 2-Monolith / 25-Tool-Call Hard Turn Ceiling (Anti-Token-Explosion Gate)**:
+  - **Never execute all phases or more than 2 monoliths in a single turn.** Running mega-turns (e.g. 200+ steps) saturates context, triggers context compaction, degrades reasoning, and causes silent regressions.
+  - **The 2-Monolith Hard Turn Ceiling**: If an active phase contains $> 2$ monolith files or $> 4\text{--}6$ submodules (e.g. 5 JS monoliths or 16 stylesheets), it **MUST** be split into sub-batches of 1–2 monolith files per turn (e.g. Sub-Phase 4.1 Slices 1–2, Sub-Phase 4.2 Slices 3–4, Sub-Phase 4.3 Slice 5 + HTML).
+  - When the sub-batch is extracted and verified (or if a turn approaches 20–25 tool calls), save an intermediate checkpoint:
     ```bash
     python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
     ```
-    Present a clean commit command, and advise the user to run `/refactor-monolith continue` in a fresh chat.
-  - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1 (or Phase 1.1)**. Mark subsequent phases as *Deferred to Next Turn*.
+    Present a clean commit command, and **STOP execution**. Advise the user to run `/refactor-monolith continue` in a fresh chat.
+  - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1 (or Sub-Phase 1.1)**. Mark subsequent phases as *Deferred to Next Turn*.
   - Save the plan to `.refactor/plan.md` (or workspace root `dashboard_refactor_plan.md`) so it survives chat resets.
   - Initialize campaign tracking:
     ```bash
@@ -117,25 +117,38 @@ flowchart TD
     python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1
     ```
   - Update `MIGRATION_LOG.md`, present the clean commit command, and **stop**. Advise the user to commit and start a fresh turn:
-    > *"To proceed with Phase 2 in a fresh conversation, start a new chat and run: `/refactor-monolith continue`"*
+    > *"To proceed with the next sub-phase in a fresh conversation, start a new chat and run: `/refactor-monolith continue`"*
 
 ### Mode B2: Auto-Resume Campaign (`CAMPAIGN_RESUME`)
 - **Trigger**: User starts a fresh chat and runs `/refactor-monolith continue`, `/refactor-monolith resume`, or invokes the skill with an active `.refactor/state.json`.
 - **Workflow**:
   1. Inspect campaign state: `python "<skill_dir>/scripts/contract_snapshot.py" state --show`.
   2. Read `.refactor/plan.md` to load the objectives and file targets for the active phase.
-  3. Report resumption to the user: *"Resuming refactoring campaign for `<target>` at Phase X (`<Title>`). Authorizing Phase X only."*
-  4. If Phase X contains $> 4\text{--}6$ extractions, execute the first sub-batch, run Step 5 verification, save checkpoint (`state --checkpoint`), and offer to commit before proceeding to avoid cumulative token explosion.
-  5. Execute active phase slices -> run Step 5 verification ladder -> advance state via `state --advance` -> present commit command and stop.
+  3. Report resumption to the user: *"Resuming refactoring campaign for `<target>` at Phase X (`<Title>`). Authorizing Phase X (or Sub-Phase X.1) only."*
+  4. Decompose strictly $\le 2$ monolith files in this turn, run Step 5 verification, save checkpoint (`state --checkpoint`), advance state, present the commit command, and stop.
 
 ### Mode C: Post-Refactor Regression Recovery (`REGRESSION_RECOVERY`)
-- **Trigger**: The user reports that a previous refactor broke functionality (e.g. dropdowns, modals, event listeners), or asks to diagnose/remedy refactoring regressions.
-- **Workflow**:
-  1. Identify the pre-refactor golden commit SHA (e.g. `HEAD~1` or pre-refactor commit).
-  2. Run `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref <pre_refactor_sha> --strict` to immediately pinpoint every renamed ID, dropped `window.*` export, and broken handler.
+- **Trigger**: The user reports that a previous refactor broke functionality (e.g. flickering, page reloading loops, broken dropdowns, modals, lost event handlers, or container errors), or asks to diagnose/remedy refactoring regressions.
+- **Workflow (1-Command 3-Tier Diagnostic)**:
+  1. **Run 1-Command Unified Diagnostic**:
+     ```bash
+     python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path <target_dir>
+     ```
+     This automatically:
+     - Diffs against baseline contract or pre-refactor Git ref (detects dropped IDs, missing globals, broken routes).
+     - Auto-detects running Docker containers (`docker_audit`) to verify container sync, CPU, memory, and recent error logs.
+     - Auto-detects local dev servers on localhost (`cdp_inspect`) to detect JavaScript exceptions, reload loops, and layout overflows.
+     - Emits the complete 3-tier Axiom 9 verification matrix in a single tool call.
+  2. If specific URLs or container names are non-standard, pass explicit flags:
+     ```bash
+     python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path . --url $APP_URL --container <name> --git-ref <sha>
+     ```
   3. Optionally spin up a parallel worktree (`git worktree add ../pre_refactor <sha>`) for side-by-side behavioral comparison.
-  4. Generate a permanent contract smoke test (`contract_snapshot.py generate-smoke-test --path <target_dir>`) to lock in the required invariants.
-  5. Apply surgical fixes to restore all missing IDs, `window.*` exports, and event bindings.
+  4. Generate or execute the permanent contract smoke test (`contract_snapshot.py generate-smoke-test --path <target_dir>`).
+  5. Apply surgical fixes without shell quoting failures:
+     - For HTML script injection: use `contract_snapshot.py inject-scripts` (never write ad-hoc Python/PowerShell scripts).
+     - For Windows CRLF line endings: use `contract_snapshot.py patch` or `normalize-eol` (never write multiline PowerShell inline scripts).
+  6. Re-run `contract_snapshot.py diagnose --path <target_dir> --strict` to verify 100% resolution before closing turn.
 
 ---
 
@@ -175,9 +188,17 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 2. Move cohesive logic and imports. Use `--split-preview <file>:<line>` to check boundaries safely.
 3. **Preserve Comments & Math**: Carry over all mathematical formulas, OpenCV coordinates, and rationale verbatim.
 4. **CRLF Line-Ending & Tooling Discipline on Windows**:
-   - Check line endings via `--split-preview` or `inspect-css` before editing.
-   - If `edit_file` fails with `target content not found`, **DO NOT** attempt multiline PowerShell inline Python replacement commands (`python -c "target = '''...'''"`)—PowerShell parsing fails on nested brackets and quotes.
-   - Instead, use `read_file` to capture exact whitespace, or use whole-file `write_file` or `Copy-Item`.
+   - **Normalize to LF before editing**: Run `python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path <target_dir> --to lf` to ensure all workspace text files use consistent LF endings.
+   - **Line-Ending Agnostic Patching**: If `edit_file` fails with `target content not found`, **DO NOT** attempt multiline PowerShell inline Python replacement commands (`python -c "target = '''...'''"`)—PowerShell parsing fails on nested brackets and quotes. Instead, use:
+     ```bash
+     python "<skill_dir>/scripts/contract_snapshot.py" patch --file <file_path> --find "<target>" --replace "<replacement>"
+     ```
+     This normalizes newlines in both target and content, preserves native file endings, and never fails on PowerShell nested quotes.
+   - **Safe HTML Script Injection**: When adding new modular submodules to an HTML file, never write ad-hoc Python/PowerShell scripts (`update_html.py`). Instead, use:
+     ```bash
+     python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html <html_file> --before <target_script> --scripts <script_urls...>
+     ```
+     This automatically detects indentation, preserves CRLF/LF, skips duplicate tags, and places new tags in correct dependency order.
 
 > [!WARNING]
 > **Anti-Mega-Batch Rule (Atomic Slicing Gate)**:
@@ -271,6 +292,10 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Advance Campaign Phase** | Mark phase complete and advance | `state --advance` | `python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1` |
 | **Per-Slice & Checkpoint Verification** | Diff against baseline contract | `verify --path <dir> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path <dir> --strict` |
 | **Post-Refactor Regression Audit** | Diff live tree directly against pre-refactor Git SHA | `verify --path <dir> --git-ref <sha> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref HEAD~1 --strict` |
+| **Unified 3-Tier Diagnostic** | 1-call AST diff + Docker audit + live CDP UI | `diagnose --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path .` |
+| **Line-Ending Normalizer** | Normalize files to LF/CRLF before editing | `normalize-eol --path <dir> --to lf` | `python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path . --to lf` |
+| **Line-Ending Agnostic Patch** | Search/replace without shell quoting issues | `patch --file <f> --find ".." --replace ".."` | `python "<skill_dir>/scripts/contract_snapshot.py" patch --file index.html --find "old" --replace "new"` |
+| **Safe HTML Script Injector** | Insert modular <script> tags safely into HTML | `inject-scripts --html <f> --scripts ..` | `python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html index.html --before app.js --scripts /static/js/a.js` |
 | **Venv Automated Test Runner** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . discover tests` |
 | **Headless CDP Layout Audit** | Tier 3 UI verification via frontier-architect | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --audit-layout --headless` |
 | **Container Sync & Health Check** | Tier 2 Docker container file sync check | `audit-container --container <name>` | `python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path . --container tracker --sync-check app.py` |
@@ -283,16 +308,18 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 ## Built-In Scripts, Tests & On-Demand Reference Library
 
 - **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone multi-language structural auditor. Supports multi-target `--path`, `--by-dir`, `--compact`, `--split-preview`, and prunes vendor/minified assets and `.refactor`.
+- **[`scripts/file_patcher.py`](./scripts/file_patcher.py)**: Line-ending normalizer (`normalize-eol`), line-ending-agnostic safe search/replace engine (`patch`), and safe HTML script tag injector (`inject-scripts`).
 - **[`scripts/audit_reporters.py`](./scripts/audit_reporters.py)**: Formatted terminal reporters for structural audits, directory breakdowns, split point previews, and section/banner comment outlines.
 - **[`scripts/surface_scanners.py`](./scripts/surface_scanners.py)**: Zero-dependency surface scanners extracting DOM IDs, interactive selects, inline handlers, `window.*` globals, Python routes, mutable globals, and CSS custom properties.
-- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, CLI command router, and Tier 1-3 verification coordinator.
+- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, CLI command router, unified 3-tier diagnostic coordinator, and Tier 1-3 verification engine.
 - **[`scripts/contract_diff_engine.py`](./scripts/contract_diff_engine.py)**: Surface contract extraction, git tree extraction, and regression diffing engine.
-- **[`scripts/auxiliary_tool_bridge.py`](./scripts/auxiliary_tool_bridge.py)**: Virtualenv test runner, CDP browser verification bridge, container sync auditor, and Axiom 9 verification matrix.
+- **[`scripts/auxiliary_tool_bridge.py`](./scripts/auxiliary_tool_bridge.py)**: Virtualenv test runner, CDP browser verification bridge, container sync auditor, auto-detection engine, and Axiom 9 verification matrix.
 - **[`scripts/css_inspector.py`](./scripts/css_inspector.py)**: Deep CSS/SCSS inspector analyzing `@import` chains, banner sections, CRLF line endings, and exact `!important` occurrences.
-- **[`scripts/campaign_manager.py`](./scripts/campaign_manager.py)**: Persistent cross-turn `.refactor/state.json` campaign manager, sub-phase checkpointing, and directory provisioner.
+- **[`scripts/campaign_manager.py`](./scripts/campaign_manager.py)**: Persistent cross-turn `.refactor/state.json` campaign manager, sub-phase checkpointing, turn ceiling gate alerts, and directory provisioner.
 - **[`scripts/smoke_test_generator.py`](./scripts/smoke_test_generator.py)**: Automated regression-locking unittest generator enforcing DOM and CSS contract invariants.
 - **[`scripts/language_analyzers.py`](./scripts/language_analyzers.py)**: Multi-language AST, brace, and stylesheet parsers for Python, JS/TS, Dart, Go, Rust, and C#.
+- **[`tests/test_file_patcher.py`](./tests/test_file_patcher.py)**: Automated tests for EOL normalization, CRLF/LF tolerance in file patching, HTML script tag injection, and turn ceiling banners.
 - **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite for structural parsing, multi-target audit, and `.refactor` pruning.
-- **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, campaign state lifecycle, scoped smoke tests, and regression detection.
+- **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, equality operator exclusions, campaign state lifecycle, scoped smoke tests, and regression detection.
 - **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Web routers, God classes, Bidirectional Proxy Pattern for monkeypatched globals, and circular dependency rules.
 - **[`references/language-playbooks.md`](./references/language-playbooks.md)**: Vanilla JS invariants, ITCSS stylesheet decomposition, Go/Rust/Dart/C# playbooks, and safe rollback recipes.
