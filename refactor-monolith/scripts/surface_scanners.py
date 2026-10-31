@@ -132,15 +132,17 @@ def scan_js_surface(text: str) -> JsSurface:
     )
 
 
-_HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch", "head", "options", "websocket", "route"})
+_HTTP_METHODS = frozenset({
+    "get", "post", "put", "delete", "patch", "head", "options", "websocket", "route", "api_route"
+})
 
 
-def scan_python_surface(text: str) -> PythonSurface:
+def scan_python_surface(text: str, rel_path: str = "") -> PythonSurface:
     """Extract classes, functions, route decorators, and mutable globals using Python AST."""
     classes: list[str] = []
     functions: list[str] = []
     all_exports: list[str] = []
-    routes: list[dict[str, str]] = []
+    routes: list[dict[str, Any]] = []
     mutable_globals: list[str] = []
 
     try:
@@ -154,9 +156,9 @@ def scan_python_surface(text: str) -> PythonSurface:
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             functions.append(node.name)
             for dec in node.decorator_list:
-                route_info = _parse_route_decorator(dec)
-                if route_info:
-                    routes.append(route_info)
+                parsed_routes = _parse_route_decorator(dec, node=node, rel_path=rel_path)
+                if parsed_routes:
+                    routes.extend(parsed_routes)
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -176,15 +178,57 @@ def scan_python_surface(text: str) -> PythonSurface:
     )
 
 
-def _parse_route_decorator(dec: ast.expr) -> dict[str, str] | None:
-    """Detect FastAPI / Flask route decorators like @router.get('/path')."""
-    if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
-        method_name = dec.func.attr.lower()
-        if method_name in _HTTP_METHODS and dec.args:
-            first_arg = dec.args[0]
-            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-                return {"method": method_name.upper(), "path": first_arg.value}
-    return None
+def _extract_decorator_methods(dec: ast.Call, attr_name: str) -> list[str]:
+    """Resolve HTTP methods from a route decorator call."""
+    if attr_name not in {"route", "api_route"}:
+        return [attr_name.upper()]
+
+    methods: list[str] = []
+    for kw in dec.keywords:
+        if kw.arg == "methods" and isinstance(kw.value, (ast.List, ast.Tuple, ast.Set)):
+            for elt in kw.value.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    methods.append(elt.value.upper())
+    return methods or ["GET"]
+
+
+def _parse_route_decorator(
+    dec: ast.expr,
+    node: ast.FunctionDef | ast.AsyncFunctionDef | None = None,
+    rel_path: str = "",
+) -> list[dict[str, Any]]:
+    """Detect FastAPI / Flask route decorators like @router.get('/path') with line locations."""
+    if not (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)):
+        return []
+
+    attr_name = dec.func.attr.lower()
+    if attr_name not in _HTTP_METHODS or not dec.args:
+        return []
+
+    first_arg = dec.args[0]
+    if not (isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str)):
+        return []
+
+    path_str = first_arg.value
+    line_no = getattr(dec, "lineno", None)
+    end_line_no = getattr(node, "end_lineno", line_no) if node else line_no
+    handler_name = node.name if node else ""
+    methods = _extract_decorator_methods(dec, attr_name)
+
+    results: list[dict[str, Any]] = []
+    for m in methods:
+        info: dict[str, Any] = {"method": m, "path": path_str}
+        if line_no is not None:
+            info["line"] = line_no
+        if end_line_no is not None:
+            info["end_line"] = end_line_no
+        if handler_name:
+            info["handler"] = handler_name
+        if rel_path:
+            info["file"] = rel_path
+        results.append(info)
+
+    return results
 
 
 _CSS_VAR_RE = re.compile(r'(--[a-zA-Z0-9_\-]+)\s*:')

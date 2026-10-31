@@ -7,6 +7,7 @@ route changes, script order, and optional tool discovery.
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,10 +15,12 @@ from pathlib import Path
 from scripts.contract_snapshot import (
     CodebaseContract,
     cmd_generate_smoke_test,
+    cmd_inspect,
     cmd_state,
     diff_contracts,
     discover_optional_tools,
     get_refactor_dir,
+    _format_phase_icon,
 )
 from scripts.surface_scanners import (
     scan_css_surface,
@@ -84,15 +87,34 @@ class TestSurfaceScanners(unittest.TestCase):
         async def get_cam(cam_id: str):
             pass
 
+        @router.route("/api/items", methods=["GET", "POST"])
+        def handle_items():
+            return []
+
         class CameraPool:
             def add_camera(self): pass
         """
-        surf = scan_python_surface(py)
+        surf = scan_python_surface(py, rel_path="dashboard/routers/cameras.py")
         self.assertIn("CameraPool", surf.classes)
         self.assertIn("get_cam", surf.functions)
+        self.assertIn("handle_items", surf.functions)
         self.assertIn("active_stream_manager", surf.mutable_globals)
-        self.assertEqual(len(surf.routes), 1)
-        self.assertEqual(surf.routes[0], {"method": "GET", "path": "/api/cameras/{cam_id}"})
+        self.assertEqual(len(surf.routes), 3)
+
+        # Check first route
+        r0 = surf.routes[0]
+        self.assertEqual(r0["method"], "GET")
+        self.assertEqual(r0["path"], "/api/cameras/{cam_id}")
+        self.assertEqual(r0["handler"], "get_cam")
+        self.assertEqual(r0["file"], "dashboard/routers/cameras.py")
+        self.assertIsInstance(r0["line"], int)
+
+        # Check multi-method route
+        methods = [r["method"] for r in surf.routes[1:]]
+        self.assertIn("GET", methods)
+        self.assertIn("POST", methods)
+        self.assertEqual(surf.routes[1]["path"], "/api/items")
+        self.assertEqual(surf.routes[1]["handler"], "handle_items")
 
     def test_scan_css_surface(self):
         css = """
@@ -154,6 +176,8 @@ class TestContractDiffEngine(unittest.TestCase):
         issues = diff_contracts(before, after)
         self.assertTrue(any("!important count increased" in iss for iss in issues))
 
+
+class TestCampaignAndTools(unittest.TestCase):
     def test_state_management_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
@@ -202,6 +226,66 @@ class TestContractDiffEngine(unittest.TestCase):
     def test_optional_tool_discovery_does_not_crash(self):
         tools = discover_optional_tools()
         self.assertIsInstance(tools, dict)
+
+    def test_refactor_dir_creates_subdirectories(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            rdir = get_refactor_dir(base)
+            self.assertTrue((rdir / "scripts").is_dir())
+            self.assertTrue((rdir / "artifacts").is_dir())
+            gitignore = rdir / ".gitignore"
+            self.assertTrue(gitignore.is_file())
+            content = gitignore.read_text(encoding="utf-8")
+            self.assertIn("*", content)
+            self.assertIn("!.gitignore", content)
+
+    def test_inspect_show_routes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            sub = base / "api"
+            sub.mkdir()
+            (sub / "routes.py").write_text(
+                'from fastapi import APIRouter\n'
+                'router = APIRouter()\n'
+                '@router.get("/status")\n'
+                'def get_status():\n'
+                '    return {"ok": True}\n',
+                encoding="utf-8",
+            )
+            # Test default inspect
+            code = cmd_inspect(sub, show_routes=False)
+            self.assertEqual(code, 0)
+
+            # Test inspect with show_routes
+            code_all = cmd_inspect(sub, show_routes=True)
+            self.assertEqual(code_all, 0)
+
+    def test_format_phase_icon_fallback(self):
+        # Normal UTF-8 check
+        icon_done = _format_phase_icon(is_completed=True, is_active=False)
+        self.assertIn(icon_done, ["✅", "[x]"])
+
+        icon_act = _format_phase_icon(is_completed=False, is_active=True)
+        self.assertIn(icon_act, ["▶️", "[>]"])
+
+        icon_pend = _format_phase_icon(is_completed=False, is_active=False)
+        self.assertIn(icon_pend, ["⏳", "[ ]"])
+
+    def test_discover_virtualenv(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            venv = base / ".venv"
+            venv.mkdir()
+            bin_dir = venv / ("Scripts" if sys.platform == "win32" else "bin")
+            bin_dir.mkdir(parents=True)
+            py_exe = bin_dir / ("python.exe" if sys.platform == "win32" else "python")
+            py_exe.write_text("", encoding="utf-8")
+
+            tools = discover_optional_tools(base)
+            self.assertIn("virtualenv_python", tools)
+            self.assertEqual(tools["virtualenv_python"], str(py_exe))
 
 
 if __name__ == "__main__":

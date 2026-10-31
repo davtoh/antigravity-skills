@@ -17,10 +17,33 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+# Ensure stdout handles UTF-8 on Windows consoles without charmap UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+from campaign_manager import (  # noqa: E402
+    _format_phase_icon,
+    cmd_state,
+    get_git_sha,
+    get_refactor_dir,
+    get_repo_root,
+)
+from smoke_test_generator import (  # noqa: E402
+    _build_smoke_template,
+    cmd_generate_smoke_test,
+)
 from surface_scanners import (  # noqa: E402
     scan_css_surface,
     scan_html_surface,
@@ -59,31 +82,6 @@ class CodebaseContract:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
-def get_repo_root(target: Path | None = None) -> Path:
-    """Resolve repository root by looking for .git, .refactor, or fallback to target/cwd."""
-    start = (target or Path.cwd()).resolve()
-    cur = start if start.is_dir() else start.parent
-    for parent in [cur, *cur.parents]:
-        if (parent / ".git").exists() or (parent / ".refactor").exists():
-            return parent
-    return cur
-
-
-def get_refactor_dir(target: Path | None = None) -> Path:
-    """Get or create the .refactor state directory with a self-contained .gitignore."""
-    rdir = get_repo_root(target) / ".refactor"
-    rdir.mkdir(parents=True, exist_ok=True)
-    gitignore = rdir / ".gitignore"
-    if not gitignore.exists():
-        gitignore.write_text(
-            "# Local refactoring campaign state, snapshots, and helper scripts\n"
-            "# Ignored by default so they never pollute git status; use `git add -f` if versioning is desired.\n"
-            "*\n",
-            encoding="utf-8",
-        )
-    return rdir
-
-
 def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
     """Execute a git command safely and return (exit_code, output)."""
     try:
@@ -99,12 +97,6 @@ def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
         return proc.returncode, proc.stdout.strip()
     except Exception as err:
         return 1, str(err)
-
-
-def get_git_sha(target_dir: Path) -> str:
-    """Resolve the active HEAD commit SHA."""
-    code, out = _run_git(["rev-parse", "HEAD"], cwd=target_dir)
-    return out if code == 0 else ""
 
 
 def read_file_content(path: Path, git_ref: str = "", cwd: Path | None = None) -> str:
@@ -150,7 +142,8 @@ def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
         if sfx in {".html", ".js", ".ts", ".jsx", ".tsx", ".py", ".css", ".scss"}:
             text = read_file_content(f if git_ref else target_dir / f, git_ref, cwd=target_dir)
             if text:
-                _dispatch_scan(sfx, text, acc)
+                rel_p = str(f.as_posix() if hasattr(f, "as_posix") else f).replace("\\", "/")
+                _dispatch_scan(sfx, text, acc, rel_path=rel_p)
 
     contract.html_ids = sorted(acc["ids"])
     contract.select_ids = sorted(acc["selects"])
@@ -165,7 +158,7 @@ def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
     return contract
 
 
-def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any]) -> None:
+def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any], rel_path: str = "") -> None:
     """Route file text to surface scanner and aggregate results."""
     if sfx == ".html":
         h = scan_html_surface(text)
@@ -178,7 +171,7 @@ def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any]) -> None:
         acc["queried"].update(j.queried_ids)
         acc["globals"].update(j.global_exports)
     elif sfx == ".py":
-        p = scan_python_surface(text)
+        p = scan_python_surface(text, rel_path=rel_path)
         acc["routes"].extend(p.routes)
         acc["py_globals"].update(p.mutable_globals)
     elif sfx in {".css", ".scss"}:
@@ -237,18 +230,19 @@ def _check_handlers_and_routes(before: CodebaseContract, after: CodebaseContract
         issues.append(f"[CRITICAL ROUTE] API route {lost_r} present before refactor is missing in refactored routers!")
 
 
-def discover_optional_tools() -> dict[str, str]:
-    """Locate optional auxiliary tools from sibling skills or workspace without hard dependencies."""
+def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
     home = Path.home()
     candidates = {
         "cdp_inspect": [
             os.environ.get("CDP_INSPECT_PATH", ""),
-            str(Path.cwd() / "scripts" / "cdp_inspect.py"),
+            str(base_target / "scripts" / "cdp_inspect.py"),
+            str(root / "scripts" / "cdp_inspect.py"),
             str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "cdp_inspect.py"),
         ],
         "docker_audit": [
             os.environ.get("DOCKER_AUDIT_PATH", ""),
-            str(Path.cwd() / "scripts" / "docker_audit.py"),
+            str(base_target / "scripts" / "docker_audit.py"),
+            str(root / "scripts" / "docker_audit.py"),
             str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "docker_audit.py"),
         ],
     }
@@ -258,6 +252,30 @@ def discover_optional_tools() -> dict[str, str]:
             if p and Path(p).is_file():
                 found[name] = p
                 break
+    return found
+
+
+def _find_virtualenv_python(base_target: Path, root: Path) -> str:
+    candidates = [
+        base_target / ".venv", base_target / "venv", base_target / "env",
+        root / ".venv", root / "venv", root / "env",
+    ]
+    for v in candidates:
+        if v.is_dir():
+            py_bin = v / "Scripts" / "python.exe" if os.name == "nt" else v / "bin" / "python"
+            if py_bin.is_file():
+                return str(py_bin)
+    return ""
+
+
+def discover_optional_tools(target: Path | None = None) -> dict[str, str]:
+    """Locate optional auxiliary tools from sibling skills or workspace without hard dependencies."""
+    base_target = Path(target).resolve() if target else Path.cwd()
+    root = get_repo_root(base_target)
+    found = _find_candidate_tools(base_target, root)
+    py_bin = _find_virtualenv_python(base_target, root)
+    if py_bin:
+        found["virtualenv_python"] = py_bin
     return found
 
 
@@ -290,7 +308,7 @@ def cmd_capture(target: Path, out_file: str, git_ref: str = "") -> int:
     return 0
 
 
-def cmd_inspect(target: Path, git_ref: str = "", before_file: str = "") -> int:
+def cmd_inspect(target: Path, git_ref: str = "", before_file: str = "", show_routes: bool = False) -> int:
     """Print human-readable Interactive Surface Inventory."""
     contract = CodebaseContract.from_dict(json.loads(Path(before_file).read_text(encoding="utf-8"))) if before_file else build_contract(target, git_ref)
     print("=== Interactive Surface Inventory ===")
@@ -305,20 +323,53 @@ def cmd_inspect(target: Path, git_ref: str = "", before_file: str = "") -> int:
     for g in contract.js_global_exports[:15]:
         print(f"  - window.{g}")
     print(f"Backend API Routes:           {len(contract.python_routes)}")
+    routes_to_show = contract.python_routes if show_routes else contract.python_routes[:15]
+    for r in routes_to_show:
+        f_loc = f":L{r['line']}-L{r['end_line']}" if r.get("end_line") and r.get("end_line") != r.get("line") else (f":L{r['line']}" if r.get("line") else "")
+        loc = f" ({r['file']}{f_loc})" if r.get("file") else ""
+        h_str = f" -> {r['handler']}()" if r.get("handler") else ""
+        print(f"  - {r.get('method', 'GET')} {r.get('path', '')}{h_str}{loc}")
+    if not show_routes and len(contract.python_routes) > 15:
+        print(f"  ... and {len(contract.python_routes) - 15} more (use 'inspect --show-routes' to list all)")
     print(f"CSS !important Count:         {contract.css_important_count}")
     return 0
 
 
+def _print_verification_results(before: CodebaseContract, after: CodebaseContract, issues: list[str]) -> None:
+    """Print diff issues and status."""
+    print(f"=== Contract Verification: Before ({before.commit_sha[:7] or 'snapshot'}) vs After ({after.commit_sha[:7] or 'current'}) ===")
+    if not issues:
+        print("OK: Zero contract regressions detected! (DOM IDs, selects, globals, routes, and CSS preserved)")
+    else:
+        print(f"CRITICAL: Found {len(issues)} contract discrepancy/discrepancies:")
+        for iss in issues:
+            print(f"  {iss}")
+
+
+def _check_missing_smoke_test(target: Path) -> None:
+    """Warn if no frontend contract smoke test exists."""
+    repo_root = get_repo_root(target)
+    test_candidates: list[Path] = []
+    for search_dir in [target, target / "tests", target.parent / "tests", repo_root / "tests"]:
+        if search_dir.is_dir():
+            test_candidates.extend(iter_repo_files(search_dir))
+    if not any("smoke" in f.name.lower() or "contract" in f.name.lower() for f in test_candidates):
+        print("\n[BLINDSPOT WARNING] No frontend contract smoke test found in tests/!")
+        print("Run `contract_snapshot.py generate-smoke-test --out tests/test_refactor_contract.py` to lock in parity.")
+
+
 def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: bool = False) -> int:
     """Diff current codebase contract against baseline or historical git commit."""
+    before_path = None
     if before_file and Path(before_file).is_file():
         before_path = Path(before_file)
-    elif not before_file and not git_ref and (get_refactor_dir(target) / "baseline.json").is_file():
-        before_path = get_refactor_dir(target) / "baseline.json"
-    elif not before_file and not git_ref and (target / ".refactor_baseline.json").is_file():
-        before_path = target / ".refactor_baseline.json"
-    else:
-        before_path = None
+    elif not before_file and not git_ref:
+        candidate = get_refactor_dir(target) / "baseline.json"
+        legacy_candidate = target / ".refactor_baseline.json"
+        if candidate.is_file():
+            before_path = candidate
+        elif legacy_candidate.is_file():
+            before_path = legacy_candidate
 
     if before_path:
         before = CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
@@ -330,16 +381,9 @@ def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: b
 
     after = build_contract(target)
     issues = diff_contracts(before, after)
-    opt_tools = discover_optional_tools()
+    _print_verification_results(before, after, issues)
 
-    print(f"=== Contract Verification: Before ({before.commit_sha[:7] or 'snapshot'}) vs After ({after.commit_sha[:7] or 'current'}) ===")
-    if not issues:
-        print("OK: Zero contract regressions detected! (DOM IDs, selects, globals, routes, and CSS preserved)")
-    else:
-        print(f"CRITICAL: Found {len(issues)} contract discrepancy/discrepancies:")
-        for iss in issues:
-            print(f"  {iss}")
-
+    opt_tools = discover_optional_tools(target)
     print("\n--- Tool Discovery Status ---")
     if opt_tools:
         for name, p in opt_tools.items():
@@ -347,211 +391,8 @@ def cmd_verify(target: Path, before_file: str = "", git_ref: str = "", strict: b
     else:
         print("  [Self-Contained Mode] Built-in static contract verifier active. (Optional live tools not found)")
 
-    # Search for tests in target, target/tests, and root tests/
-    repo_root = get_repo_root(target)
-    test_candidates: list[Path] = []
-    for search_dir in [target, target / "tests", target.parent / "tests", repo_root / "tests"]:
-        if search_dir.is_dir():
-            test_candidates.extend(iter_repo_files(search_dir))
-    if not any("smoke" in f.name.lower() or "contract" in f.name.lower() for f in test_candidates):
-        print("\n[BLINDSPOT WARNING] No frontend contract smoke test found in tests/!")
-        print("Run `contract_snapshot.py generate-smoke-test --out tests/test_refactor_contract.py` to lock in parity.")
-
+    _check_missing_smoke_test(target)
     return 1 if (strict and issues) else 0
-
-
-def _build_smoke_template(root_expr: str, select_ids: list[str], important_count: int, html_ids: list[str]) -> str:
-    """Render unit test code string for contract smoke verification."""
-    return f'''# Generated Contract Smoke Test - Enforces Zero-Regression Refactoring Parity
-import pathlib
-import re
-import unittest
-
-class TestCodebaseContractInvariants(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.root = {root_expr}
-        ignored = {{".git", ".venv", "venv", "env", "node_modules", "__pycache__", "_build", "build", "dist", ".refactor", "scratch"}}
-        cls.html_text = "".join(
-            p.read_text(encoding="utf-8", errors="replace") + "\\n"
-            for p in cls.root.rglob("*.html")
-            if not any(part in ignored for part in p.parts)
-        )
-        cls.js_text = "".join(
-            p.read_text(encoding="utf-8", errors="replace") + "\\n"
-            for p in cls.root.rglob("*.js")
-            if not any(part in ignored for part in p.parts)
-        )
-
-    def test_dom_interactive_selects_exist(self):
-        """Verify all critical <select> dropdown IDs exist in HTML."""
-        for sel in {repr(select_ids)}:
-            self.assertIn(f'id="{{sel}}"', self.html_text, f"Missing select dropdown #{{sel}} in HTML!")
-
-    def test_dom_element_ids_preserved(self):
-        """Verify captured baseline HTML element IDs are preserved."""
-        for el_id in {repr(html_ids)}:
-            self.assertIn(f'id="{{el_id}}"', self.html_text, f"Critical DOM element id='{{el_id}}' was removed from HTML!")
-
-    def test_zero_css_important_creep(self):
-        """Verify scoped CSS does not exceed baseline !important threshold."""
-        ignored = {{".git", ".venv", "venv", "env", "node_modules", "__pycache__", "_build", "build", "dist", ".refactor", "scratch"}}
-        css_text = "".join(
-            p.read_text(encoding="utf-8", errors="replace")
-            for p in self.root.rglob("*.css")
-            if not any(part in ignored for part in p.parts)
-        )
-        count = len(re.findall(r'!important\\b', css_text, re.IGNORECASE))
-        self.assertLessEqual(count, {important_count}, f"!important count increased to {{count}}!")
-
-if __name__ == "__main__":
-    unittest.main()
-'''
-
-
-def cmd_generate_smoke_test(target: Path, out_file: str, before_file: str = "", git_ref: str = "") -> int:
-    """Generate standalone unittest file enforcing contract parity."""
-    c = CodebaseContract.from_dict(json.loads(Path(before_file).read_text(encoding="utf-8"))) if before_file else build_contract(target, git_ref)
-    repo_root = get_repo_root(target)
-    out_p = Path(out_file) if out_file else repo_root / "tests" / "test_refactor_contract.py"
-    out_p.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        rel_target = target.relative_to(repo_root)
-        if str(rel_target) in (".", ""):
-            root_expr = "pathlib.Path(__file__).resolve().parent.parent"
-        else:
-            root_expr = f'pathlib.Path(__file__).resolve().parent.parent / "{rel_target.as_posix()}"'
-    except ValueError:
-        root_expr = f'pathlib.Path(r"{target.as_posix()}")'
-
-    out_p.write_text(_build_smoke_template(root_expr, c.select_ids, c.css_important_count, c.html_ids), encoding="utf-8")
-    print(f"Generated contract smoke test -> {out_p}")
-    return 0
-
-
-def cmd_state(
-    target: Path,
-    action: str,
-    plan: str = "",
-    phases: int = 4,
-    phase: int | None = None,
-    phase_title: str = "",
-    status: str = "",
-    sha: str = "",
-    as_json: bool = False,
-) -> int:
-    """Manage persistent campaign state in .refactor/state.json across conversation turns."""
-    rdir = get_refactor_dir(target)
-    state_file = rdir / "state.json"
-    repo_root = get_repo_root(target)
-
-    state: dict[str, Any] = {}
-    if state_file.is_file():
-        try:
-            state = json.loads(state_file.read_text(encoding="utf-8"))
-        except Exception:
-            state = {}
-
-    if action == "init":
-        target_rel = str(target.relative_to(repo_root).as_posix()) if target != repo_root else "."
-        plan_rel = str(Path(plan).relative_to(repo_root).as_posix()) if plan and Path(plan).is_absolute() else (plan or ".refactor/plan.md")
-        phase_dict = {}
-        for p in range(1, phases + 1):
-            phase_dict[str(p)] = {
-                "title": phase_title if p == 1 and phase_title else f"Phase {p}",
-                "status": "pending",
-                "sha": "",
-            }
-        state = {
-            "campaign": target.name if target != repo_root else "root",
-            "target_path": target_rel,
-            "active_phase": 1,
-            "total_phases": phases,
-            "plan_path": plan_rel,
-            "baseline_contract": ".refactor/baseline.json",
-            "status": "in_progress",
-            "phases": phase_dict,
-        }
-        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        print(f"Initialized refactoring campaign state -> {state_file}")
-        print(f"  Active Phase: 1 of {phases} | Target: {target_rel} | Plan: {plan_rel}")
-        return 0
-
-    if not state:
-        if action in ("show", "status"):
-            print("No active refactoring campaign found in .refactor/state.json.")
-            return 0
-        print("Error: .refactor/state.json not initialized. Run `contract_snapshot.py state --init --target <path> --plan <file>` first.", file=sys.stderr)
-        return 2
-
-    if action == "advance":
-        cur = phase or state.get("active_phase", 1)
-        total = state.get("total_phases", 4)
-        p_str = str(cur)
-        if p_str in state.get("phases", {}):
-            state["phases"][p_str]["status"] = status or "completed"
-            if sha:
-                state["phases"][p_str]["sha"] = sha
-            elif not state["phases"][p_str].get("sha"):
-                state["phases"][p_str]["sha"] = get_git_sha(target)
-        nxt = cur + 1
-        if nxt <= total:
-            state["active_phase"] = nxt
-            nxt_str = str(nxt)
-            if nxt_str in state.get("phases", {}):
-                state["phases"][nxt_str]["status"] = "active"
-            state["status"] = "in_progress"
-            print(f"Advanced campaign: Phase {cur} completed. Active Phase is now {nxt} of {total}.")
-        else:
-            state["status"] = "completed"
-            print(f"Refactoring campaign completed! All {total} phases verified and closed.")
-        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        return 0
-
-    if action == "set":
-        if phase is not None:
-            state["active_phase"] = phase
-            p_str = str(phase)
-            if p_str in state.get("phases", {}):
-                if status:
-                    state["phases"][p_str]["status"] = status
-                if phase_title:
-                    state["phases"][p_str]["title"] = phase_title
-                if sha:
-                    state["phases"][p_str]["sha"] = sha
-        if status and phase is None:
-            state["status"] = status
-        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        print(f"Updated campaign state: Active Phase {state.get('active_phase')}, status={state.get('status')}")
-        return 0
-
-    if as_json:
-        print(json.dumps(state, indent=2))
-        return 0
-
-    act = state.get("active_phase", 1)
-    tot = state.get("total_phases", 4)
-    st = state.get("status", "unknown")
-    phases_map = state.get("phases", {})
-    act_title = phases_map.get(str(act), {}).get("title", f"Phase {act}")
-
-    print("=== Active Refactoring Campaign State ===")
-    print(f"Target Subsystem:  {state.get('target_path', '.')}")
-    print(f"Campaign Status:   {st.upper()} (Active: Phase {act} of {tot})")
-    print(f"Plan Document:     {state.get('plan_path', '.refactor/plan.md')}")
-    print(f"Baseline Snapshot: {state.get('baseline_contract', '.refactor/baseline.json')}")
-    print("\n--- Phases Overview ---")
-    for p_num, p_info in sorted(phases_map.items(), key=lambda x: int(x[0])):
-        icon = "✅" if p_info.get("status") == "completed" else ("▶️" if int(p_num) == act else "⏳")
-        sha_str = f" ({p_info.get('sha')[:7]})" if p_info.get("sha") else ""
-        print(f"  {icon} Phase {p_num}: {p_info.get('title', '')} [{p_info.get('status', 'pending')}]{sha_str}")
-
-    if st != "completed":
-        print(f"\n--- Resumption Instruction for Next Chat ---")
-        print(f"To continue Phase {act} ({act_title}) in a fresh chat, tell the agent:")
-        print(f"  /refactor-monolith continue")
-    return 0
 
 
 def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
@@ -559,6 +400,24 @@ def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--path", default=".", help="Target repository directory.")
     parser.add_argument("--before", default="", help="Baseline JSON path.")
     parser.add_argument("--git-ref", default="", help="Historical git commit/branch.")
+
+
+def _add_state_cli_args(p_st: argparse.ArgumentParser) -> None:
+    """Configure arguments for campaign state subcommand."""
+    p_st.add_argument("--path", default=".", help="Target repository directory.")
+    p_st.add_argument("--action", choices=["init", "show", "status", "advance", "set"], default="show", help="Action.")
+    p_st.add_argument("--init", dest="action", action="store_const", const="init", help="Initialize new campaign state.")
+    p_st.add_argument("--advance", dest="action", action="store_const", const="advance", help="Mark current phase completed and advance.")
+    p_st.add_argument("--show", dest="action", action="store_const", const="show", help="Display current campaign progress.")
+    p_st.add_argument("--status-cmd", dest="action", action="store_const", const="status", help="Alias for show.")
+    p_st.add_argument("--target", default="", help="Refactoring target directory.")
+    p_st.add_argument("--plan", default="", help="Path to refactoring plan markdown.")
+    p_st.add_argument("--phases", type=int, default=4, help="Total phases in campaign.")
+    p_st.add_argument("--phase", type=int, default=None, help="Specific phase number to update/advance.")
+    p_st.add_argument("--phase-title", default="", help="Title for the active phase.")
+    p_st.add_argument("--status", default="", help="Status string (e.g. completed, in_progress, pending).")
+    p_st.add_argument("--sha", default="", help="Commit SHA to record.")
+    p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -576,6 +435,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     p_ins = sub.add_parser("inspect", help="Display Interactive Surface Inventory.")
     _add_common_path_args(p_ins)
+    p_ins.add_argument("--show-routes", action="store_true", help="List all detected backend API routes with file locations.")
 
     p_ver = sub.add_parser("verify", help="Diff contracts and check regressions.")
     _add_common_path_args(p_ver)
@@ -586,30 +446,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_smk.add_argument("--out", default="", help="Output test file path.")
 
     p_st = sub.add_parser("state", help="Manage in-repo .refactor campaign state across conversation turns.")
-    p_st.add_argument("--path", default=".", help="Target repository directory.")
-    p_st.add_argument("--action", choices=["init", "show", "status", "advance", "set"], default="show", help="Action.")
-    p_st.add_argument("--init", dest="action", action="store_const", const="init", help="Initialize new campaign state.")
-    p_st.add_argument("--advance", dest="action", action="store_const", const="advance", help="Mark current phase completed and advance.")
-    p_st.add_argument("--show", dest="action", action="store_const", const="show", help="Display current campaign progress.")
-    p_st.add_argument("--status-cmd", dest="action", action="store_const", const="status", help="Alias for show.")
-    p_st.add_argument("--target", default="", help="Refactoring target directory.")
-    p_st.add_argument("--plan", default="", help="Path to refactoring plan markdown.")
-    p_st.add_argument("--phases", type=int, default=4, help="Total phases in campaign.")
-    p_st.add_argument("--phase", type=int, default=None, help="Specific phase number to update/advance.")
-    p_st.add_argument("--phase-title", default="", help="Title for the active phase.")
-    p_st.add_argument("--status", default="", help="Status string (e.g. completed, in_progress, pending).")
-    p_st.add_argument("--sha", default="", help="Commit SHA to record.")
-    p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
+    _add_state_cli_args(p_st)
 
-    sub.add_parser("probe-tools", help="Discover optional auxiliary tools (cdp_inspect, docker_audit).")
+    p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools (cdp_inspect, docker_audit, virtualenv).")
+    p_prb.add_argument("--path", default=".", help="Target repository directory.")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
     args = build_cli_parser().parse_args(argv)
+    target = Path(getattr(args, "path", ".")).resolve()
     if args.subcommand == "probe-tools":
-        tools = discover_optional_tools()
+        tools = discover_optional_tools(target)
         print("=== Optional Auxiliary Tools Discovery ===")
         for k, v in tools.items():
             print(f"  {k}: {v}")
@@ -623,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.subcommand == "capture":
         return cmd_capture(target, getattr(args, "out", ""), getattr(args, "git_ref", ""))
     if args.subcommand == "inspect":
-        return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""))
+        return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
     if args.subcommand == "verify":
         return cmd_verify(target, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict)
     if args.subcommand == "generate-smoke-test":

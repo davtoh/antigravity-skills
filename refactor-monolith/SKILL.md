@@ -1,7 +1,7 @@
 ---
 name: refactor-monolith
 description: >-
-  Audit, plan, and safely execute zero-regression decomposition of oversized source files ("God Files" exceeding 350-500 lines), overly complex classes ("God Classes" exceeding 10-12 methods), or entire monolithic projects into clean, modular architectures across Python, JS/TS/React, CSS/SCSS, Dart/Flutter, Go, Rust, C#, and fallback languages. Standardizes workspace state in .refactor/ (state.json, plan.md, baseline.json, helper scripts) for seamless cross-turn continuation via '/refactor-monolith continue'. Automatically prunes vendor/minified assets, respects AGENTS.md and project rules, enforces 1-phase turn gates, contract snapshots, performance guards, anti-thrash stop-loss, and the "Leave at Best Working Version" safe bailout rule. Make sure to use this skill whenever the user asks to split large files, refactor a monolith, modularize a project, continue a refactoring migration, reduce class or method count, audit codebase modularity, fix regressions caused by past refactorings, or apply Single Responsibility Principle (SRP) without breaking existing imports, DOM IDs, or tests.
+  Audit, plan, and safely execute zero-regression decomposition of oversized files ("God Files" exceeding 350-500 lines), complex classes ("God Classes" exceeding 10-12 methods), or monolithic codebases across Python, JS/TS, CSS/SCSS, Dart/Flutter, Go, Rust, and C#. Enforces quantitative modularity budgets, contract snapshots (DOM IDs, routes, globals), and persistent in-repo state in .refactor/ (state.json, plan.md, baseline.json) for seamless continuation via '/refactor-monolith continue'. Features 1-phase turn gates, atomic slicing, and safe bailouts. Use whenever the user asks to split large files, refactor a monolith, modularize a project, continue a migration, reduce class or method count, audit codebase modularity, apply SRP, or break down legacy code without breaking imports, DOM interactions, or test suites.
 ---
 
 # Refactor Monolith: Adaptive Decomposition, Parity & Modularity Engine
@@ -41,14 +41,16 @@ To guarantee zero workspace pollution and instant continuation across fresh conv
 ├── plan.md             # The multi-phase architectural roadmap (resumable across fresh chats)
 ├── baseline.json       # Pre-refactor golden contract snapshot (DOM IDs, selects, routes, CSS)
 ├── scripts/            # Temporary project-specific refactor helpers (NEVER placed in repo scripts/)
-└── .gitignore          # Auto-created gitignore protecting ephemeral artifacts (*.tmp, scratch/)
+├── artifacts/          # Intermediate refactoring scratch notes, AST dumps, or post-mortems
+└── .gitignore          # Auto-created gitignore protecting ephemeral artifacts and helpers (*, !.gitignore)
 ```
 
 > [!IMPORTANT]
 > **Zero-Pollution & Anti-Vendoring Mandate**:
 > 1. **NEVER copy skill scripts** (`code_health_audit.py`, `contract_snapshot.py`, `surface_scanners.py`) into the user's `<workspace>/scripts/` directory. Run them directly from `<skill_dir>/scripts/...` during the agent's turn.
 > 2. Any custom scratch scripts or one-off extraction helpers created during refactoring must be placed in `.refactor/scripts/` (if needed for the refactor process but not to be committed).
-> 3. In committed project documentation (`MIGRATION_LOG.md`, `README.md`, `milestone_plan.md`), only reference OS-agnostic native project test commands (`python -m unittest discover tests`, `pytest tests/`).
+> 3. Any intermediate artifacts, AST dumps, or refactor logs should be placed in `.refactor/artifacts/`.
+> 4. In committed project documentation (`MIGRATION_LOG.md`, `README.md`, `milestone_plan.md`), only reference OS-agnostic native project test commands (`python -m unittest discover tests`, `pytest tests/`).
 
 ---
 
@@ -145,7 +147,7 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 ```
 
 ### Step 2: Cohesion Clustering, Surface Map & Facade Design
-1. **Interactive Surface Map**: Run `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path <target_dir>` to list all `<select>` IDs, modals, inline handlers, and global exports that must remain intact.
+1. **Interactive Surface Map**: Run `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path <target_dir>` (or pass `--show-routes` to list all backend endpoints with line ranges and handlers) to catalog all `<select>` IDs, modals, inline handlers, global exports, and API routes before modifying code.
 2. **Load On-Demand References**:
    - Web routes, God classes, and DAG rules: [`references/decomposition-patterns.md`](./references/decomposition-patterns.md).
    - Non-Python files (`.js`, `.ts`, `.css`, `.dart`, `.go`, `.rs`, `.cs`): [`references/language-playbooks.md`](./references/language-playbooks.md).
@@ -158,6 +160,13 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 2. Move cohesive logic and imports. Use `--split-preview <file>:<line>` to check boundaries safely.
 3. **Preserve Comments & Math**: Carry over all mathematical formulas, OpenCV coordinates, and rationale verbatim.
 4. **CRLF Line-Ending Resilience on Windows**: If modifying existing files on Windows, beware of CRLF (`\r\n`) line endings that cause `edit_file` target mismatches. Keep edits focused or normalize file line endings cleanly.
+
+> [!WARNING]
+> **Anti-Mega-Batch Rule (Atomic Slicing Gate)**:
+> Never write or generate more than 1–2 files/routers in a single step without testing imports or contract parity.
+> Writing 8–12 files in a single uninterrupted burst introduces massive compound risk: if any import or signature fails, diagnosing across 12 newly created files simultaneously burns tens of thousands of tokens in backtracking.
+> Always sequence slices:
+> `Slice 1 (Dependencies / Schemas) -> Verify Contract -> Slice 2 (Router 1-2) -> Verify Contract -> Slice 3 (Remaining Routers) -> Wire Facade & Parity`.
 
 ### Step 4: Wire Facade & Per-Slice Contract Verification
 1. Re-export extracted symbols in the monolith facade.
@@ -192,6 +201,16 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
   └── 4. Axiom 9 Honest Reporting: If Option 2 is chosen, explicitly state:
          "Static Contract: VERIFIED | Live Browser: UNVERIFIED (Server offline / remote debugging unattached)."
 ```
+
+> [!IMPORTANT]
+> **Reactive Wakeup & Anti-Polling Mandate**:
+> When running long-running verification suites or builds asynchronously via `run_command` (`WaitMsBeforeAsync`), **NEVER poll `manage_task(Action='status')` in a loop**. Polling burns tens of thousands of context tokens while holding the execution thread.
+> - Either proceed with independent static work (documentation drafts, auditing other directories).
+> - Or simply **end your turn by calling no more tools** and let the system reactively notify you when the background task completes.
+
+> [!TIP]
+> **Virtual Environment Awareness**:
+> Run `python "<skill_dir>/scripts/contract_snapshot.py" probe-tools --path <target_dir>` to check for local `.venv`, `venv`, or `env` interpreters. If a virtual environment is detected, invoke its Python interpreter (e.g. `.\\.venv\\Scripts\\python.exe` or `./.venv/bin/python`) when running local test suites to prevent `ModuleNotFoundError` on workspace packages.
 
 ---
 
@@ -244,7 +263,10 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 
 - **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone multi-language structural auditor. Supports multi-target `--path`, `--by-dir`, `--compact`, `--split-preview`, and prunes vendor/minified assets and `.refactor`.
 - **[`scripts/surface_scanners.py`](./scripts/surface_scanners.py)**: Zero-dependency surface scanners extracting DOM IDs, interactive selects, inline handlers, `window.*` globals, Python routes, mutable globals, and CSS custom properties.
-- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, `.refactor/state.json` campaign manager, Git worktree anchor, regression diff engine, and automated contract smoke-test generator.
+- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, regression diff engine, and auxiliary tool probe.
+- **[`scripts/campaign_manager.py`](./scripts/campaign_manager.py)**: Persistent cross-turn `.refactor/state.json` campaign manager and directory provisioner.
+- **[`scripts/smoke_test_generator.py`](./scripts/smoke_test_generator.py)**: Automated regression-locking unittest generator enforcing DOM and CSS contract invariants.
+- **[`scripts/language_analyzers.py`](./scripts/language_analyzers.py)**: Multi-language AST, brace, and stylesheet parsers for Python, JS/TS, Dart, Go, Rust, and C#.
 - **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite for structural parsing, multi-target audit, and `.refactor` pruning.
 - **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, campaign state lifecycle, scoped smoke tests, and regression detection.
 - **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Web routers, God classes, Bidirectional Proxy Pattern for monkeypatched globals, and circular dependency rules.
