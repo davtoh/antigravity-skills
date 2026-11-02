@@ -7,10 +7,17 @@ route changes, script order, and optional tool discovery.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+# Ensure skill root is in sys.path for clean import of scripts
+_SKILL_ROOT = Path(__file__).resolve().parent.parent
+if str(_SKILL_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SKILL_ROOT))
 
 from scripts.contract_snapshot import (
     CodebaseContract,
@@ -252,6 +259,14 @@ class TestCampaignAndTools(unittest.TestCase):
     def test_optional_tool_discovery_does_not_crash(self):
         tools = discover_optional_tools()
         self.assertIsInstance(tools, dict)
+
+    def test_optional_tool_discovery_with_custom_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            diag_file = Path(tmp) / "diagnose.py"
+            diag_file.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            with unittest.mock.patch.dict(os.environ, {"DIAGNOSE_PATH": str(diag_file)}):
+                tools = discover_optional_tools()
+                self.assertEqual(tools.get("diagnose"), str(diag_file))
 
     def test_refactor_dir_creates_subdirectories(self):
         with tempfile.TemporaryDirectory() as tmpdir:

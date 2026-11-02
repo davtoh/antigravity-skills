@@ -99,10 +99,20 @@ Why do bug fixes fail or burn excessive tokens?
 1. Agents guess fixes from static source files without inspecting live DOM dimensions or container sync.
 2. When `chrome_devtools` MCP or `/browser` fails (e.g. `npx` not in `%PATH%` / `$PATH`), agents waste thousands of tokens probing Node/Chrome versions and writing repetitive CDP scripts in `scratch/`.
 
-When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**. Instead, use the cross-platform, project-agnostic helpers in `<skill_dir>/scripts/` and execute these 3 steps *before* editing production code:
+When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**.
+- **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or when using `/app-debugger` for dedicated bug hunting), invoke the unified CLI:
+  ```bash
+  python skills/system-diagnostics/scripts/diagnose.py all
+  # Or target specific subsystems:
+  python skills/system-diagnostics/scripts/diagnose.py ui --live --audit-layout
+  python skills/system-diagnostics/scripts/diagnose.py container --container <name> --sync-check <files...>
+  ```
+- **Self-Contained Bundled Fallback**: When running standalone without sibling skills, execute the built-in cross-platform helpers in `<skill_dir>/scripts/` (`docker_audit.py`, `cdp_inspect.py`) as detailed below.
 
-1. **1-Call Live Runtime, Container Sync & CPU Audit (`scripts/docker_audit.py`)**:
-   - If the project uses Docker, run the built-in cross-platform auditor in a single command:
+Execute these 3 steps *before* editing production code:
+
+1. **1-Call Live Runtime, Container Sync & CPU Audit (`scripts/docker_audit.py` or `diagnose.py container`)**:
+   - If the project uses Docker, run the cross-platform auditor in a single command (via `diagnose.py container` or bundled fallback `scripts/docker_audit.py`):
      ```bash
      python "<skill_dir>/scripts/docker_audit.py" --container <container_name> --workdir /app --sync-check <modified_or_suspect_files...>
      ```
@@ -244,6 +254,7 @@ Execute the approved plan in tight, verifiable increments rather than a single m
 ## Built-In Cross-Platform Helper Scripts & Reference Library
 
 ### Pre-Built Diagnostic Scripts (`scripts/` — Windows, macOS & Linux)
+*(Note: When `system-diagnostics` is installed, `skills/system-diagnostics/scripts/diagnose.py` provides a unified entrypoint combining these diagnostic routines with surface scanning and virtualenv test auto-discovery. The bundled scripts below remain 100% self-contained for standalone execution).*
 - **[`scripts/cdp_inspect.py`](./scripts/cdp_inspect.py)**: Cross-platform, project-agnostic Chrome DevTools Protocol (CDP) inspector with 100% zero-dependency pure-Python RFC 6455 transport (`scripts/cdp_transport.py`) and modular layout evaluator (`scripts/audit_layout.js`). Auto-detects `DevToolsActivePort` (`chrome://inspect/#remote-debugging` or `edge://inspect/#remote-debugging`) across Windows, macOS, Linux, and WSL to attach to the user's live browser tab, or runs an auto-cleaned temporary `--headless` instance. Supports `--list-tabs`, `--audit-layout` (generic viewport/container overflow + `<video>`/`<img>`/`<canvas>` state), `--selectors "<css>"`, `--click "<selector>"`, `--eval "<js>"`, and `--screenshot <path>`.
 - **[`scripts/cdp_transport.py`](./scripts/cdp_transport.py)**: Zero-dependency asyncio standard library RFC 6455 WebSocket client with automatic fallback when third-party `websockets` package is not installed.
 - **[`scripts/docker_audit.py`](./scripts/docker_audit.py)**: Cross-platform, project-agnostic Docker container CPU/memory/PID auditor (`docker stats --no-stream`), `docker top` inspector, host-vs-container MD5 file sync verifier (`--container <name> --workdir /app --sync-check <files>`), and recent container traceback scanner.

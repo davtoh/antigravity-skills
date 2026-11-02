@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Cross-platform auxiliary tool discovery, virtual environment test runner, and frontier bridge.
+"""Cross-platform auxiliary tool discovery, virtual environment test runner, and diagnostics bridge.
 
-Integrates with optional sibling tools from the frontier-architect skill
+Integrates with centralized system-diagnostics (diagnose.py) or sibling tools from frontier-architect
 (cdp_inspect.py, docker_audit.py) and local repository virtualenvs without hard dependencies.
 Enforces Axiom 9 (Honest Verification Reporting) so that static, container, and live UI
 verification statuses are never overstated or conflated.
@@ -23,17 +23,37 @@ from campaign_manager import get_repo_root
 
 def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
     home = Path.home()
+    sibling_dir = Path(__file__).resolve().parent.parent.parent
+    sys_diag_dir = Path(os.environ["SYSTEM_DIAGNOSTICS_DIR"]) if os.environ.get("SYSTEM_DIAGNOSTICS_DIR") else None
+
     candidates = {
+        "diagnose": [
+            os.environ.get("DIAGNOSE_PATH", ""),
+            str(sys_diag_dir / "scripts" / "diagnose.py") if sys_diag_dir else "",
+            str(base_target / "scripts" / "diagnose.py"),
+            str(root / "scripts" / "diagnose.py"),
+            str(sibling_dir / "system-diagnostics" / "scripts" / "diagnose.py"),
+            str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py"),
+            str(root / ".gemini" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py"),
+        ],
         "cdp_inspect": [
             os.environ.get("CDP_INSPECT_PATH", ""),
+            str(sys_diag_dir / "scripts" / "cdp_inspect.py") if sys_diag_dir else "",
             str(base_target / "scripts" / "cdp_inspect.py"),
             str(root / "scripts" / "cdp_inspect.py"),
+            str(sibling_dir / "system-diagnostics" / "scripts" / "cdp_inspect.py"),
+            str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / "cdp_inspect.py"),
+            str(sibling_dir / "frontier-architect" / "scripts" / "cdp_inspect.py"),
             str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "cdp_inspect.py"),
         ],
         "docker_audit": [
             os.environ.get("DOCKER_AUDIT_PATH", ""),
+            str(sys_diag_dir / "scripts" / "docker_audit.py") if sys_diag_dir else "",
             str(base_target / "scripts" / "docker_audit.py"),
             str(root / "scripts" / "docker_audit.py"),
+            str(sibling_dir / "system-diagnostics" / "scripts" / "docker_audit.py"),
+            str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / "docker_audit.py"),
+            str(sibling_dir / "frontier-architect" / "scripts" / "docker_audit.py"),
             str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "docker_audit.py"),
         ],
     }
@@ -155,7 +175,7 @@ def _resolve_cdp_script_and_url(target: Path, tools: dict[str, str], url: str) -
     if not cdp_script:
         print("\n--- Live UI Verification (CDP) ---")
         print("[Live Browser UI] SKIPPED: 'cdp_inspect.py' not detected.")
-        print("  To enable live UI verification, install the frontier-architect skill or set $CDP_INSPECT_PATH.")
+        print("  To enable live UI verification, install system-diagnostics or frontier-architect, or set $CDP_INSPECT_PATH.")
         return "", ""
 
     target_url = url or os.environ.get("APP_URL", "") or auto_detect_app_url()
