@@ -32,6 +32,10 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
 5. **Unified 3-Tier Diagnostic Audit (`diagnose.py all`)**:
    - Executes a comprehensive 3-tier audit in one shot: Static Surface/Tests $\to$ Docker Container $\to$ Browser UI Layout.
    - Summarizes results under Axiom 9 (Honest Verification Reporting: `VERIFIED`, `UNVERIFIED`, or `SKIPPED`).
+6. **Dynamic & Extensible Probes (`diagnose.py probe`)**:
+   - Discovers, runs, scaffolds, and promotes reusable domain probes (e.g., `camera_hardware`, databases, sockets) across global and workspace `.diagnostics/probes/` registries.
+   - Eliminates disposable scratch script sprawl: agents test domain-specific logic and promote working checks into permanent diagnostic tools via `diagnose.py probe save`.
+   - Built-in `camera_hardware.py` probe tests DirectShow, Media Foundation, and V4L2 device indices, validates pixel frame decoding without crashing on `-1.0` register queries, and audits Windows PnP device states.
 
 ---
 
@@ -62,6 +66,10 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Scan Surface for Broken IDs/Routes** | Source repository | Static AST scan without server | `python skills/system-diagnostics/scripts/diagnose.py surface --show-ids --show-routes` |
 | **Export Full Surface Inventory JSON** | Source repository | JSON contract baseline | `python skills/system-diagnostics/scripts/diagnose.py surface --json` |
 | **Run Test Suite with Virtualenv** | Test suite | Auto-detects `.venv` interpreter | `python skills/system-diagnostics/scripts/diagnose.py tests` |
+| **List Registered Probes** | Probe registry | Discovers global & workspace probes | `python skills/system-diagnostics/scripts/diagnose.py probe list` |
+| **Probe Camera Hardware & Locks** | Physical/virtual video | Probes backends, decoding & locks | `python skills/system-diagnostics/scripts/diagnose.py probe run camera_hardware` |
+| **Scaffold New Domain Probe** | Missing domain | Generates protocol boilerplate | `python skills/system-diagnostics/scripts/diagnose.py probe new db_pool --domain database` |
+| **Promote Scratch Script to Probe** | Verified scratch | Saves script to reusable registry | `python skills/system-diagnostics/scripts/diagnose.py probe save scratch/check_db.py db_pool` |
 
 ---
 
@@ -117,6 +125,26 @@ python skills/system-diagnostics/scripts/diagnose.py all [OPTIONS]
 - `--container <NAME>`: Explicit Docker container name.
 - `--strict`: Exits with return code 1 if any tier fails.
 
+### Subcommand: `probe`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py probe {list,run,new,save} [OPTIONS]
+```
+- `list [--json]`: Discovers and prints all registered probes across global and workspace registries.
+- `run <NAME_OR_PATH> [ARGS...] [--json]`: Executes a probe in an isolated subprocess with performance timing.
+- `new <NAME> [--domain <DOMAIN>]`: Scaffolds a new probe boilerplate in `.diagnostics/probes/<name>.py`.
+- `save <SOURCE_PATH> <NAME> [--workspace]`: Promotes a verified scratch script into the reusable probe registry.
+
+---
+
+## Windows Shell & Tooling Resilience
+
+1. **PowerShell Script Policy Bypass**:
+   - When executing Node/NPM CLI tools on Windows, always invoke via `cmd /c npx -y <tool> ...` to bypass `npx.ps1 cannot be loaded because running scripts is disabled on this system`.
+2. **Codebase Grepping**:
+   - Prefer `git grep -n "<pattern>"` over `rg` unless `rg` is explicitly verified in `%PATH%`.
+3. **Line Ending & File Editing Safety**:
+   - When inspecting or patching files on Windows, preserve CRLF/LF line endings and avoid generating throwaway python patching scripts.
+
 ---
 
 ## Architecture & Bundled Scripts
@@ -124,8 +152,11 @@ python skills/system-diagnostics/scripts/diagnose.py all [OPTIONS]
 ```
 skills/system-diagnostics/
 ├── SKILL.md                          # Tool manual and scenario matrix
+├── probes/                           # Global diagnostic probe extensions
+│   └── camera_hardware.py            # Built-in camera hardware & acquisition probe
 ├── scripts/
 │   ├── diagnose.py                   # Unified CLI entrypoint with auto-discovery
+│   ├── probe_runner.py               # Pluggable extension runner & probe registry
 │   ├── cdp_inspect.py                # CDP layout, DOMrect, and overflow inspector
 │   ├── cdp_transport.py              # Zero-dependency RFC 6455 WebSocket client
 │   ├── audit_layout.js               # Injected DOM bounding box auditor
@@ -133,5 +164,6 @@ skills/system-diagnostics/
 │   ├── surface_scanners.py           # AST surface parser for HTML/JS/Python/CSS
 │   └── css_inspector.py              # CSS layout, overflow, and specificity checks
 └── tests/
-    └── test_diagnose.py              # 18 automated unit tests for CLI & discovery
+    ├── test_diagnose.py              # Automated unit tests for CLI & discovery
+    └── test_probe_runner.py          # Automated unit tests for dynamic probe extensions
 ```

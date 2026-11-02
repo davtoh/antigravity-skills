@@ -77,7 +77,9 @@ Before diving in, protect the context window and classify the task:
    - **Bucket C (Complex / Architectural / SOTA Product)**: New modules, architectural redesigns, or requests to elevate a product. Go to **Phase 2 & Phase 3**.
    - **Bucket D (Multi-Symptom Bug, UI Regression, or Resource/CPU Bottleneck)**: Any report involving multiple UI/state bugs, follow-up regressions after a prior fix, visual overflow, stuck status indicators, or high Docker/WSL (`vmmem`) CPU usage. **NEVER treat Bucket D as Bucket A.** Go immediately to **Phase 1B**.
 3. **Triage Edge Cases**:
-   - **Mixed requests** (e.g., "fix this bug and also redesign the page"): split them. Handle the Bucket D part first with its diagnostic gate, then the Bucket C part—otherwise the redesign hides whether the bug was actually fixed.
+   - **Mixed requests** (e.g., "fix this bug and also redesign the page", or a bug report asking to build a new class/component): split them cleanly. Maintain strict separation of concerns:
+     1. Establish the failing empirical baseline and root-cause analysis via `app-debugger` / `diagnose.py`.
+     2. For the new architectural component, class, or subsystem, transition to `frontier-architect` (Phase 2 & Phase 5) to draft the API contract, trade-offs, and implementation plan artifact before touching production code.
    - **Bucket A that grows**: If a "simple" fix touches more than 2–3 files, changes a public interface, or fails its first verification, it wasn't Bucket A. Stop, re-triage, and tell the user the scope changed instead of expanding the diff quietly.
    - **No interactive user** (you're running as a subagent, under `/goal`, or `ask_question` isn't available): you can't use the clarification gates. Pick the most conservative, reversible interpretation, write the assumptions at the top of your output (or in the plan artifact), and don't take any Axiom 8 destructive action—leave those as recommendations for the user.
    - **Read-only or review requests** ("check this", "audit this", "is this right?"): report findings and proposed fixes. Only edit if the user asked for changes, and when you do, keep them minimal and non-destructive.
@@ -106,6 +108,8 @@ When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection script
   # Or target specific subsystems:
   python skills/system-diagnostics/scripts/diagnose.py ui --live --audit-layout
   python skills/system-diagnostics/scripts/diagnose.py container --container <name> --sync-check <files...>
+  # For domain-specific inspections (hardware, databases, network), use the dynamic probe registry:
+  python skills/system-diagnostics/scripts/diagnose.py probe run camera_hardware
   ```
 - **Self-Contained Bundled Fallback**: When running standalone without sibling skills, execute the built-in cross-platform helpers in `<skill_dir>/scripts/` (`docker_audit.py`, `cdp_inspect.py`) as detailed below.
 

@@ -25,6 +25,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import surface_scanners
+import probe_runner
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -300,6 +301,78 @@ def cmd_all(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_probe(args: argparse.Namespace) -> int:
+    """Execute dynamic probe commands (list, run, new, save)."""
+    action = getattr(args, "probe_action", None)
+    if not action:
+        print("[diagnose probe] Error: Probe action required. Use 'list', 'run', 'new', or 'save'.", file=sys.stderr)
+        return 2
+
+    root = Path(args.path).resolve() if getattr(args, "path", None) else None
+
+    if action == "list":
+        probes = probe_runner.list_probes(workspace_root=root)
+        if getattr(args, "json", False):
+            print(json.dumps([p.to_dict() for p in probes], indent=2))
+            return 0
+        print(f"\n=== Registered Diagnostic Probes ({len(probes)}) ===")
+        if not probes:
+            print("  No probes registered yet. Use 'diagnose.py probe new <name>' to scaffold one.")
+            return 0
+        for p in probes:
+            print(f"  - {p.name:<20} [{p.scope}] {p.description}")
+        print()
+        return 0
+
+    if action == "run":
+        if not args.name:
+            print("[diagnose probe run] Error: Probe name or path required.", file=sys.stderr)
+            return 2
+        py_bin = find_virtualenv_python(root or Path.cwd())
+        result = probe_runner.run_probe(
+            args.name,
+            probe_args=args.probe_args,
+            python_bin=py_bin,
+            workspace_root=root,
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(result, indent=2))
+        else:
+            status_symbol = {"ok": "✓", "warning": "⚠", "error": "✗"}.get(result.get("status", ""), "•")
+            print(f"\n[{status_symbol}] Diagnostic Probe: {result.get('probe')} ({result.get('latency_ms', 0)}ms)")
+            print(f"    Summary: {result.get('summary')}")
+            details = result.get("details", {})
+            if isinstance(details, dict):
+                for k, v in details.items():
+                    print(f"    - {k}: {v}")
+            else:
+                print(f"    - Output: {details}")
+            print()
+        return 0 if result.get("status") in ("ok", "warning") else 1
+
+    if action == "new":
+        if not getattr(args, "name", None):
+            print("[diagnose probe new] Error: Probe name required.", file=sys.stderr)
+            return 2
+        domain = getattr(args, "domain", "general") or "general"
+        target_dir = root / ".diagnostics" / "probes" if root else None
+        dest = probe_runner.scaffold_probe(args.name, domain=domain, target_dir=target_dir)
+        print(f"[diagnose probe new] Scaffolded new probe template: {dest}")
+        return 0
+
+    if action == "save":
+        if not getattr(args, "source", None) or not getattr(args, "name", None):
+            print("[diagnose probe save] Error: Both source script and probe name are required.", file=sys.stderr)
+            return 2
+        scope = "workspace" if getattr(args, "workspace", False) else "global"
+        dest = probe_runner.save_probe(args.source, args.name, scope=scope, workspace_root=root)
+        print(f"[diagnose probe save] Successfully registered probe '{args.name}' ({scope}): {dest}")
+        return 0
+
+    print(f"[diagnose probe] Error: Unknown probe action '{action}'.", file=sys.stderr)
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build unified CLI argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -349,6 +422,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_all.add_argument("--container", default=None, help="Explicit Docker container name")
     p_all.add_argument("--strict", action="store_true", help="Exit code 1 if any tier fails")
 
+    # 6. Probe subcommand (Dynamic & extensible diagnostic probes)
+    p_probe = sub.add_parser("probe", help="Dynamic & extensible diagnostic probes (hardware, DB, etc.)")
+    probe_sub = p_probe.add_subparsers(dest="probe_action", help="Probe action to execute")
+
+    # probe list
+    p_plist = probe_sub.add_parser("list", help="List registered diagnostic probes")
+    p_plist.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_plist.add_argument("--json", action="store_true", help="Output JSON format")
+
+    # probe run
+    p_prun = probe_sub.add_parser("run", help="Run a diagnostic probe by name or file path")
+    p_prun.add_argument("name", help="Probe name or file path")
+    p_prun.add_argument("probe_args", nargs="*", default=[], help="Arguments passed to the probe")
+    p_prun.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_prun.add_argument("--json", action="store_true", help="Output JSON format")
+
+    # probe new
+    p_pnew = probe_sub.add_parser("new", help="Scaffold a new probe template in .diagnostics/probes/")
+    p_pnew.add_argument("name", help="Probe name to create")
+    p_pnew.add_argument("--domain", default="general", help="Diagnostic domain (e.g. hardware, database)")
+    p_pnew.add_argument("--path", default=None, help="Root directory (default: current directory)")
+
+    # probe save
+    p_psave = probe_sub.add_parser("save", help="Promote a verified script into the probe registry")
+    p_psave.add_argument("source", help="Source script path (e.g. from scratch/)")
+    p_psave.add_argument("name", help="Registered probe name")
+    p_psave.add_argument("--workspace", action="store_true", help="Save to workspace .diagnostics/ instead of global")
+    p_psave.add_argument("--path", default=None, help="Root workspace directory")
+
     return parser
 
 
@@ -365,6 +467,7 @@ def main() -> int:
         "surface": cmd_surface,
         "tests": cmd_tests,
         "all": cmd_all,
+        "probe": cmd_probe,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

@@ -6,21 +6,28 @@ description: >-
 
 # App Debugger: Dedicated Bug Fixing & Regression Suite
 
-The **App Debugger** skill provides an end-to-end, empirical debugging workflow. It eliminates speculative "whack-a-mole" fixes by enforcing reproduction before modification, mapping symptoms to verified root causes, and proving resolution via closed-loop diagnostics.
+The **App Debugger** skill provides an end-to-end, empirical debugging workflow. It eliminates speculative "whack-a-mole" fixes by enforcing reproduction before modification, mapping symptoms to verified root causes, avoiding throwaway scratch scripts via reusable diagnostic probes, and proving resolution via closed-loop diagnostics.
 
 ---
 
-## The 4-Step Debugging Workflow
+## The 5-Step Debugging Workflow
 
 ```
-[Step 1: Pre-Flight UX Gate] ──> [Step 2: Reproduce First] ──> [Step 3: Symptom Matrix] ──> [Step 4: Surgical Fix & Verify]
-  ask_question (Live/Headless/      Capture empirical evidence     Map symptom -> cause ->       Atomic code edit & closed-
-  Backend) unless specified         via run_diagnose.py            file/line -> check            loop re-run of diagnostics
+[Step 0: Arch Triage] ──> [Step 1: Pre-Flight UX] ──> [Step 2: Reproduce First] ──> [Step 3: Symptom Matrix] ──> [Step 4: Surgical Fix & Verify]
+  Pure bug vs. new          ask_question up front       diagnose.py surface/tests/    Map symptom -> cause ->       Atomic code edit & hybrid
+  component architecture?   (no 100-step delays)        ui or dynamic probe runner     file/line -> check            lifecycle verification
 ```
+
+### Step 0: Intelligent Architectural Triage Gate
+
+Before jumping into code, classify the user's request:
+- **Pure Bug / Regressed State**: Isolated typo, broken selector, missing null-check, or straightforward layout overflow. Proceed directly to Step 1.
+- **Architectural Solution or New Component**: The user's prompt combines a bug with a design or subsystem request (e.g., *"Can we create a class to manage all names..."*, *"Should we create a sturdy camera handler..."*).
+  - **Enforce Separation of Concerns**: Maintain `app-debugger` for empirical reproduction (Steps 1–3), but **delegate architectural design to `frontier-architect`** or generate a formal **Implementation Plan Artifact** (`RequestFeedback: true`) defining API contracts, trade-offs, and invariants before modifying code.
 
 ### Step 1: Pre-Flight UX Gate (`ask_question`)
 
-Before running browser diagnostics or when the execution mode is ambiguous, ask the user their preferred inspection environment via `ask_question`:
+Before running browser diagnostics or when the execution mode is ambiguous, ask the user their preferred inspection environment via `ask_question` **immediately** (do not perform broad codebase sweeps or read dozens of files first):
 
 - **Option 1 (Recommended)**: `(Recommended) Live Chrome Tab - Attach to active visible browser tab to inspect DOM layout and errors in real time`
 - **Option 2**: `Headless Background Sandbox - Run isolated Chrome in the background without disturbing desktop windows`
@@ -29,9 +36,9 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 > [!NOTE]
 > If the user has already specified the mode in their prompt (e.g., "debug the live tab", "test in headless mode", or "fix container crash"), **skip** `ask_question` and proceed directly to Step 2.
 
-### Step 2: Reproduce First (3-Tier Empirical Evidence)
+### Step 2: Reproduce First (3-Tier & Dynamic Domain Probes)
 
-Never edit code on speculation. Always establish a reproducible failing baseline using `skills/app-debugger/scripts/run_diagnose.py`:
+Never edit code on speculation. Always establish a reproducible failing baseline using `run_diagnose.py`:
 
 1. **Tier 1 (Surface & Tests)**:
    ```bash
@@ -49,6 +56,19 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    # Or isolated headless background
    python skills/app-debugger/scripts/run_diagnose.py ui --headless --audit-layout --screenshot scratch/bug_before.jpg
    ```
+4. **Dynamic Domain Probes (Hardware, Databases, Network)**:
+   - **Do NOT create throwaway scripts in `scratch/`**.
+   - Check available probes:
+     ```bash
+     python skills/app-debugger/scripts/run_diagnose.py probe list
+     ```
+   - Run built-in or registered probes (e.g. camera acquisition, device locks):
+     ```bash
+     python skills/app-debugger/scripts/run_diagnose.py probe run camera_hardware
+     ```
+   - When a missing domain requires new probing logic:
+     - Scaffold a reusable probe: `python skills/app-debugger/scripts/run_diagnose.py probe new <name> --domain <domain>`
+     - Or promote a verified script: `python skills/app-debugger/scripts/run_diagnose.py probe save <script> <name>`
 
 ### Step 3: Symptom-to-Root-Cause Matrix
 
@@ -58,20 +78,32 @@ Before touching code, synthesize findings into a structured matrix that maps eve
 |---|---|---|---|---|---|
 | 1 | Player overflows viewport | Bounding width 1600px > 1200px | Missing defensive layout containment (`min-width: 0`) | `static/css/player.css:42` | `run_diagnose.py ui --audit-layout` |
 | 2 | Dropdown reset on filter click | ReferenceError: `updateSelect is not defined` | HTML element `#model-select` renamed without updating event listener | `static/js/app.js:115` | `run_diagnose.py surface --show-ids` |
+| 3 | Camera acquisition timeout | Processed frames: 0 | `is_physical_camera` rejected UVC webcams returning `-1.0` registers | `intelligent_tracker/video.py:45` | `run_diagnose.py probe run camera_hardware` |
 
-### Step 4: Surgical Atomic Fix & Closed-Loop Verification
+### Step 4: Surgical Atomic Fix & Hybrid Verification
 
 1. **Apply Surgical Edits**:
    - Adhere to Modularity Budgets ($\le$ 350 lines per file, functions $\le$ 30 lines).
    - Fix the identified root causes without side effects or unneeded refactoring.
-2. **Execute Closed-Loop Verification**:
-   - Re-run the exact diagnostic commands from Step 2 to prove the issue is resolved:
-     - Layout overflows cleared (`hasOverflow: false`).
-     - Tracebacks resolved.
-     - Tests passing cleanly.
-     - Visual proof captured (`scratch/bug_after.jpg`).
+2. **Execute Environment-Parity & Lifecycle Verification**:
+   - Re-run diagnostic commands and domain probes.
+   - **Environment Parity**: Never verify solely against synthetic mocks when a live database or hardware device is configured. Test against real configuration states (e.g. existing database embedding dimensions).
+   - **Resource Lifecycle Check**: Explicitly verify cleanup (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
+   - **Interactive User Gate**: When confidence is partial, physical hardware is involved, or an operation is sensitive/destructive, provide a 1-line verification recipe and prompt the user to confirm live execution before closing the milestone.
 3. **Report Axiom 9 Honest Verification**:
-   - Clearly report each tier as `VERIFIED`, `UNVERIFIED`, or `SKIPPED`.
+   - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
+
+---
+
+## Windows Shell & Tooling Resilience
+
+1. **PowerShell Script Policy Bypass**:
+   - On Windows, always invoke Node/NPM CLI tools via `cmd /c npx -y <tool> ...` to prevent `npx.ps1 cannot be loaded because running scripts is disabled on this system`.
+2. **Codebase Grepping**:
+   - Prefer `git grep -n "<pattern>"` over `rg` unless `rg` is explicitly verified in `%PATH%`.
+3. **Line Ending & File Editing Safety**:
+   - When modifying files on Windows, verify target line endings (CRLF vs LF).
+   - Never write disposable Python file-patching scripts in `scratch/` when `edit_file` encounters a whitespace mismatch; inspect the exact context and apply targeted edits.
 
 ---
 
@@ -124,6 +156,10 @@ Per `executable_documentation.md`, match user intent with the exact copy-pasteab
 | **Check AST Surface for Broken IDs** | Source repository | `--show-ids --show-routes` | `python skills/app-debugger/scripts/run_diagnose.py surface --show-ids --show-routes` |
 | **Run Virtualenv Unit Test Suite** | Test runner | Auto-detects `.venv` | `python skills/app-debugger/scripts/run_diagnose.py tests` |
 | **Full 3-Tier System Health Audit** | Dev server / repo | All tiers | `python skills/app-debugger/scripts/run_diagnose.py all` |
+| **List Registered Domain Probes** | Probe registry | Discovers domain probes | `python skills/app-debugger/scripts/run_diagnose.py probe list` |
+| **Probe Camera Hardware & Acquisition** | Video capture | Tests DirectShow/V4L2 & locks | `python skills/app-debugger/scripts/run_diagnose.py probe run camera_hardware` |
+| **Scaffold Reusable Domain Probe** | Missing domain | Generates boilerplate probe | `python skills/app-debugger/scripts/run_diagnose.py probe new db_pool --domain database` |
+| **Promote Scratch Script to Probe** | Verified scratch | Saves script to probe registry | `python skills/app-debugger/scripts/run_diagnose.py probe save scratch/probe.py db_pool` |
 
 ---
 
