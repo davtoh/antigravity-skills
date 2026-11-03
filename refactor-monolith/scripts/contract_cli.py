@@ -88,7 +88,9 @@ def _register_tool_subparsers(sub: Any) -> None:
 
     p_tst = sub.add_parser("run-tests", help="Run test suite using auto-detected virtualenv interpreter.")
     p_tst.add_argument("--path", default=".", help="Target repository directory.")
-    p_tst.add_argument("test_args", nargs="*", help="Arguments forwarded to unittest.")
+    p_tst.add_argument("--runner", choices=["auto", "unittest", "pytest"], default="auto", help="Test runner framework (default: auto).")
+    p_tst.add_argument("-c", "--command", default=None, help="Execute Python command string directly in virtualenv.")
+    p_tst.add_argument("test_args", nargs=argparse.REMAINDER, help="Arguments forwarded to test runner or python.")
 
     p_vui = sub.add_parser("verify-ui", help="Run CDP browser layout and overflow inspection.")
     p_vui.add_argument("--path", default=".", help="Target repository directory.")
@@ -158,7 +160,10 @@ def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace)
     if subcmd == "inspect-css":
         return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
     if subcmd == "run-tests":
-        return cmd_run_tests(target, getattr(args, "test_args", []))
+        test_args = list(getattr(args, "test_args", []))
+        if getattr(args, "command", None):
+            test_args = ["-c", args.command]
+        return cmd_run_tests(target, test_args, runner=getattr(args, "runner", "auto"))
     if subcmd == "verify-ui":
         is_headless = not getattr(args, "live", False)
         return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), is_headless, getattr(args, "strict", False))
@@ -193,7 +198,13 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
-    args = build_cli_parser().parse_args(argv)
+    parser = build_cli_parser()
+    args, extra = parser.parse_known_args(argv)
+    if extra:
+        if args.subcommand == "run-tests":
+            args.test_args.extend(extra)
+        else:
+            parser.error("unrecognized arguments: " + " ".join(extra))
     target = Path(getattr(args, "path", ".")).resolve()
     if args.subcommand == "probe-tools":
         tools = discover_optional_tools(target)

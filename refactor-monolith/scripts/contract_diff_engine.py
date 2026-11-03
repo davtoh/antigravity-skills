@@ -5,6 +5,7 @@ Builds and diffs CodebaseContract representations across HTML, JS, Python, and C
 without external dependencies.
 """
 
+import os
 import re
 import subprocess
 from dataclasses import asdict, dataclass, field
@@ -86,10 +87,15 @@ def iter_repo_files(base_dir: Path, git_ref: str = "") -> list[Path]:
             if line and not any(part in IGNORED_DIRS for part in Path(line).parts):
                 res.append(Path(line))
         return res
-    return [
-        p for p in base_dir.rglob("*")
-        if p.is_file() and not any(part in IGNORED_DIRS for part in p.parts)
-    ]
+
+    file_paths: list[Path] = []
+    for root, dirs, files in os.walk(base_dir):
+        # In-place prune ignored directories to prevent walking into deep virtualenvs/node_modules
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        root_path = Path(root)
+        for f in files:
+            file_paths.append(root_path / f)
+    return file_paths
 
 def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
     """Extract full contract from disk or historical git tree."""

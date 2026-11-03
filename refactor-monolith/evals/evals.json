@@ -88,6 +88,18 @@
         "Checkpoints campaign state with contract_snapshot.py state --checkpoint before halting",
         "Instructs the user to stage/commit verified slices and continue in a fresh session with /refactor-monolith continue"
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Our test suite uses pytest with conftest.py and accepts flags like -k 'test_views' -v. In our last refactor attempt, an agent hardcoded Windows .\\.venv\\Scripts\\python.exe, polled in a loop with time.sleep() when tests took 20 seconds, and crashed when trying to forward test flags. Please run tests cross-platform and respect async task rules.",
+      "expected_output": "The model uses contract_snapshot.py run-tests to run tests through the detected virtualenv without hardcoding OS-locked paths. It forwards test flags cleanly using '--' or direct arguments (e.g. run-tests --runner pytest -- -k 'test_views' -v), yields the turn immediately if tests run asynchronously in the background instead of polling or running time.sleep(), and runs git status --short before staging files.",
+      "files": [],
+      "expectations": [
+        "Uses contract_snapshot.py run-tests with auto-detected or --runner pytest instead of hardcoding OS-locked .\\.venv\\Scripts\\python.exe binaries",
+        "Passes test runner flags (-k, -v, -p) transparently without CLI parser errors",
+        "Refrains from polling manage_task status in a loop or calling python time.sleep / Start-Sleep when a background task is launched",
+        "Runs git status --short defensively before staging files to avoid fatal pathspec errors on deleted or renamed files"
+      ]
     }
   ]
 }

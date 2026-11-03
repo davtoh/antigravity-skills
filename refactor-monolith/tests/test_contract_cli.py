@@ -115,9 +115,58 @@ class TestContractCliCommands(unittest.TestCase):
                 "import unittest\nclass T(unittest.TestCase):\n    def test_ok(self): pass\n",
                 encoding="utf-8"
             )
-            # Run unittest forwarder with default discover tests
+            # 1. Run unittest forwarder with default discover tests
             code = main(["run-tests", "--path", tmp])
             self.assertEqual(code, 0)
+
+            # 2. Run with forwarded flags including -p and -v (which previously crashed argparse!)
+            code_flags = main(["run-tests", "--path", tmp, "discover", "tests", "-p", "test_*.py", "-v"])
+            self.assertEqual(code_flags, 0)
+
+            # 3. Run with -- separator before flags
+            code_sep = main(["run-tests", "--path", tmp, "--", "discover", "tests", "-v"])
+            self.assertEqual(code_sep, 0)
+
+            # 4. Direct inline python command via -c
+            code_cmd = main(["run-tests", "--path", tmp, "-c", "import sys; sys.exit(0)"])
+            self.assertEqual(code_cmd, 0)
+
+            # 5. Direct inline command exiting 1
+            code_fail = main(["run-tests", "--path", tmp, "-c", "import sys; sys.exit(1)"])
+            self.assertEqual(code_fail, 1)
+
+    def test_run_tests_pytest_detection_and_runner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "conftest.py").write_text("# pytest marker\n", encoding="utf-8")
+            # When conftest.py is present, auto-detects pytest.
+            # Using -c to avoid needing full pytest installed in test runner environment:
+            code = main(["run-tests", "--path", tmp, "-c", "print('auto-runner check')"])
+            self.assertEqual(code, 0)
+
+            # Explicit runner argument
+            code_runner = main(["run-tests", "--path", tmp, "--runner", "unittest", "-c", "print('explicit runner')"])
+            self.assertEqual(code_runner, 0)
+
+    def test_iter_repo_files_pruning(self):
+        from scripts.contract_diff_engine import iter_repo_files
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Create valid file
+            (tmp_path / "main.py").write_text("x = 1\n", encoding="utf-8")
+            # Create files in ignored directories
+            venv_dir = tmp_path / ".venv" / "lib"
+            venv_dir.mkdir(parents=True)
+            (venv_dir / "bad.py").write_text("should_not_be_scanned\n", encoding="utf-8")
+            nm_dir = tmp_path / "node_modules" / "pkg"
+            nm_dir.mkdir(parents=True)
+            (nm_dir / "index.js").write_text("should_not_be_scanned\n", encoding="utf-8")
+
+            files = iter_repo_files(tmp_path)
+            filenames = [f.name for f in files]
+            self.assertIn("main.py", filenames)
+            self.assertNotIn("bad.py", filenames)
+            self.assertNotIn("index.js", filenames)
 
 class TestCampaignAndReporterTools(unittest.TestCase):
     def test_campaign_manager_full_cli(self):

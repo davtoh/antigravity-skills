@@ -71,14 +71,34 @@ def discover_optional_tools(target: Path | None = None) -> dict[str, str]:
         found["virtualenv_python"] = py_bin
     return found
 
-def cmd_run_tests(target: Path, extra_args: list[str]) -> int:
+def _is_pytest_preferred(target: Path, runner: str, clean_args: list[str]) -> bool:
+    """Detect whether pytest should be favored over unittest."""
+    if runner == "pytest":
+        return True
+    if runner == "auto":
+        markers = ["pytest.ini", "conftest.py", "pyproject.toml", "setup.cfg"]
+        return any((target / m).is_file() for m in markers) or any("pytest" in a.lower() for a in clean_args)
+    return False
+
+def _build_test_runner_command(target: Path, py_bin: str, extra_args: list[str], runner: str) -> list[str]:
+    """Assemble execution command line for test suite or inline Python."""
+    clean = [a for a in extra_args if a != "--"]
+    if clean and clean[0] in ("-c", "--command"):
+        return [py_bin, "-c", *clean[1:]]
+    if clean and clean[0] == "-m":
+        return [py_bin, *clean]
+    if _is_pytest_preferred(target, runner, clean):
+        args = [a for a in clean if a.lower() != "pytest"] or ["tests/"]
+        return [py_bin, "-m", "pytest", *args]
+    args = [a for a in clean if a.lower() != "unittest"] or ["discover", "tests"]
+    return [py_bin, "-m", "unittest", *args]
+
+def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto") -> int:
     """Execute test suite using virtualenv python if detected, falling back to sys.executable."""
     tools = discover_optional_tools(target)
     py_bin = tools.get("virtualenv_python") or sys.executable
-    args = extra_args or ["discover", "tests"]
-    cmd = [py_bin, "-m", "unittest", *args]
-    print(f"=== Test Runner (Interpreter: {py_bin}) ===")
-    print(f"Executing: {' '.join(cmd)}\n")
+    cmd = _build_test_runner_command(target, py_bin, extra_args, runner)
+    print(f"=== Test Runner (Interpreter: {py_bin}) ===\nExecuting: {' '.join(cmd)}\n")
     try:
         proc = subprocess.run(cmd, cwd=target, check=False)
         return proc.returncode

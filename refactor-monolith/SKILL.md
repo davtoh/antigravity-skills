@@ -71,10 +71,13 @@ python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>
 python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir>
 python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict
 
-# 3. Virtualenv-isolated automated tests (never use host system Python)
+# 3. Virtualenv-isolated automated tests (never use host system Python or hardcode OS-locked .venv\Scripts\...)
 python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> discover tests
+python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> -- discover tests -p "test_*.py"
+python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> --runner pytest -- tests/ -v
+python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> -c "import <pkg>; print(<pkg>.__all__)"
 
-# 4. Batch modularity audits (audit multiple files simultaneously, never one-by-one)
+# 4. Batch modularity audits (audit candidate files at start and end of phase; avoid polling unchanged files)
 python "<skill_dir>/scripts/code_health_audit.py" --path <target1> <target2> ... --show-methods
 python "<skill_dir>/scripts/code_health_audit.py" --path <dir> --by-dir
 
@@ -279,16 +282,22 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 ```
 
 > [!IMPORTANT]
-> **Reactive Wakeup & Anti-Polling Mandate**:
-> When running long-running verification suites or builds asynchronously via `run_command` (`WaitMsBeforeAsync`), **NEVER poll `manage_task(Action='status')` in a loop**. Polling burns tens of thousands of context tokens while holding the execution thread.
-> - Either proceed with independent static work (documentation drafts, auditing other directories).
+> **Reactive Wakeup, Anti-Polling & Anti-Sleep Mandate**:
+> When running long-running verification suites or builds asynchronously via `run_command` (`WaitMsBeforeAsync`), **NEVER poll `manage_task(Action='status')` in a loop**, and **NEVER run `python -c "import time; time.sleep(...)"` or PowerShell `Start-Sleep`**. Polling and sleeping burns tens of thousands of context tokens and violates runtime rules.
+> - Either proceed with independent static work (reading code, preparing submodules, updating plan drafts).
 > - Or simply **end your turn by calling no more tools** and let the system reactively notify you when the background task completes.
 
 > [!TIP]
 > **Virtual Environment Test Runner & Zero Test Artifact Root Pollution**:
-> 1. Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> discover tests` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`), preventing `ImportError` or `ModuleNotFoundError` on host interpreters.
-> 2. **Anti-Sequential Test Thrash**: Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once (`discover tests`).
-> 3. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
+> 1. Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> ...` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`).
+>    - **Unittest discovery with pattern/flags**: `run-tests --path . -- discover tests -p "test_*.py" -v`
+>    - **Pytest test suite**: `run-tests --path . --runner pytest -- tests/ -v`
+>    - **Ad-hoc Python check**: `run-tests --path . -c "import pkg; print(pkg.__all__)"`
+>    - **OS-Agnostic Invariant**: NEVER hardcode OS-locked binary paths (`.\.venv\Scripts\python.exe` or `.venv/bin/python`). Always use `run-tests` to maintain cross-platform portability.
+> 2. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
+> 3. **Defensive Git Staging**: Always run `git status --short` before composing `git commit` or `git add` instructions. If a monolith file was decomposed into a package directory (e.g. `crm/views.py` $\rightarrow$ `crm/views/`), never pass the deleted file path to `git add` to prevent `fatal: pathspec did not match any files`.
+> 4. **Anti-Sequential Test Thrash**: Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once (`discover tests`).
+> 5. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
 
 ---
 
@@ -338,7 +347,9 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Line-Ending Normalizer** | Normalize files to LF/CRLF before editing | `normalize-eol --path <dir> --to lf` | `python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path . --to lf` |
 | **Line-Ending Agnostic Patch** | Search/replace without shell quoting issues | `patch --file <f> --find ".." --replace ".."` | `python "<skill_dir>/scripts/contract_snapshot.py" patch --file index.html --find "old" --replace "new"` |
 | **Safe HTML Script Injector** | Insert modular <script> tags safely into HTML | `inject-scripts --html <f> --scripts ..` | `python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html index.html --before app.js --scripts /static/js/a.js` |
-| **Venv Automated Test Runner** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . discover tests` |
+| **Venv Automated Test Runner (Unittest)** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -- discover tests -p "test_*.py"` |
+| **Venv Test Runner (Pytest)** | Run pytest suite in target virtualenv | `run-tests --runner pytest -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . --runner pytest -- tests/ -v` |
+| **Venv Direct Python Verification** | Run Python one-liner in target virtualenv | `run-tests -c "<code>"` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -c "import pkg; print(pkg.__all__)"` |
 | **Headless CDP Layout Audit** | Tier 3 UI verification (100% automated, default) | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL` |
 | **Live Browser UI Audit** | Attach to open visible Chrome (requires Allow) | `verify-ui --url <url> --live` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live` |
 | **Container Sync & Health Check** | Tier 2 Docker container file sync check | `audit-container --container <name>` | `python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path . --container tracker --sync-check app.py` |
