@@ -76,6 +76,8 @@ def _is_pytest_preferred(target: Path, runner: str, clean_args: list[str]) -> bo
     if runner == "pytest":
         return True
     if runner == "auto":
+        if clean_args and clean_args[0].lower() == "discover":
+            return False
         markers = ["pytest.ini", "conftest.py", "pyproject.toml", "setup.cfg"]
         return any((target / m).is_file() for m in markers) or any("pytest" in a.lower() for a in clean_args)
     return False
@@ -88,7 +90,7 @@ def _build_test_runner_command(target: Path, py_bin: str, extra_args: list[str],
     if clean and clean[0] == "-m":
         return [py_bin, *clean]
     if _is_pytest_preferred(target, runner, clean):
-        args = [a for a in clean if a.lower() != "pytest"] or ["tests/"]
+        args = [a for a in clean if a.lower() not in ("pytest", "discover")] or ["tests/"]
         return [py_bin, "-m", "pytest", *args]
     args = [a for a in clean if a.lower() != "unittest"] or ["discover", "tests"]
     return [py_bin, "-m", "unittest", *args]
@@ -248,27 +250,14 @@ def cmd_audit_container(
 
 def _diagnose_contracts(target: Path, before_file: str, git_ref: str) -> list[str]:
     """Check Tier 1 AST and DOM contracts against baseline or git reference."""
-    from contract_diff_engine import build_contract, diff_contracts, CodebaseContract
-    from campaign_manager import get_refactor_dir
+    from contract_diff_engine import build_contract, diff_contracts, resolve_baseline_contract
 
     print("\n--- Tier 1: AST & DOM Contract Check ---")
-    before_path = Path(before_file) if before_file and Path(before_file).is_file() else None
-    if not before_path and not git_ref:
-        candidate = get_refactor_dir(target) / "baseline.json"
-        if candidate.is_file():
-            before_path = candidate
-
-    if before_path:
-        before = CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
+    before = resolve_baseline_contract(target, before_file, git_ref)
+    if before:
         issues = diff_contracts(before, build_contract(target))
-        status_msg = f"Zero regressions detected against baseline ({before_path.name})." if not issues else f"Found {len(issues)} contract discrepancy/discrepancies:"
-        print(f"[Tier 1 Contract] {('OK' if not issues else 'CRITICAL')}: {status_msg}")
-        for iss in issues:
-            print(f"  {iss}")
-        return issues
-    elif git_ref:
-        issues = diff_contracts(build_contract(target, git_ref), build_contract(target))
-        status_msg = f"Zero regressions detected against git ref {git_ref}." if not issues else f"Found {len(issues)} contract discrepancy/discrepancies vs {git_ref}:"
+        src_label = f"git ref {git_ref}" if git_ref else f"baseline ({Path(before_file).name if before_file else 'baseline.json'})"
+        status_msg = f"Zero regressions detected against {src_label}." if not issues else f"Found {len(issues)} contract discrepancy/discrepancies vs {src_label}:"
         print(f"[Tier 1 Contract] {('OK' if not issues else 'CRITICAL')}: {status_msg}")
         for iss in issues:
             print(f"  {iss}")

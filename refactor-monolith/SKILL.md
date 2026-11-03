@@ -283,21 +283,25 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 
 > [!IMPORTANT]
 > **Reactive Wakeup, Anti-Polling & Anti-Sleep Mandate**:
-> When running long-running verification suites or builds asynchronously via `run_command` (`WaitMsBeforeAsync`), **NEVER poll `manage_task(Action='status')` in a loop**, and **NEVER run `python -c "import time; time.sleep(...)"` or PowerShell `Start-Sleep`**. Polling and sleeping burns tens of thousands of context tokens and violates runtime rules.
+> When running long-running verification suites or builds via `run_command`, always set `WaitMsBeforeAsync: 10000` (10s). If the command continues as a background task, **NEVER call `manage_task(Action='status')` or `schedule` timers**, and **NEVER run `python -c "import time; time.sleep(...)"` or PowerShell `Start-Sleep`**. Polling and timer loops burn 20+ turns and tens of thousands of tokens.
 > - Either proceed with independent static work (reading code, preparing submodules, updating plan drafts).
-> - Or simply **end your turn by calling no more tools** and let the system reactively notify you when the background task completes.
+> - Or **immediately end your turn by calling no more tools**—the runtime will reactively wake you up the instant the background task finishes.
 
-> [!TIP]
-> **Virtual Environment Test Runner & Zero Test Artifact Root Pollution**:
-> 1. Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> ...` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`).
->    - **Unittest discovery with pattern/flags**: `run-tests --path . -- discover tests -p "test_*.py" -v`
->    - **Pytest test suite**: `run-tests --path . --runner pytest -- tests/ -v`
->    - **Ad-hoc Python check**: `run-tests --path . -c "import pkg; print(pkg.__all__)"`
->    - **OS-Agnostic Invariant**: NEVER hardcode OS-locked binary paths (`.\.venv\Scripts\python.exe` or `.venv/bin/python`). Always use `run-tests` to maintain cross-platform portability.
-> 2. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
-> 3. **Defensive Git Staging**: Always run `git status --short` before composing `git commit` or `git add` instructions. If a monolith file was decomposed into a package directory (e.g. `crm/views.py` $\rightarrow$ `crm/views/`), never pass the deleted file path to `git add` to prevent `fatal: pathspec did not match any files`.
-> 4. **Anti-Sequential Test Thrash**: Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once (`discover tests`).
-> 5. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
+### Virtual Environment Test Runner, Unstaged Working Tree & Zero Root Pollution
+
+1. **Virtualenv Test Runner (`run-tests`)**: Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> ...` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`).
+   - **Unittest discovery with pattern/flags**: `run-tests --path . -- discover tests -p "test_*.py" -v`
+   - **Pytest test suite**: `run-tests --path . --runner pytest -- tests/ -v`
+   - **Ad-hoc Python check**: `run-tests --path . -c "import pkg; print(pkg.__all__)"`
+   - **OS-Agnostic Invariant**: NEVER hardcode OS-locked binary paths (`.\.venv\Scripts\python.exe` or `.venv/bin/python`). Always use `run-tests` to maintain cross-platform portability.
+2. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
+3. **Strict No-Staging Invariant (Leave Working Tree Unstaged)**:
+   - **NEVER run `git add` or `git rm` during a refactoring turn.**
+   - When deleting a superseded monolith file (e.g. replacing `cache.py` with `cache/__init__.py`), delete it via standard filesystem tools (`Remove-Item` or `python -c "import os; os.remove('...')"`), NOT `git rm`.
+   - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs with `git diff` and `git status`.
+   - Run `git status --short` before composing the closing suggested `git add` and `git commit` commands for the user to execute manually.
+4. **Anti-Sequential Test Thrash**: Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once (`discover tests`).
+5. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
 
 ---
 

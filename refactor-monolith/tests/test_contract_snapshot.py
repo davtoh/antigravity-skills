@@ -21,10 +21,12 @@ from scripts.contract_snapshot import (
 from scripts.contract_diff_engine import (
     CodebaseContract,
     diff_contracts,
+    scope_baseline_to_target,
 )
 from scripts.smoke_test_generator import cmd_generate_smoke_test
 from scripts.css_inspector import cmd_inspect_css
 from scripts.auxiliary_tool_bridge import (
+    _build_test_runner_command,
     cmd_audit_container,
     cmd_verify_ui,
     discover_optional_tools,
@@ -316,6 +318,63 @@ class TestAuxiliaryInspectionTools(unittest.TestCase):
 
             code_docker = cmd_audit_container(base, container="", workdir="/app")
             self.assertEqual(code_docker, 0)
+
+    def test_scope_baseline_backend_only_suppresses_dom_false_positives(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            backend_dir = repo_root / "crm"
+            backend_dir.mkdir()
+            (backend_dir / "models.py").write_text("class Company: pass\n", encoding="utf-8")
+
+            # Whole-repo baseline captured on root has frontend items
+            full_baseline = CodebaseContract(
+                html_ids=["id_country", "btn_save"],
+                select_ids=["country_select"],
+                js_global_exports=["Alpine", "Chart", "Waypoint"],
+                python_routes=[{"method": "GET", "path": "/crm/companies", "file": "crm/views.py"}],
+            )
+
+            scoped = scope_baseline_to_target(full_baseline, backend_dir, repo_root)
+            # DOM/JS should be suppressed because backend_dir has zero HTML/JS files
+            self.assertEqual(scoped.html_ids, [])
+            self.assertEqual(scoped.select_ids, [])
+            self.assertEqual(scoped.js_global_exports, [])
+            # Backend routes matching prefix must be preserved
+            self.assertEqual(len(scoped.python_routes), 1)
+
+    def test_diff_ignores_browser_globals_and_preexisting_unexported_handlers(self):
+        # Baseline had pre-existing onclick="history.back()" and onload="brython()"
+        before = CodebaseContract(
+            inline_handlers=[
+                {"event": "onclick", "target": "history.back"},
+                {"event": "onload", "target": "brython"},
+            ],
+            js_global_exports=[],
+        )
+        # After refactor, same handlers exist and one more using standard location.reload()
+        after = CodebaseContract(
+            inline_handlers=[
+                {"event": "onclick", "target": "history.back"},
+                {"event": "onload", "target": "brython"},
+                {"event": "onclick", "target": "location.reload"},
+            ],
+            js_global_exports=[],
+        )
+        issues = diff_contracts(before, after)
+        # history and location are in BROWSER_GLOBALS, and brython was pre-existing unexported
+        self.assertEqual(issues, [])
+
+    def test_build_test_runner_command_pytest_strips_discover(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = Path(tmpdir)
+            (target / "pyproject.toml").write_text("[tool.pytest]\n", encoding="utf-8")
+            # When auto-detecting and clean_args starts with discover -> routes to unittest
+            cmd_auto = _build_test_runner_command(target, "python", ["discover", "tests"], runner="auto")
+            self.assertEqual(cmd_auto, ["python", "-m", "unittest", "discover", "tests"])
+
+            # When explicit runner=pytest and clean_args includes discover -> strips discover
+            cmd_pytest = _build_test_runner_command(target, "python", ["discover", "tests"], runner="pytest")
+            self.assertEqual(cmd_pytest, ["python", "-m", "pytest", "tests"])
 
 
 if __name__ == "__main__":

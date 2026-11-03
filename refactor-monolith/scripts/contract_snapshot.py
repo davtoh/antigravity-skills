@@ -43,6 +43,7 @@ from contract_diff_engine import (  # noqa: E402
     build_contract,
     diff_contracts,
     iter_repo_files,
+    resolve_baseline_contract,
 )
 
 __all__ = [
@@ -134,22 +135,7 @@ def _check_missing_smoke_test(target: Path) -> None:
 
 def _resolve_baseline_contract(target: Path, before_file: str, git_ref: str) -> CodebaseContract | None:
     """Locate and load pre-refactor baseline contract from file, .refactor, or git ref."""
-    before_path = None
-    if before_file and Path(before_file).is_file():
-        before_path = Path(before_file)
-    elif not before_file and not git_ref:
-        candidate = get_refactor_dir(target) / "baseline.json"
-        legacy_candidate = target / ".refactor_baseline.json"
-        if candidate.is_file():
-            before_path = candidate
-        elif legacy_candidate.is_file():
-            before_path = legacy_candidate
-
-    if before_path:
-        return CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
-    if git_ref:
-        return build_contract(target, git_ref)
-    return None
+    return resolve_baseline_contract(target, before_file, git_ref)
 
 
 def _execute_live_audits(
