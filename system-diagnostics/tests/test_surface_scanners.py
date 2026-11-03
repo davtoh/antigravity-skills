@@ -5,8 +5,6 @@ Zero external dependencies; standard library Python 3.10+ only.
 Tests extraction of HTML elements, JS globals/queries, Python routes, and CSS properties.
 """
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path
@@ -23,7 +21,6 @@ from surface_scanners import (
     scan_js_surface,
     scan_python_surface,
 )
-
 
 class TestSurfaceScanners(unittest.TestCase):
     """Test suite for static AST/DOM surface scanners."""
@@ -143,7 +140,6 @@ class TestSurfaceScanners(unittest.TestCase):
         self.assertEqual(surf.important_count, 1)
         self.assertIn("pulse", surf.keyframes)
         self.assertEqual(len(surf.fullscreen_rules), 1)
-
 
 if __name__ == "__main__":
     unittest.main()

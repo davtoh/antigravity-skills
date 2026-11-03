@@ -6,8 +6,6 @@ all evaluation scenario expectations without regressions.
 Zero external dependencies; standard library Python 3.10+ only.
 """
 
-from __future__ import annotations
-
 import json
 import re
 import unittest
@@ -16,7 +14,6 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parent.parent
 EVALS_FILE = SKILL_DIR / "evals" / "evals.json"
 SKILL_MD = SKILL_DIR / "SKILL.md"
-
 
 def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     """Check if skill documentation provides concrete evidence for an expectation."""
@@ -92,7 +89,6 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     passed = (found_cnt / max(len(words), 1)) >= 0.4
     return passed, f"Generic keywords: {found_cnt}/{len(words)}"
 
-
 class TestSystemDiagnosticsEvals(unittest.TestCase):
     """Test suite ensuring SKILL.md meets all evaluation requirements."""
 
@@ -132,7 +128,6 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
         """Assert SKILL.md is under the 350-line target (500 hard ceiling)."""
         lines = len(self.skill_text.splitlines())
         self.assertLessEqual(lines, 350, f"SKILL.md exceeds 350-line soft ceiling: {lines} lines")
-
 
 if __name__ == "__main__":
     unittest.main()

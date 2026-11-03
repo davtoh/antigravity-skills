@@ -6,14 +6,11 @@ JavaScript window.* exports, event listeners, Python routes, mutable globals,
 and stylesheet custom properties from raw text without external dependencies.
 """
 
-from __future__ import annotations
-
 import ast
 import re
 import textwrap
 from dataclasses import asdict, dataclass, field
 from typing import Any
-
 
 @dataclass
 class HtmlSurface:
@@ -29,7 +26,6 @@ class HtmlSurface:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-
 @dataclass
 class JsSurface:
     """Extracted DOM queries, globals, and event bindings of a JS/TS module."""
@@ -42,7 +38,6 @@ class JsSurface:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-
 @dataclass
 class PythonSurface:
     """Extracted public API symbols, routes, and mutable globals of a Python module."""
@@ -54,7 +49,6 @@ class PythonSurface:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
 
 @dataclass
 class CssSurface:
@@ -71,7 +65,6 @@ class CssSurface:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-
 _HTML_ID_RE = re.compile(r'\bid=["\']([a-zA-Z0-9_\-]+)["\']')
 _HTML_SELECT_RE = re.compile(r'<select[^>]*\bid=["\']([a-zA-Z0-9_\-]+)["\']', re.IGNORECASE)
 _HTML_BUTTON_RE = re.compile(r'<button[^>]*\bid=["\']([a-zA-Z0-9_\-]+)["\']', re.IGNORECASE)
@@ -79,7 +72,6 @@ _HTML_MODAL_RE = re.compile(r'<div[^>]*\bclass=["\'][^"\']*\bmodal\b[^"\']*["\']
 _HTML_HANDLER_RE = re.compile(r'\b(on[a-z]+)\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
 _HTML_SCRIPT_RE = re.compile(r'<script[^>]*\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
 _HTML_LINK_CSS_RE = re.compile(r'<link[^>]*\brel=["\']stylesheet["\'][^>]*\bhref=["\']([^"\']+)["\']|<link[^>]*\bhref=["\']([^"\']+)["\'][^>]*\brel=["\']stylesheet["\']', re.IGNORECASE)
-
 
 def scan_html_surface(text: str) -> HtmlSurface:
     """Extract interactive DOM elements, inline handlers, and asset sequences."""
@@ -109,7 +101,6 @@ def scan_html_surface(text: str) -> HtmlSurface:
         stylesheet_hrefs=styles,
     )
 
-
 _JS_GET_ELEM_RE = re.compile(r'\b(?:document\.)?getElementById\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_QUERY_SEL_RE = re.compile(r'\bquerySelector(?:All)?\s*\(\s*["\']#([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_GLOBAL_EXPORT_RE = re.compile(r'\b(?:window|globalThis)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)\s*=(?!=)')
@@ -125,7 +116,6 @@ _JS_BUILTIN_WINDOW_PROPS = frozenset({
     "innerWidth", "innerHeight", "outerWidth", "outerHeight",
     "scrollX", "scrollY", "pageXOffset", "pageYOffset",
 })
-
 
 def scan_js_surface(text: str) -> JsSurface:
     """Extract DOM queries, window exports/reads, and event listener attachments."""
@@ -144,11 +134,9 @@ def scan_js_surface(text: str) -> JsSurface:
         es_exports=sorted(es_exp),
     )
 
-
 _HTTP_METHODS = frozenset({
     "get", "post", "put", "delete", "patch", "head", "options", "websocket", "route", "api_route"
 })
-
 
 def scan_python_surface(text: str, rel_path: str = "") -> PythonSurface:
     """Extract classes, functions, route decorators, and mutable globals using Python AST."""
@@ -190,7 +178,6 @@ def scan_python_surface(text: str, rel_path: str = "") -> PythonSurface:
         mutable_globals=sorted(mutable_globals),
     )
 
-
 def _extract_decorator_methods(dec: ast.Call, attr_name: str) -> list[str]:
     """Resolve HTTP methods from a route decorator call."""
     if attr_name not in {"route", "api_route"}:
@@ -203,7 +190,6 @@ def _extract_decorator_methods(dec: ast.Call, attr_name: str) -> list[str]:
                 if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
                     methods.append(elt.value.upper())
     return methods or ["GET"]
-
 
 def _parse_route_decorator(
     dec: ast.expr,
@@ -243,18 +229,15 @@ def _parse_route_decorator(
 
     return results
 
-
 _CSS_VAR_RE = re.compile(r'(--[a-zA-Z0-9_\-]+)\s*:')
 _CSS_IMPORTANT_RE = re.compile(r'!important\b', re.IGNORECASE)
 _CSS_KEYFRAME_RE = re.compile(r'@keyframes\s+([a-zA-Z0-9_\-]+)', re.IGNORECASE)
 _CSS_FULLSCREEN_RE = re.compile(r'([^{]*:fullscreen[^{]*)', re.IGNORECASE)
 _CSS_IMPORT_RE = re.compile(r'@import\s+(?:url\s*\(\s*["\']?([^"\')]+)["\']?\s*\)|["\']([^"\']+)["\'])')
 
-
 _CSS_BANNER_RE = re.compile(
     r'^\s*/\*+\s*(?:[=\-_*#~]{3,}\s*)?([A-Za-z0-9][A-Za-z0-9\s.,&/\(\)\'\"\-]{2,60}?)(?:\s*[=\-_*#~]{3,})?\*+/\s*$'
 )
-
 
 def scan_css_surface(text: str) -> CssSurface:
     """Extract custom properties, keyframes, fullscreen rules, and count !important."""

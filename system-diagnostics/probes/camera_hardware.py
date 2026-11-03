@@ -7,15 +7,12 @@ without relying on brittle hardware register queries, and identifies potential
 device lockups or driver unbind collisions.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import subprocess
 import sys
 import time
 from typing import Any
-
 
 def _probe_opencv_indices(max_indices: int = 5) -> list[dict[str, Any]]:
     """Probe camera indices using OpenCV VideoCapture with cross-platform backends."""
@@ -71,7 +68,6 @@ def _probe_opencv_indices(max_indices: int = 5) -> list[dict[str, Any]]:
 
     return results
 
-
 def _probe_windows_pnp_cameras() -> list[dict[str, Any]]:
     """Query Windows PnP Camera devices via PowerShell."""
     if os.name != "nt":
@@ -101,7 +97,6 @@ def _probe_windows_pnp_cameras() -> list[dict[str, Any]]:
     except Exception:
         pass
     return []
-
 
 def probe(*args: str, **kwargs: Any) -> dict[str, Any]:
     """Execute camera hardware diagnostic probe.
@@ -138,12 +133,10 @@ def probe(*args: str, **kwargs: Any) -> dict[str, Any]:
         "latency_ms": elapsed_ms,
     }
 
-
 def main() -> int:
     result = probe()
     print(json.dumps(result, indent=2))
     return 0 if result["status"] in ("ok", "warning") else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

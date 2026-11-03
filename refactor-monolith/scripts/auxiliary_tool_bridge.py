@@ -7,8 +7,6 @@ Enforces Axiom 9 (Honest Verification Reporting) so that static, container, and 
 verification statuses are never overstated or conflated.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import subprocess
@@ -16,10 +14,8 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
 
 from campaign_manager import get_repo_root
-
 
 def _tool_search_paths(name: str, base_target: Path, root: Path) -> list[str]:
     """Assemble candidate filepaths for an optional diagnostic tool."""
@@ -43,7 +39,6 @@ def _tool_search_paths(name: str, base_target: Path, root: Path) -> list[str]:
         paths.append(str(root / ".gemini" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py"))
     return paths
 
-
 def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
     """Scan candidate locations for optional diagnostic and inspection CLIs."""
     found: dict[str, str] = {}
@@ -53,7 +48,6 @@ def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
                 found[name] = p
                 break
     return found
-
 
 def _find_virtualenv_python(base_target: Path, root: Path) -> str:
     candidates = [
@@ -67,7 +61,6 @@ def _find_virtualenv_python(base_target: Path, root: Path) -> str:
                 return str(py_bin)
     return ""
 
-
 def discover_optional_tools(target: Path | None = None) -> dict[str, str]:
     """Locate optional auxiliary tools from sibling skills or workspace without hard dependencies."""
     base_target = Path(target).resolve() if target else Path.cwd()
@@ -77,7 +70,6 @@ def discover_optional_tools(target: Path | None = None) -> dict[str, str]:
     if py_bin:
         found["virtualenv_python"] = py_bin
     return found
-
 
 def cmd_run_tests(target: Path, extra_args: list[str]) -> int:
     """Execute test suite using virtualenv python if detected, falling back to sys.executable."""
@@ -93,7 +85,6 @@ def cmd_run_tests(target: Path, extra_args: list[str]) -> int:
     except Exception as err:
         print(f"Error launching test runner: {err}", file=sys.stderr)
         return 1
-
 
 def _parse_cdp_output(output: str) -> int:
     """Analyze CDP inspector output for JS exceptions and bounding box overflows."""
@@ -111,7 +102,6 @@ def _parse_cdp_output(output: str) -> int:
 
     print(output if output else "[Live Browser UI] OK: Bounding boxes and layout clean. Zero CSS overflow detected.")
     return 0
-
 
 def auto_detect_container() -> str:
     """Attempt to detect active container from environment, docker compose, or docker ps."""
@@ -138,7 +128,6 @@ def auto_detect_container() -> str:
         pass
     return ""
 
-
 def auto_detect_app_url() -> str:
     """Attempt to detect active application URL from env or common localhost ports."""
     if os.environ.get("APP_URL"):
@@ -157,7 +146,6 @@ def auto_detect_app_url() -> str:
             pass
     return ""
 
-
 def _resolve_cdp_script_and_url(target: Path, tools: dict[str, str], url: str) -> tuple[str, str]:
     """Resolve cdp_inspect.py path and target URL, reporting informative guidance if missing."""
     cdp_script = tools.get("cdp_inspect")
@@ -175,7 +163,6 @@ def _resolve_cdp_script_and_url(target: Path, tools: dict[str, str], url: str) -
         return cdp_script, ""
 
     return cdp_script, target_url
-
 
 def cmd_verify_ui(
     target: Path,
@@ -209,7 +196,6 @@ def cmd_verify_ui(
         print(f"[Live Browser UI] Error executing cdp_inspect: {err}", file=sys.stderr)
         return 1 if strict else 0
 
-
 def cmd_audit_container(
     target: Path,
     container: str = "",
@@ -239,7 +225,6 @@ def cmd_audit_container(
     except Exception as err:
         print(f"[Docker Container] Error executing docker_audit: {err}", file=sys.stderr)
         return 1
-
 
 def _diagnose_contracts(target: Path, before_file: str, git_ref: str) -> list[str]:
     """Check Tier 1 AST and DOM contracts against baseline or git reference."""
@@ -274,7 +259,6 @@ def _diagnose_contracts(target: Path, before_file: str, git_ref: str) -> list[st
     print(f"  Captured {len(current.html_ids)} HTML IDs, {len(current.select_ids)} Selects, {len(current.js_global_exports)} Globals, {len(current.python_routes)} Routes.")
     return []
 
-
 def _diagnose_container(target: Path, container: str) -> tuple[int, str]:
     """Check Tier 2 Docker container runtime state and file synchronization."""
     detected = container or os.environ.get("DOCKER_CONTAINER", "") or auto_detect_container()
@@ -285,7 +269,6 @@ def _diagnose_container(target: Path, container: str) -> tuple[int, str]:
     print("[Docker Container] SKIPPED: No active container detected from environment or 'docker ps'.")
     return 0, "SKIPPED"
 
-
 def _diagnose_ui(target: Path, url: str, strict: bool) -> tuple[int, str]:
     """Check Tier 3 Live browser DOM layout and exceptions via CDP."""
     detected = url or os.environ.get("APP_URL", "") or auto_detect_app_url()
@@ -295,7 +278,6 @@ def _diagnose_ui(target: Path, url: str, strict: bool) -> tuple[int, str]:
     print("\n--- Live UI Verification (CDP) ---")
     print("[Live Browser UI] SKIPPED: No active dev server responding on localhost (tested ports 8000, 3000, 5000, 8080).")
     return 0, "SKIPPED"
-
 
 def cmd_diagnose(
     target: Path,
@@ -313,7 +295,6 @@ def cmd_diagnose(
     print_verification_matrix(issues, ui_status, docker_status)
     has_failures = bool(issues) or (docker_code != 0) or (ui_code != 0)
     return 1 if (strict and has_failures) else 0
-
 
 def print_verification_matrix(
     issues: list[str],

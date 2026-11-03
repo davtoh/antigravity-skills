@@ -5,10 +5,7 @@ Manages persistent state in <workspace>/.refactor/state.json across conversation
 turns, tracks phase progress, and provisions the .refactor directory tree.
 """
 
-from __future__ import annotations
-
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +23,6 @@ if hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-
 def get_repo_root(target: Path | None = None) -> Path:
     """Find the root git repository directory containing target."""
     cur = (target or Path.cwd()).resolve()
@@ -34,7 +30,6 @@ def get_repo_root(target: Path | None = None) -> Path:
         if (parent / ".git").exists():
             return parent
     return cur
-
 
 def get_refactor_dir(target: Path | None = None) -> Path:
     """Get or create the .refactor state directory with subfolders and self-contained .gitignore."""
@@ -52,7 +47,6 @@ def get_refactor_dir(target: Path | None = None) -> Path:
         )
     return rdir
 
-
 def get_git_sha(target_dir: Path) -> str:
     """Resolve the active HEAD commit SHA."""
     try:
@@ -69,7 +63,6 @@ def get_git_sha(target_dir: Path) -> str:
     except Exception:
         return ""
 
-
 def _format_phase_icon(is_completed: bool, is_active: bool) -> str:
     """Return status glyph with automatic ASCII fallback for non-UTF8 terminals."""
     try:
@@ -79,7 +72,6 @@ def _format_phase_icon(is_completed: bool, is_active: bool) -> str:
         return icon
     except Exception:
         return "[x]" if is_completed else ("[>]" if is_active else "[ ]")
-
 
 def _init_campaign_state(target: Path, state_file: Path, plan: str, phases: int, phase_title: str) -> int:
     """Initialize a brand-new .refactor/state.json campaign."""
@@ -108,7 +100,6 @@ def _init_campaign_state(target: Path, state_file: Path, plan: str, phases: int,
     print(f"  Active Phase: 1 of {phases} | Target: {target.name} | Plan: {plan_p}")
     return 0
 
-
 def _advance_campaign_state(target: Path, state_file: Path, state: dict[str, Any], phase: int | None, status: str, sha: str) -> int:
     """Mark active phase complete and advance campaign to next phase."""
     cur = phase or state.get("active_phase", 1)
@@ -134,7 +125,6 @@ def _advance_campaign_state(target: Path, state_file: Path, state: dict[str, Any
     state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return 0
 
-
 def _set_campaign_state(state_file: Path, state: dict[str, Any], phase: int | None, phase_title: str, status: str, sha: str) -> int:
     """Manually update specific campaign properties."""
     if phase is not None:
@@ -152,7 +142,6 @@ def _set_campaign_state(state_file: Path, state: dict[str, Any], phase: int | No
     state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
     print(f"Updated campaign state: Active Phase {state.get('active_phase')}, status={state.get('status')}")
     return 0
-
 
 def _add_state_cli_args(p_st: Any) -> None:
     """Configure arguments for campaign state subcommand."""
@@ -173,7 +162,6 @@ def _add_state_cli_args(p_st: Any) -> None:
     p_st.add_argument("--sha", default="", help="Commit SHA to record.")
     p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
 
-
 def print_turn_ceiling_alert(note: str = "") -> None:
     """Print high-visibility turn ceiling gate instructions to prevent cumulative token burn."""
     print("\n" + "=" * 70)
@@ -191,7 +179,6 @@ def print_turn_ceiling_alert(note: str = "") -> None:
     print("  3. STOP now and instruct user: 'Run /refactor-monolith continue in a fresh chat.'")
     print("=" * 70 + "\n")
 
-
 def _save_checkpoint(state_file: Path, state: dict[str, Any], note: str, sha: str, target: Path) -> int:
     """Save an intermediate slice checkpoint into state.json."""
     c_sha = sha or get_git_sha(target)
@@ -204,7 +191,6 @@ def _save_checkpoint(state_file: Path, state: dict[str, Any], note: str, sha: st
     print(f"Saved campaign checkpoint: {note or 'Intermediate slice'}{sha_str}")
     print_turn_ceiling_alert(note)
     return 0
-
 
 def _dispatch_state_action(
     target: Path,
@@ -230,7 +216,6 @@ def _dispatch_state_action(
         print(json.dumps(state, indent=2))
         return 0
     return _print_campaign_summary(state)
-
 
 def cmd_state(
     target: Path,
@@ -267,13 +252,11 @@ def cmd_state(
         target, state_file, state, action, phase, phase_title, status, sha, note, as_json
     )
 
-
 def _parse_phase_sort_key(key: str) -> float:
     try:
         return float(key)
     except ValueError:
         return 999.0
-
 
 def _print_campaign_summary(state: dict[str, Any]) -> int:
     """Print structured summary of campaign phases and resumption instructions."""

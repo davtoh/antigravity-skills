@@ -7,13 +7,10 @@ installation instructions and graceful fallback diagnostics.
 Zero external dependencies; standard library Python 3.10+ only.
 """
 
-from __future__ import annotations
-
 import os
 import subprocess
 import sys
 from pathlib import Path
-
 
 def _get_candidate_paths(base_dir: Path | None = None) -> list[Path]:
     """Generate prioritized candidate filepaths for diagnose.py."""
@@ -40,7 +37,6 @@ def _get_candidate_paths(base_dir: Path | None = None) -> list[Path]:
     candidates.append(home / ".gemini" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py")
     return candidates
 
-
 def resolve_diagnose_path(base_dir: Path | None = None) -> Path | None:
     """Locate diagnose.py or return None if unavailable."""
     for candidate in _get_candidate_paths(base_dir):
@@ -50,7 +46,6 @@ def resolve_diagnose_path(base_dir: Path | None = None) -> Path | None:
         except (OSError, PermissionError):
             continue
     return None
-
 
 def print_missing_dependency_recipe() -> None:
     """Print actionable installation recipes when system-diagnostics is absent."""
@@ -72,7 +67,6 @@ To resolve this dependency:
 """
     print(msg, file=sys.stderr)
 
-
 def resolve_python(base_dir: Path | None = None) -> str:
     """Resolve active workspace virtualenv Python or fallback to sys.executable."""
     cwd = base_dir.resolve() if base_dir else Path.cwd().resolve()
@@ -83,7 +77,6 @@ def resolve_python(base_dir: Path | None = None) -> str:
                 if cand.is_file():
                     return str(cand.resolve())
     return sys.executable
-
 
 def main(args: list[str] | None = None) -> int:
     """Discover diagnose.py and forward arguments, or report status/missing error."""
@@ -110,7 +103,6 @@ def main(args: list[str] | None = None) -> int:
     except Exception as err:
         print(f"[app-debugger] Execution error: {err}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

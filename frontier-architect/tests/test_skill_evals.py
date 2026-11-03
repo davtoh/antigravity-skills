@@ -7,8 +7,6 @@ expectations across all 12 evaluation scenarios without regressions.
 100% portable, OS-agnostic, zero hardcoded paths, standard library only.
 """
 
-from __future__ import annotations
-
 import json
 import re
 import unittest
@@ -19,7 +17,6 @@ EVALS_FILE = SKILL_DIR / "evals" / "evals.json"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 WORKSPACE_DIR = SKILL_DIR.parent / f"{SKILL_DIR.name}-workspace"
 BASELINE_SKILL_MD = WORKSPACE_DIR / "skill-snapshot" / "SKILL.md"
-
 
 def evaluate_expectation_against_text(text: str, expectation: str) -> tuple[bool, str]:
     """Helper to check if a skill text contains concrete evidence for an expectation."""
@@ -151,7 +148,6 @@ def evaluate_expectation_against_text(text: str, expectation: str) -> tuple[bool
     passed = (found_kw / max(len(keywords), 1)) >= 0.35
     return passed, f"Generic keywords: {found_kw}/{len(keywords)}"
 
-
 class TestSkillEvals(unittest.TestCase):
     """Test suite ensuring SKILL.md satisfies all evals in evals/evals.json."""
 
@@ -280,7 +276,6 @@ class TestSkillEvals(unittest.TestCase):
         # Verify current version strictly outperforms or matches baseline
         self.assertGreater(curr_rate, base_rate)
         self.assertGreaterEqual(curr_rate, 0.95)
-
 
 if __name__ == "__main__":
     unittest.main()

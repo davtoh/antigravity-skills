@@ -21,8 +21,6 @@ Usage Recipes:
     python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py" -v
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import sys
@@ -42,7 +40,6 @@ try:
     from test_skill_evals import evaluate_expectation_against_text
 except ImportError:
     from skills.frontier_architect.tests.test_skill_evals import evaluate_expectation_against_text
-
 
 def run_benchmark(generate_artifacts: bool = False, iteration: int = 2):
     if not EVALS_FILE.exists() or not SKILL_MD.exists():
@@ -112,7 +109,6 @@ def run_benchmark(generate_artifacts: bool = False, iteration: int = 2):
             rel_path = bench_json
         print(f"Artifact generated: {rel_path}")
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="Frontier Architect Benchmark & Regression Runner",
@@ -130,7 +126,6 @@ def main():
     args = parser.parse_args()
 
     run_benchmark(generate_artifacts=args.generate_artifacts, iteration=args.iteration)
-
 
 if __name__ == "__main__":
     main()

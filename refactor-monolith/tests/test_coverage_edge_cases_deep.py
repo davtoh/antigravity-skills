@@ -13,11 +13,7 @@ Covers:
 9. auxiliary_tool_bridge: non-standard port listeners, container error details.
 """
 
-from __future__ import annotations
-
-import ast
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -32,33 +28,15 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from scripts.audit_reporters import inspect_sections, preview_split, _parse_split_spec
-from scripts.auxiliary_tool_bridge import _diagnose_ui, _resolve_cdp_script_and_url
+from scripts.auxiliary_tool_bridge import _resolve_cdp_script_and_url
 from scripts.campaign_manager import cmd_state, _format_phase_icon, _parse_phase_sort_key
 from scripts.code_health_audit import audit_file, AuditThresholds
-from scripts.contract_diff_engine import build_contract, diff_contracts, _run_git, read_file_content
-from scripts.contract_snapshot import CodebaseContract, cmd_capture, cmd_inspect, cmd_verify
+from scripts.contract_diff_engine import build_contract, diff_contracts, _run_git
+from scripts.contract_snapshot import CodebaseContract, cmd_capture, cmd_inspect
 from scripts.css_inspector import cmd_inspect_css, _inspect_single_css_file
-from scripts.file_patcher import patch_file_content, normalize_file_eol, detect_file_eol
-from scripts.language_analyzers import (
-    analyze_brace_language,
-    analyze_generic_fallback,
-    analyze_stylesheet,
-    _find_block_end,
-    _has_opening_brace,
-    _strip_strings_and_comments,
-)
+from scripts.language_analyzers import analyze_brace_language, _find_block_end, _has_opening_brace, _strip_strings_and_comments
 from scripts.smoke_test_generator import cmd_generate_smoke_test, _resolve_root_expr
-from scripts.surface_scanners import (
-    CssSurface,
-    HtmlSurface,
-    JsSurface,
-    PythonSurface,
-    scan_css_surface,
-    scan_html_surface,
-    scan_js_surface,
-    scan_python_surface,
-)
-
+from scripts.surface_scanners import CssSurface, HtmlSurface, JsSurface, PythonSurface, scan_css_surface, scan_python_surface
 
 class TestSurfaceScannersDeepCoverage(unittest.TestCase):
     """Test to_dict, __all__ string constants, and CSS banner exclusions."""
@@ -103,7 +81,6 @@ class TestSurfaceScannersDeepCoverage(unittest.TestCase):
         self.assertFalse(any("License" in b["title"] for b in surf.section_banners))
         self.assertFalse(any("refactor" in b["title"] for b in surf.section_banners))
 
-
 class TestCssInspectorAndAuditReportersDeepCoverage(unittest.TestCase):
     """Test missing file handling, banner truncation, and spec parsers."""
 
@@ -147,7 +124,6 @@ class TestCssInspectorAndAuditReportersDeepCoverage(unittest.TestCase):
             self.assertEqual(preview_split(f"{missing}:10"), 2)
             self.assertEqual(inspect_sections(str(missing)), 2)
 
-
 class TestSmokeTestGeneratorDeepCoverage(unittest.TestCase):
     """Test custom contract builder, before_file loading, and exception fallback in root expr."""
 
@@ -173,7 +149,6 @@ class TestSmokeTestGeneratorDeepCoverage(unittest.TestCase):
         # Pass an object that causes an exception during relpath resolution
         res = _resolve_root_expr(Path("target"), Path("root"), out_p=mock.MagicMock(parent=None))
         self.assertIn("pathlib.Path", res)
-
 
 class TestContractDiffAndSnapshotDeepCoverage(unittest.TestCase):
     """Test git tree reading errors, inline handler skipped targets, and candidate fallbacks."""
@@ -217,7 +192,6 @@ class TestContractDiffAndSnapshotDeepCoverage(unittest.TestCase):
             with mock.patch("scripts.contract_snapshot.build_contract", return_value=huge_contract):
                 code_insp = cmd_inspect(base)
                 self.assertEqual(code_insp, 0)
-
 
 class TestLanguageAnalyzersAndCodeHealthCoverage(unittest.TestCase):
     """Test C#, TypeScript, stylesheet, and empty file coverage."""
@@ -274,7 +248,6 @@ class TestLanguageAnalyzersAndCodeHealthCoverage(unittest.TestCase):
             rep_txt = audit_file(txt_file, base, th)
             self.assertEqual(rep_txt.parser_mode, "fallback")
 
-
 class TestCampaignManagerCorruptedAndAuxiliaryCoverage(unittest.TestCase):
     """Test corrupted state files, non-numeric phase fallbacks, and CDP edge cases."""
 
@@ -320,7 +293,6 @@ class TestCampaignManagerCorruptedAndAuxiliaryCoverage(unittest.TestCase):
         script, url = _resolve_cdp_script_and_url(Path("."), tools, "http://localhost:9000")
         self.assertEqual(url, "http://localhost:9000")
         self.assertEqual(script, "scripts/cdp_inspect.py")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,8 +18,6 @@ Generic Capabilities:
   --screenshot out.jpg         Capture JPEG screenshot of the viewport
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import base64
@@ -45,7 +43,6 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-
 
 def find_chrome_executable() -> str:
     """Locate Chrome, Chromium, or Edge binary across Windows, macOS, Linux, and WSL."""
@@ -81,7 +78,6 @@ def find_chrome_executable() -> str:
             return c
 
     return shutil.which("chrome") or shutil.which("google-chrome") or "google-chrome"
-
 
 def find_devtools_active_port() -> tuple[int, str] | None:
     """Locate browser DevToolsActivePort file across Windows, macOS, Linux, and WSL."""
@@ -126,12 +122,10 @@ def find_devtools_active_port() -> tuple[int, str] | None:
                 pass
     return None
 
-
 def build_generic_audit_js(custom_selectors: list[str]) -> str:
     js_path = Path(__file__).parent / "audit_layout.js"
     base_js = js_path.read_text(encoding="utf-8")
     return f"window.__FRONTIER_SELECTORS__ = {json.dumps(custom_selectors)};\n{base_js}"
-
 
 async def evaluate(cdp: CDPSession, session_id: str | None, expression: str):
     """Evaluate JS and surface page-side exceptions instead of silently printing null."""
@@ -145,7 +139,6 @@ async def evaluate(cdp: CDPSession, session_id: str | None, expression: str):
         text = details.get("exception", {}).get("description") or details.get("text", "Unknown JS exception")
         return {"jsException": text.splitlines()[0] if text else "Unknown JS exception"}
     return res.get("result", {}).get("value", res.get("result"))
-
 
 async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> int:
     await cdp.send("Page.enable", session_id=session_id)
@@ -196,7 +189,6 @@ async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> i
 
     return exit_code
 
-
 async def pick_page_target(cdp: CDPSession, target_url: str) -> str:
     """Return a targetId, never silently auditing an unrelated tab: use the tab matching
     target_url, else open a new tab at target_url, else (no URL) use the first non-internal tab.
@@ -221,7 +213,6 @@ async def pick_page_target(cdp: CDPSession, target_url: str) -> str:
     print(f"[CDP] No --url given; using first tab: {chosen.get('title')} ({chosen.get('url')})", file=sys.stderr)
     return chosen["targetId"]
 
-
 async def attach_and_run(browser_ws_url: str, args, viewport: tuple[int, int] | None = None) -> int:
     """Connect to a browser-level endpoint, select a page, attach, and run the audit."""
     async with await connect_ws(browser_ws_url, timeout=10.0) as ws:
@@ -242,7 +233,6 @@ async def attach_and_run(browser_ws_url: str, args, viewport: tuple[int, int] | 
             )
         return await run_against_target(cdp, session_id, args)
 
-
 async def read_port_file(profile_dir: Path, timeout_s: float = 10.0) -> tuple[int, str] | None:
     """Wait for Chrome to write DevToolsActivePort into an isolated profile dir."""
     port_file = profile_dir / "DevToolsActivePort"
@@ -257,7 +247,6 @@ async def read_port_file(profile_dir: Path, timeout_s: float = 10.0) -> tuple[in
                 pass
         await asyncio.sleep(0.2)
     return None
-
 
 async def run_live(args) -> int | None:
     """Try the user's live browser. Returns None to signal 'fall back to headless'."""
@@ -278,7 +267,6 @@ async def run_live(args) -> int | None:
             file=sys.stderr,
         )
         return None if args.fallback_headless else 2
-
 
 async def run_headless(args) -> int:
     """Launch an isolated, auto-cleaned headless browser on an OS-assigned free port."""
@@ -317,7 +305,6 @@ async def run_headless(args) -> int:
                 except Exception:
                     pass
 
-
 async def main_async(args) -> int:
     if not args.headless:
         live_result = await run_live(args)
@@ -325,14 +312,12 @@ async def main_async(args) -> int:
             return live_result
     return await run_headless(args)
 
-
 def parse_viewport(value: str) -> tuple[int, int]:
     try:
         width, height = (int(x) for x in value.lower().split("x"))
         return width, height
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"--window-size must look like 1440x900, got '{value}'") from exc
-
 
 def main():
     parser = argparse.ArgumentParser(description="Frontier Architect Cross-Platform CDP Browser Inspector")
@@ -354,7 +339,6 @@ def main():
     args = parser.parse_args()
     args.target_url = args.url or os.getenv("APP_URL", "")
     sys.exit(asyncio.run(main_async(args)))
-
 
 if __name__ == "__main__":
     main()

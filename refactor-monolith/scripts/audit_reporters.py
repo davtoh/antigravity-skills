@@ -5,17 +5,14 @@ Decoupled from AST/brace parsing to respect quantitative modularity budgets.
 Supports line ending (CRLF vs LF) detection and structural section outlines.
 """
 
-from __future__ import annotations
-
 import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from code_health_audit import AuditThresholds, FileReport
-
 
 def print_by_dir_summary(reports: list[FileReport], thresholds: AuditThresholds) -> None:
     """Print directory-level aggregated summary of files, lines, and breaches."""
@@ -31,7 +28,6 @@ def print_by_dir_summary(reports: list[FileReport], thresholds: AuditThresholds)
         warn = sum(1 for r in group if r.status == "WARNING")
         status = f"{crit} Critical, {warn} Warn" if crit or warn else "OK (All within budget)"
         print(f"{d_name:<38} {len(group):>6} {total_l:>11,}L  {status}")
-
 
 def print_text_summary(
     reports: list[FileReport], thresholds: AuditThresholds, top_n: int,
@@ -57,7 +53,6 @@ def print_text_summary(
         if not compact:
             _print_file_details(rep, show_methods)
 
-
 def _print_file_details(rep: FileReport, show_methods: bool) -> None:
     """Print class and function breach details for a single file report."""
     cls_list = rep.classes if show_methods else [c for c in rep.classes if c.status != "OK"][:4]
@@ -74,7 +69,6 @@ def _print_file_details(rep: FileReport, show_methods: bool) -> None:
         if show_methods or fn.status == "CRITICAL":
             print(f"   [Func  {fn.status}] {fn.qualname} (L{fn.start_line}-L{fn.end_line}, {fn.lines}L)")
 
-
 def _parse_split_spec(spec: str) -> tuple[Path, str, int] | None:
     """Parse spec into (file_path, line_s, window). Supports Windows drive letters."""
     if len(spec) > 2 and spec[1] == ":" and spec[0].isalpha():
@@ -86,7 +80,6 @@ def _parse_split_spec(spec: str) -> tuple[Path, str, int] | None:
     if len(parts) < 2:
         return None
     return Path(parts[0]), parts[1], int(parts[2]) if len(parts) > 2 else 12
-
 
 def preview_split(spec: str) -> int:
     """Safely print source lines around a proposed split line (path:line[:window])."""
@@ -122,11 +115,9 @@ def preview_split(spec: str) -> int:
         print(f"{marker} {cur:>5} | {lines[idx]}")
     return 0
 
-
 _BANNER_COMMENT_RE = re.compile(
     r'^\s*(?:/\*+|#+|//+)\s*(?:[=\-_*#~]{3,}\s*)?([A-Za-z0-9][A-Za-z0-9\s.,&/\(\)\'\"\-]{2,60}?)(?:\s*[=\-_*#~]{3,})?(?:\*+/)?\s*$'
 )
-
 
 def _extract_line_sections(lines: list[str]) -> list[tuple[int, str, str]]:
     """Scan lines for comment banners, class definitions, and function declarations."""
@@ -145,7 +136,6 @@ def _extract_line_sections(lines: list[str]) -> list[tuple[int, str, str]]:
             m_fn = re.match(r'^(?:async\s+)?def\s+([A-Za-z0-9_]+)', line)
             found_sections.append((idx, "Function", m_fn.group(1)))
     return found_sections
-
 
 def inspect_sections(file_path_str: str) -> int:
     """Outline structural sections, classes, and major comment banners of a file."""

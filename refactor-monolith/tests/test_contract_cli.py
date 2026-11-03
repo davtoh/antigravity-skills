@@ -1,8 +1,6 @@
 """Comprehensive CLI and integration tests for contract_snapshot, campaign_manager, and auxiliary tools.
 """
 
-from __future__ import annotations
-
 import json
 import subprocess
 import sys
@@ -16,9 +14,8 @@ if str(_SKILL_ROOT) not in sys.path:
     sys.path.insert(0, str(_SKILL_ROOT))
 
 from scripts.contract_snapshot import main
-from scripts.auxiliary_tool_bridge import _parse_cdp_output, cmd_run_tests
+from scripts.auxiliary_tool_bridge import _parse_cdp_output
 from scripts.audit_reporters import preview_split, inspect_sections
-
 
 class TestContractCliCommands(unittest.TestCase):
     def test_probe_tools_cli(self):
@@ -121,7 +118,6 @@ class TestContractCliCommands(unittest.TestCase):
             # Run unittest forwarder with default discover tests
             code = main(["run-tests", "--path", tmp])
             self.assertEqual(code, 0)
-
 
 class TestCampaignAndReporterTools(unittest.TestCase):
     def test_campaign_manager_full_cli(self):
@@ -236,7 +232,6 @@ class TestCampaignAndReporterTools(unittest.TestCase):
         print_by_dir_summary([rep], thresholds)
         print_text_summary([rep], thresholds, top_n=5, show_methods=True, by_dir=True)
         print_text_summary([rep], thresholds, top_n=5, show_methods=True, by_dir=False)
-
 
 if __name__ == "__main__":
     unittest.main()

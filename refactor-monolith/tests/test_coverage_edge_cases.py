@@ -4,8 +4,6 @@ Covers error handling, environment fallback paths, subprocess failures,
 and boundary conditions across all scripts in refactor-monolith.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import subprocess
@@ -23,19 +21,7 @@ if str(_SKILL_ROOT) not in sys.path:
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from scripts.auxiliary_tool_bridge import (
-    auto_detect_app_url,
-    auto_detect_container,
-    cmd_audit_container,
-    cmd_diagnose,
-    cmd_run_tests,
-    cmd_verify_ui,
-    discover_optional_tools,
-    _diagnose_contracts,
-    _diagnose_container,
-    _diagnose_ui,
-    _resolve_cdp_script_and_url,
-)
+from scripts.auxiliary_tool_bridge import auto_detect_app_url, auto_detect_container, cmd_audit_container, cmd_diagnose, cmd_run_tests, cmd_verify_ui, discover_optional_tools, _diagnose_contracts, _diagnose_container, _diagnose_ui
 from scripts.file_patcher import (
     cmd_normalize_eol,
     inject_html_scripts,
@@ -44,15 +30,9 @@ from scripts.file_patcher import (
 )
 from scripts.css_inspector import cmd_inspect_css, _inspect_single_css_file
 from scripts.smoke_test_generator import cmd_generate_smoke_test
-from scripts.surface_scanners import (
-    scan_html_surface,
-    scan_js_surface,
-    scan_python_surface,
-    scan_css_surface,
-)
+from scripts.surface_scanners import scan_html_surface, scan_js_surface, scan_python_surface
 from scripts.campaign_manager import cmd_state, get_git_sha
-from scripts.contract_diff_engine import _run_git, diff_contracts, CodebaseContract
-
+from scripts.contract_diff_engine import diff_contracts, CodebaseContract
 
 class TestAuxiliaryBridgeEdgeCases(unittest.TestCase):
     def test_run_tests_failure_and_exception(self):
@@ -188,7 +168,6 @@ class TestAuxiliaryBridgeEdgeCases(unittest.TestCase):
                         code = cmd_diagnose(p, strict=True)
                         self.assertEqual(code, 1)
 
-
 class TestFilePatcherEdgeCases(unittest.TestCase):
     def test_normalize_file_eol_edge_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -253,7 +232,6 @@ class TestFilePatcherEdgeCases(unittest.TestCase):
             ok, msg = inject_html_scripts(p / "missing.html", ["/static/b.js"])
             self.assertFalse(ok)
 
-
 class TestCssAndSmokeEdgeCases(unittest.TestCase):
     def test_css_inspector_edge_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,7 +262,6 @@ class TestCssAndSmokeEdgeCases(unittest.TestCase):
             code = cmd_generate_smoke_test(p, out_file=str(p / "smoke.py"))
             self.assertEqual(code, 0)
             self.assertTrue((p / "smoke.py").exists())
-
 
 class TestSurfaceScannersAndCampaignEdgeCases(unittest.TestCase):
     def test_surface_scanners_syntax_error_and_edge_cases(self):
@@ -328,7 +305,6 @@ class TestSurfaceScannersAndCampaignEdgeCases(unittest.TestCase):
         after = CodebaseContract(python_routes=[{"method": "GET", "path": "/api/users"}])
         issues = diff_contracts(before, after)
         self.assertTrue(any("API route POST /api/users" in iss for iss in issues))
-
 
 if __name__ == "__main__":
     unittest.main()

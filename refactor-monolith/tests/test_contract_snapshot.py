@@ -4,15 +4,11 @@ Verifies detection of DOM ID parity, lost global exports, broken inline handlers
 route changes, script order, and optional tool discovery.
 """
 
-from __future__ import annotations
-
-import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 # Ensure skill root is in sys.path for clean import of scripts
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
@@ -20,18 +16,18 @@ if str(_SKILL_ROOT) not in sys.path:
     sys.path.insert(0, str(_SKILL_ROOT))
 
 from scripts.contract_snapshot import (
-    CodebaseContract,
-    cmd_audit_container,
-    cmd_generate_smoke_test,
     cmd_inspect,
-    cmd_inspect_css,
-    cmd_run_tests,
-    cmd_state,
-    cmd_verify_ui,
+)
+from scripts.contract_diff_engine import (
+    CodebaseContract,
     diff_contracts,
+)
+from scripts.smoke_test_generator import cmd_generate_smoke_test
+from scripts.css_inspector import cmd_inspect_css
+from scripts.auxiliary_tool_bridge import (
+    cmd_audit_container,
+    cmd_verify_ui,
     discover_optional_tools,
-    get_refactor_dir,
-    _format_phase_icon,
 )
 from scripts.surface_scanners import (
     scan_css_surface,

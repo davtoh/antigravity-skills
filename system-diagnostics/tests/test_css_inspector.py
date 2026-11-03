@@ -5,8 +5,6 @@ Zero external dependencies; standard library Python 3.10+ only.
 Tests CSS modularity, specificity inspection, section banners, and !important auditing.
 """
 
-from __future__ import annotations
-
 import sys
 import tempfile
 import unittest
@@ -19,7 +17,6 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from css_inspector import cmd_inspect_css
-
 
 class TestCssInspector(unittest.TestCase):
     """Test suite for stylesheet inspection and specificity auditing."""
@@ -76,7 +73,6 @@ class TestCssInspector(unittest.TestCase):
     def test_nonexistent_path(self):
         code = cmd_inspect_css(Path("nonexistent_path_12345.css"))
         self.assertEqual(code, 2)
-
 
 if __name__ == "__main__":
     unittest.main()

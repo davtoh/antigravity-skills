@@ -1,8 +1,5 @@
 """Unit and regression tests for file_patcher and diagnostic CLI commands."""
 
-from __future__ import annotations
-
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,7 +21,6 @@ from scripts.file_patcher import (
 )
 from scripts.contract_snapshot import main
 from scripts.campaign_manager import print_turn_ceiling_alert
-
 
 class TestFilePatcher(unittest.TestCase):
     def test_detect_and_normalize_eol(self):
@@ -146,7 +142,6 @@ class TestFilePatcher(unittest.TestCase):
     def test_turn_ceiling_alert_emits(self):
         # Must execute cleanly without error
         print_turn_ceiling_alert("Slice 1.2 completed")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,14 +7,8 @@ Zero external dependencies; standard library Python 3.10+ only.
 Cross-platform: Windows, macOS, Linux.
 """
 
-from __future__ import annotations
-
-import argparse
 import ast
-import importlib.util
 import json
-import os
-import shutil
 import subprocess
 import sys
 import time
@@ -24,7 +18,6 @@ from typing import Any
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 DEFAULT_GLOBAL_PROBES = SCRIPTS_DIR.parent / "probes"
-
 
 @dataclass
 class ProbeInfo:
@@ -36,7 +29,6 @@ class ProbeInfo:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
 
 def get_probe_search_dirs(workspace_root: Path | None = None) -> list[tuple[Path, str]]:
     """Return prioritized directories searched for probe modules."""
@@ -61,7 +53,6 @@ def get_probe_search_dirs(workspace_root: Path | None = None) -> list[tuple[Path
 
     return dirs
 
-
 def _extract_docstring(file_path: Path) -> str:
     """Safely extract module docstring using AST without executing code."""
     try:
@@ -73,7 +64,6 @@ def _extract_docstring(file_path: Path) -> str:
     except Exception:
         pass
     return "No description provided."
-
 
 def list_probes(workspace_root: Path | None = None) -> list[ProbeInfo]:
     """Discover all available probes across search directories."""
@@ -98,7 +88,6 @@ def list_probes(workspace_root: Path | None = None) -> list[ProbeInfo]:
 
     return list(discovered.values())
 
-
 def find_probe(name_or_path: str, workspace_root: Path | None = None) -> Path | None:
     """Find a probe by explicit path or registered name."""
     candidate = Path(name_or_path)
@@ -110,7 +99,6 @@ def find_probe(name_or_path: str, workspace_root: Path | None = None) -> Path | 
         if probe_info.name == clean_name:
             return Path(probe_info.path)
     return None
-
 
 def run_probe(
     name_or_path: str,
@@ -197,7 +185,6 @@ def run_probe(
 
     return result
 
-
 def scaffold_probe(name: str, domain: str = "general", target_dir: Path | None = None) -> Path:
     """Scaffold a new diagnostic probe module adhering to the standard protocol."""
     dest_dir = target_dir or (Path.cwd() / ".diagnostics" / "probes")
@@ -215,13 +202,10 @@ Standard Protocol Diagnostic Probe.
 Returns structured JSON telemetry for system-diagnostics & app-debugger.
 """
 
-from __future__ import annotations
-
 import json
 import sys
 import time
 from typing import Any
-
 
 def probe(*args: str, **kwargs: Any) -> dict[str, Any]:
     """Execute domain inspection and return structured telemetry.
@@ -244,19 +228,16 @@ def probe(*args: str, **kwargs: Any) -> dict[str, Any]:
         "latency_ms": latency_ms,
     }}
 
-
 def main() -> int:
     result = probe(*sys.argv[1:])
     print(json.dumps(result, indent=2))
     return 0 if result.get("status") in ("ok", "warning") else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
 '''
     target_file.write_text(template.replace("\r\n", "\n"), encoding="utf-8")
     return target_file
-
 
 def save_probe(
     source_path: str,

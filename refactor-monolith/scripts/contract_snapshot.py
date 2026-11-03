@@ -6,16 +6,9 @@ refactoring across Python, HTML, JavaScript, and CSS without external dependenci
 Manages persistent campaign state in .refactor/state.json across conversation turns.
 """
 
-from __future__ import annotations
-
-import argparse
 import json
-import os
-import subprocess
 import sys
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
 
 # Ensure stdout handles UTF-8 on Windows consoles without charmap UnicodeEncodeError
 if hasattr(sys.stdout, "reconfigure"):
@@ -34,46 +27,30 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 from campaign_manager import (  # noqa: E402
-    _add_state_cli_args,
-    _format_phase_icon,
-    cmd_state,
     get_git_sha,
     get_refactor_dir,
     get_repo_root,
 )
-from smoke_test_generator import (  # noqa: E402
-    _build_smoke_template,
-    cmd_generate_smoke_test,
-)
-from surface_scanners import (  # noqa: E402
-    scan_css_surface,
-    scan_html_surface,
-    scan_js_surface,
-    scan_python_surface,
-)
 from auxiliary_tool_bridge import (  # noqa: E402
     cmd_audit_container,
-    cmd_diagnose,
-    cmd_run_tests,
     cmd_verify_ui,
     discover_optional_tools,
     print_verification_matrix,
 )
-from file_patcher import (  # noqa: E402
-    cmd_normalize_eol,
-    inject_html_scripts,
-    patch_file_content,
-)
-from css_inspector import cmd_inspect_css  # noqa: E402
 from contract_diff_engine import (  # noqa: E402
-    IGNORED_DIRS,
     CodebaseContract,
     _run_git,
     build_contract,
     diff_contracts,
     iter_repo_files,
-    read_file_content,
 )
+
+__all__ = [
+    "cmd_anchor",
+    "cmd_capture",
+    "cmd_inspect",
+    "cmd_verify",
+]
 
 
 def cmd_anchor(target: Path, worktree_dir: str = "") -> int:
@@ -228,11 +205,7 @@ def cmd_verify(
     return 1 if (strict and (issues or ui_code != 0 or docker_code != 0)) else 0
 
 
-from contract_cli import (  # noqa: E402
-    build_cli_parser,
-    dispatch_cli,
-    main,
-)
+from contract_cli import main  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(main())

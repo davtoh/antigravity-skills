@@ -5,8 +5,6 @@ Generates self-contained, regression-locking unit tests enforcing DOM ID parity,
 dropdown availability, and scoped CSS !important containment across refactor phases.
 """
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path
@@ -66,7 +64,6 @@ if __name__ == "__main__":
     unittest.main()
 '''
 
-
 def _build_smoke_template(root_expr: str, select_ids: list[str], important_count: int, html_ids: list[str]) -> str:
     """Render unit test code string for contract smoke verification."""
     return _SMOKE_TEST_TEMPLATE.format(
@@ -75,7 +72,6 @@ def _build_smoke_template(root_expr: str, select_ids: list[str], important_count
         important_count=important_count,
         html_ids=repr(html_ids),
     )
-
 
 def _resolve_root_expr(target: Path, repo_root: Path, out_p: Path | None = None) -> str:
     """Determine relative or absolute path expression for test root."""
@@ -105,7 +101,6 @@ def _resolve_root_expr(target: Path, repo_root: Path, out_p: Path | None = None)
         return f'pathlib.Path(__file__).resolve().parent / "{sub}"'
     except Exception:
         return f'pathlib.Path(r"{target.as_posix()}")'
-
 
 def cmd_generate_smoke_test(
     target: Path,

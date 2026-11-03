@@ -4,8 +4,6 @@
 Zero external dependencies; standard library Python 3.10+ only.
 """
 
-from __future__ import annotations
-
 import io
 import os
 import runpy
@@ -20,7 +18,6 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 import run_diagnose  # noqa: E402
-
 
 class TestRunDiagnose(unittest.TestCase):
     """Test dynamic discovery, environment variables, fallbacks, and execution."""
@@ -205,7 +202,6 @@ class TestRunDiagnose(unittest.TestCase):
         lines = script_file.read_text(encoding="utf-8").splitlines()
         self.assertLessEqual(len(lines), 120, f"run_diagnose.py exceeds 120 lines: {len(lines)}")
         self.assertGreaterEqual(len(lines), 70, f"run_diagnose.py suspiciously short: {len(lines)}")
-
 
 if __name__ == "__main__":
     unittest.main()

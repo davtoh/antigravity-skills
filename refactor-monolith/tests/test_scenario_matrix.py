@@ -1,9 +1,6 @@
 """Automated end-to-end verification of all scenarios in the Scenario Combinations Matrix.
 """
 
-from __future__ import annotations
-
-import json
 import subprocess
 import sys
 import tempfile
@@ -16,7 +13,6 @@ if str(_SKILL_ROOT) not in sys.path:
 
 from scripts.contract_snapshot import main as contract_main
 from scripts.code_health_audit import main as audit_main
-
 
 class TestCodeHealthAuditScenarios(unittest.TestCase):
     """Verifies Scenarios 1-4: Directory triage, multi-target, split preview, and section outlines."""
@@ -60,7 +56,6 @@ class TestCodeHealthAuditScenarios(unittest.TestCase):
             f.write_text("class GodClass:\n" + "".join(f"    def m{i}(self): pass\n" for i in range(16)), encoding="utf-8")
             # Strict mode should exit 1 on modularity breach
             self.assertEqual(audit_main(["--path", str(tmp_path), "--strict"]), 1)
-
 
 class TestGitContractAndStateScenarios(unittest.TestCase):
     """Verifies Scenarios 5-14 & 23: Anchors, capture, inspect, CSS, campaign state, and git diff."""
@@ -121,7 +116,6 @@ class TestGitContractAndStateScenarios(unittest.TestCase):
             self.assertEqual(contract_main(["generate-smoke-test", "--path", tmp, "--out", str(out_test)]), 0)
             self.assertTrue(out_test.is_file())
 
-
 class TestPatcherAndEolScenarios(unittest.TestCase):
     """Verifies Scenarios 16-18: Line-ending normalizer, agnostic patch, and script injection."""
 
@@ -157,7 +151,6 @@ class TestPatcherAndEolScenarios(unittest.TestCase):
             self.assertEqual(contract_main(patch_cmd), 0)
             self.assertIn("modular1.js", html.read_text(encoding="utf-8"))
 
-
 class TestDiagnosticAndAuxiliaryScenarios(unittest.TestCase):
     """Verifies Scenarios 15, 19-22, 24: Unified diagnostics, headless UI, and tool probing."""
 
@@ -192,7 +185,6 @@ class TestDiagnosticAndAuxiliaryScenarios(unittest.TestCase):
             )
             # Scenario 19: Virtualenv Test Runner Forwarder
             self.assertEqual(contract_main(["run-tests", "--path", tmp]), 0)
-
 
 if __name__ == "__main__":
     unittest.main()

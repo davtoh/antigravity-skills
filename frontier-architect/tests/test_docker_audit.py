@@ -5,8 +5,6 @@ Tests 100% of docker_audit.py logic using mocks and standard library,
 with zero external dependencies and zero requirement for a live Docker daemon.
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import io
@@ -24,7 +22,6 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import docker_audit
-
 
 class TestDockerAudit(unittest.TestCase):
     """Thorough unit test coverage for docker_audit.py."""
@@ -220,7 +217,6 @@ class TestDockerAudit(unittest.TestCase):
             out = mock_out.getvalue()
             self.assertIn("RECENT CONTAINER EXCEPTIONS / ERRORS", out)
             self.assertIn("Traceback (most recent call last):", out)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,12 +5,9 @@ Thorough coverage of Chrome DevTools Protocol inspection logic, CLI parsing,
 page picking, layout audit generation, and headless/live browser lifecycles via mocks.
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import base64
-import json
 import os
 import sys
 import tempfile
@@ -24,7 +21,6 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import cdp_inspect
-
 
 class TestCDPInspect(unittest.TestCase):
     """Thorough unit tests for scripts/cdp_inspect.py."""
@@ -303,7 +299,6 @@ class TestCDPInspect(unittest.TestCase):
 
         asyncio.run(_test())
 
-
     def test_attach_and_run_with_target_and_viewport(self):
         async def _test():
             mock_ws = AsyncMock()
@@ -331,7 +326,6 @@ class TestCDPInspect(unittest.TestCase):
             mock_async.return_value = 0
             cdp_inspect.main()
             mock_exit.assert_called_once_with(0)
-
 
 if __name__ == "__main__":
     unittest.main()

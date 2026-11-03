@@ -5,11 +5,8 @@ Builds and diffs CodebaseContract representations across HTML, JS, Python, and C
 without external dependencies.
 """
 
-from __future__ import annotations
-
 import re
 import subprocess
-import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,7 +25,6 @@ IGNORED_DIRS: frozenset[str] = frozenset({
     "dist", "build", "_build", "out", "target", ".idea", ".vscode",
     "scratch", "coverage", "htmlcov", "migrations", ".refactor",
 })
-
 
 @dataclass
 class CodebaseContract:
@@ -52,7 +48,6 @@ class CodebaseContract:
     def from_dict(cls, data: dict[str, Any]) -> CodebaseContract:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
-
 def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
     """Execute a git command safely and return (exit_code, output)."""
     try:
@@ -69,7 +64,6 @@ def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
     except Exception as err:
         return 1, str(err)
 
-
 def read_file_content(path: Path, git_ref: str = "", cwd: Path | None = None) -> str:
     """Read file content either from the live filesystem or from a git ref."""
     if not git_ref:
@@ -79,7 +73,6 @@ def read_file_content(path: Path, git_ref: str = "", cwd: Path | None = None) ->
             return ""
     code, out = _run_git(["show", f"{git_ref}:{path.as_posix()}"], cwd=cwd)
     return out if code == 0 else ""
-
 
 def iter_repo_files(base_dir: Path, git_ref: str = "") -> list[Path]:
     """List source files in target directory, pruning ignored directories and git commits."""
@@ -97,7 +90,6 @@ def iter_repo_files(base_dir: Path, git_ref: str = "") -> list[Path]:
         p for p in base_dir.rglob("*")
         if p.is_file() and not any(part in IGNORED_DIRS for part in p.parts)
     ]
-
 
 def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
     """Extract full contract from disk or historical git tree."""
@@ -128,7 +120,6 @@ def build_contract(target_dir: Path, git_ref: str = "") -> CodebaseContract:
     contract.css_custom_properties = sorted(acc["css_vars"])
     return contract
 
-
 def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any], rel_path: str = "") -> None:
     """Route file text to surface scanner and aggregate results."""
     if sfx == ".html":
@@ -153,7 +144,6 @@ def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any], rel_path: str = "")
         c = scan_css_surface(text)
         acc["important"] += c.important_count
         acc["css_vars"].update(c.custom_properties)
-
 
 def diff_contracts(before: CodebaseContract, after: CodebaseContract) -> list[str]:
     """Compare before and after contracts and return list of critical discrepancies."""
@@ -183,7 +173,6 @@ def diff_contracts(before: CodebaseContract, after: CodebaseContract) -> list[st
         issues.append(f"[CRITICAL CSS] !important count increased from {before.css_important_count} to {after.css_important_count}!")
 
     return issues
-
 
 def _check_handlers_and_routes(before: CodebaseContract, after: CodebaseContract, issues: list[str]) -> None:
     """Validate that inline event handlers and Python routes were preserved."""

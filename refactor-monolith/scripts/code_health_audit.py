@@ -6,13 +6,10 @@ Rust, C#, and fallback languages while pruning third-party vendor/minified
 assets to enforce quantitative modularity budgets.
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import json
 import sys
-from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -42,12 +39,7 @@ from language_analyzers import (  # noqa: E402
     analyze_stylesheet,
     is_vendor_or_generated,
 )
-from audit_reporters import (  # noqa: E402
-    inspect_sections,
-    preview_split,
-    print_by_dir_summary,
-    print_text_summary,
-)
+from audit_reporters import inspect_sections, preview_split, print_text_summary  # noqa: E402
 
 SUPPORTED_EXTENSIONS: frozenset[str] = (
     frozenset({".py"}) | BRACE_EXTENSIONS | STYLE_EXTENSIONS
@@ -60,7 +52,6 @@ IGNORED_DIRS: frozenset[str] = frozenset({
     "scratch", "coverage", "htmlcov", "migrations", ".refactor",
 })
 
-
 @dataclass(frozen=True)
 class AuditThresholds:
     """Quantitative modularity thresholds for files, classes, and functions."""
@@ -69,7 +60,6 @@ class AuditThresholds:
     warn_class_methods: int = 10
     max_class_methods: int = 12
     max_func_lines: int = 40
-
 
 @dataclass
 class FunctionMetric:
@@ -80,7 +70,6 @@ class FunctionMetric:
     end_line: int
     lines: int
     status: str
-
 
 @dataclass
 class ClassMetric:
@@ -93,7 +82,6 @@ class ClassMetric:
     status: str
     methods: list[str] = field(default_factory=list)
 
-
 @dataclass
 class FileReport:
     """Aggregated modularity report for a single source file."""
@@ -104,11 +92,9 @@ class FileReport:
     oversized_functions: list[FunctionMetric] = field(default_factory=list)
     parser_mode: str = "ast"
 
-
 def classify_count(value: int, warn_limit: int, max_limit: int) -> str:
     """Return 'CRITICAL', 'WARNING', or 'OK' against soft/hard thresholds."""
     return "CRITICAL" if value > max_limit else ("WARNING" if value > warn_limit else "OK")
-
 
 def iter_source_files(target_path: Path, include_vendor: bool = False) -> Iterable[Path]:
     """Yield supported source files while pruning ignored and vendor directories."""
@@ -125,13 +111,11 @@ def iter_source_files(target_path: Path, include_vendor: bool = False) -> Iterab
             continue
         yield item
 
-
 def measure_node_lines(node: ast.AST) -> tuple[int, int, int]:
     """Return (start_line, end_line, span) for an AST node."""
     start = getattr(node, "lineno", 1)
     end = getattr(node, "end_lineno", start) or start
     return start, end, max(1, end - start + 1)
-
 
 def analyze_python_ast(
     source_text: str, thresholds: AuditThresholds
@@ -156,7 +140,6 @@ def analyze_python_ast(
     oversized_funcs.sort(key=lambda f: f.lines, reverse=True)
     return classes, oversized_funcs
 
-
 def _inspect_class_node(
     node: ast.ClassDef, thresholds: AuditThresholds
 ) -> tuple[ClassMetric, list[FunctionMetric]]:
@@ -175,12 +158,10 @@ def _inspect_class_node(
     status = _resolve_class_status(len(methods), span, thresholds)
     return ClassMetric(node.name, start, end, span, len(methods), status, methods), oversized
 
-
 def _resolve_class_status(method_count: int, span: int, thresholds: AuditThresholds) -> str:
     """Evaluate class status from both method count and line span."""
     status = classify_count(method_count, thresholds.warn_class_methods, thresholds.max_class_methods)
     return classify_count(span, 200, 300) if status == "OK" else status
-
 
 def _inspect_func_node(
     node: ast.FunctionDef | ast.AsyncFunctionDef, qualname: str, max_func_lines: int
@@ -189,7 +170,6 @@ def _inspect_func_node(
     start, end, span = measure_node_lines(node)
     status = classify_count(span, max(20, int(max_func_lines * 0.75)), max_func_lines)
     return FunctionMetric(node.name, qualname, start, end, span, status)
-
 
 def _convert_raw_symbols(
     raw_symbols: list[RawSymbol], thresholds: AuditThresholds
@@ -207,7 +187,6 @@ def _convert_raw_symbols(
     funcs.sort(key=lambda f: f.lines, reverse=True)
     return classes, funcs
 
-
 def _dispatch_language_analysis(
     suffix: str, text: str, thresholds: AuditThresholds
 ) -> tuple[list[ClassMetric], list[FunctionMetric], str]:
@@ -222,7 +201,6 @@ def _dispatch_language_analysis(
         return (*_convert_raw_symbols(analyze_stylesheet(text), thresholds), "stylesheet")
     return (*_convert_raw_symbols(analyze_generic_fallback(text), thresholds), "fallback")
 
-
 def audit_file(file_path: Path, base_dir: Path, thresholds: AuditThresholds) -> FileReport:
     """Read a source file and build its multi-language FileReport."""
     try:
@@ -235,7 +213,6 @@ def audit_file(file_path: Path, base_dir: Path, thresholds: AuditThresholds) -> 
     classes, funcs, mode = _dispatch_language_analysis(file_path.suffix.lower(), text, thresholds)
     return FileReport(rel_path, line_count, status, classes, funcs, mode)
 
-
 def has_hard_breach(reports: Iterable[FileReport]) -> bool:
     """Return True if any file, class, or function has status 'CRITICAL'."""
     return any(
@@ -244,7 +221,6 @@ def has_hard_breach(reports: Iterable[FileReport]) -> bool:
         or any(f.status == "CRITICAL" for f in r.oversized_functions)
         for r in reports
     )
-
 
 def recommend_mode(reports: list[FileReport], max_lines: int = 500) -> str:
     """Determine whether repo warrants PROJECT_CAMPAIGN or SINGLE_FILE fast-track."""
@@ -259,7 +235,6 @@ def recommend_mode(reports: list[FileReport], max_lines: int = 500) -> str:
     if len(crit_app) >= 2 and excess_mass >= 1000:
         return "PROJECT_CAMPAIGN"
     return "SINGLE_FILE"
-
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
@@ -281,7 +256,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--strict", action="store_true", help="Exit 1 on CRITICAL breach.")
     return p
 
-
 def _collect_reports(
     targets: list[Path], thresholds: AuditThresholds, include_vendor: bool
 ) -> list[FileReport]:
@@ -300,7 +274,6 @@ def _collect_reports(
                     continue
             reports.append(audit_file(f, base_dir, thresholds))
     return reports
-
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for code_health_audit."""
@@ -334,7 +307,6 @@ def main(argv: list[str] | None = None) -> int:
         mode = recommend_mode(reports, thresholds.max_file_lines)
         print_text_summary(reports, thresholds, top_limit, args.show_methods, args.compact, args.by_dir, mode=mode)
     return 1 if (args.strict and has_hard_breach(reports)) else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

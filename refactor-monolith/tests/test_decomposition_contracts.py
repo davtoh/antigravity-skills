@@ -8,12 +8,9 @@ Verifies that the architectural patterns recommended by refactor-monolith:
 4. SCSS @use / @forward manifest preserves selector cascade ordering.
 """
 
-from __future__ import annotations
-
 import tempfile
 import unittest
 from pathlib import Path
-
 
 class TestPythonDecompositionContract(unittest.TestCase):
     """Test Python Strangler-Fig package facade re-exports."""
@@ -44,7 +41,6 @@ class TestPythonDecompositionContract(unittest.TestCase):
             res = subprocess.run(["python", str(caller_file)], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f"Python facade failed: {res.stderr}")
 
-
 class TestGoDecompositionContract(unittest.TestCase):
     """Test Go same-package multi-file distribution contract."""
 
@@ -62,7 +58,6 @@ class TestGoDecompositionContract(unittest.TestCase):
             self.assertIn("package tracker", content2)
             self.assertIn("type Service struct", content1)
             self.assertIn("(s *Service) Handle()", content2)
-
 
 class TestTypeScriptDecompositionContract(unittest.TestCase):
     """Test TypeScript barrel export facade contract."""
@@ -91,7 +86,6 @@ class TestTypeScriptDecompositionContract(unittest.TestCase):
             self.assertIn("export { OrderService }", content)
             self.assertIn("export class OrderController", content)
 
-
 class TestStylesheetDecompositionContract(unittest.TestCase):
     """Test SCSS @forward and ITCSS cascade structure."""
 
@@ -111,7 +105,6 @@ class TestStylesheetDecompositionContract(unittest.TestCase):
             layout_idx = content.find("'layout/grid'")
             cards_idx = content.find("'components/cards'")
             self.assertTrue(0 < tokens_idx < layout_idx < cards_idx, "ITCSS order must be preserved")
-
 
 if __name__ == "__main__":
     unittest.main()

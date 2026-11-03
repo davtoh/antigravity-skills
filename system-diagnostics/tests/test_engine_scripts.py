@@ -8,8 +8,6 @@ Zero external dependencies; standard library Python 3.10+ only.
 Runs across Windows, macOS, and Linux via python -m unittest.
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import os
@@ -29,7 +27,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 import docker_audit
 import cdp_inspect
 from cdp_transport import CDPSession
-
 
 class TestDockerAuditEngine(unittest.TestCase):
     """Test suite for system-diagnostics/scripts/docker_audit.py."""
@@ -91,7 +88,6 @@ class TestDockerAuditEngine(unittest.TestCase):
         self.assertEqual(args.workdir, "/workspace/srv")
         self.assertEqual(args.sync_check, ["app.py", "styles.css"])
         self.assertEqual(args.tail_errors, 50)
-
 
 class TestCDPTransportEngine(unittest.TestCase):
     """Test suite for system-diagnostics/scripts/cdp_transport.py."""
@@ -155,7 +151,6 @@ class TestCDPTransportEngine(unittest.TestCase):
         close_frame = bytearray([0x88, 0x80])
         self.assertEqual(close_frame[0], 0x88)
         self.assertEqual(close_frame[0] & 0x0F, 0x08)
-
 
 class TestCDPInspectEngine(unittest.TestCase):
     """Test suite for system-diagnostics/scripts/cdp_inspect.py."""
@@ -237,7 +232,6 @@ class TestCDPInspectEngine(unittest.TestCase):
         js_code = cdp_inspect.build_generic_audit_js(["#canvas", ".player"])
         self.assertIn("#canvas", js_code)
         self.assertIn(".player", js_code)
-
 
 if __name__ == "__main__":
     unittest.main()

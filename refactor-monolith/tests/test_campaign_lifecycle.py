@@ -4,10 +4,7 @@ Verifies .refactor/state.json initialization, phase advancement, checkpointing,
 and directory structure provisioning.
 """
 
-from __future__ import annotations
-
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -23,7 +20,6 @@ from scripts.campaign_manager import (
     get_refactor_dir,
     _format_phase_icon,
 )
-
 
 class TestCampaignLifecycle(unittest.TestCase):
     def test_state_management_lifecycle(self):
@@ -97,7 +93,6 @@ class TestCampaignLifecycle(unittest.TestCase):
             self.assertEqual(code_adv, 1)
             code_cp = cmd_state(base, action="checkpoint", note="test")
             self.assertEqual(code_cp, 1)
-
 
 if __name__ == "__main__":
     unittest.main()

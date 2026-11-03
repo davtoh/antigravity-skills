@@ -5,11 +5,8 @@ Tests 100% of StdlibWSClient RFC 6455 and CDPSession logic using asyncio standar
 with zero external network dependencies and zero requirement for third-party websockets package.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
-import os
 import struct
 import sys
 import unittest
@@ -23,7 +20,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import cdp_transport
 from cdp_transport import CDPSession, StdlibWSClient, connect_ws
-
 
 def build_raw_frame(opcode: int, payload: bytes, fin: bool = True, mask: bytes | None = None) -> bytes:
     """Helper to construct raw RFC 6455 frames for testing client recv."""
@@ -50,13 +46,11 @@ def build_raw_frame(opcode: int, payload: bytes, fin: bool = True, mask: bytes |
         out.extend(payload)
     return bytes(out)
 
-
 def make_mock_writer():
     writer = MagicMock()
     writer.drain = AsyncMock()
     writer.wait_closed = AsyncMock()
     return writer
-
 
 class TestCDPTransport(unittest.TestCase):
     """Thorough unit tests for cdp_transport.py."""
@@ -254,7 +248,6 @@ class TestCDPTransport(unittest.TestCase):
                     mock_std_connect.assert_called_once_with("ws://localhost:9222/test", timeout=10.0)
 
         asyncio.run(_test())
-
 
 if __name__ == "__main__":
     unittest.main()

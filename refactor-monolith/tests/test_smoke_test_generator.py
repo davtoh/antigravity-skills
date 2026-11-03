@@ -8,9 +8,6 @@ Tests:
 4. Inline script function extraction satisfying HTML inline event handlers.
 """
 
-from __future__ import annotations
-
-import os
 import subprocess
 import sys
 import tempfile
@@ -22,8 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from contract_diff_engine import build_contract, diff_contracts  # noqa: E402
 from smoke_test_generator import _resolve_root_expr, cmd_generate_smoke_test  # noqa: E402
-from surface_scanners import scan_html_surface, scan_js_surface  # noqa: E402
-
+from surface_scanners import scan_js_surface  # noqa: E402
 
 class TestSmokeTestPathResolution(unittest.TestCase):
     """Test _resolve_root_expr path calculations for arbitrary directory depths."""
@@ -63,7 +59,6 @@ class TestSmokeTestPathResolution(unittest.TestCase):
         # Target is a subfolder of test directory
         expr_child = _resolve_root_expr(base / "tests" / "fixtures", base, test_file)
         self.assertEqual(expr_child, 'pathlib.Path(__file__).resolve().parent / "fixtures"')
-
 
 class TestSmokeTestExecutionAndQuoteTolerance(unittest.TestCase):
     """Test generated smoke test execution on varied HTML quotes and spacings."""
@@ -114,7 +109,6 @@ class TestSmokeTestExecutionAndQuoteTolerance(unittest.TestCase):
             res = subprocess.run([sys.executable, str(out_test)], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f"Empty scope test failed: {res.stderr}")
 
-
 class TestInlineScriptFunctionExtraction(unittest.TestCase):
     """Test that inline <script> functions satisfy HTML inline handlers without false alarms."""
 
@@ -155,7 +149,6 @@ class TestInlineScriptFunctionExtraction(unittest.TestCase):
             # Contract diff should report zero issues (inline functions satisfy handlers)
             issues = diff_contracts(c_before, c_after)
             self.assertEqual(issues, [], f"Unexpected contract issues found: {issues}")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,8 +5,6 @@ Provides modular CLI definition and subcommand routing for all refactoring,
 inspection, patching, and verification tools.
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -44,13 +42,11 @@ from file_patcher import (  # noqa: E402
 )
 from css_inspector import cmd_inspect_css  # noqa: E402
 
-
 def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
     """Add standard --path, --before, and --git-ref arguments."""
     parser.add_argument("--path", default=".", help="Target repository directory.")
     parser.add_argument("--before", default="", help="Baseline JSON path.")
     parser.add_argument("--git-ref", default="", help="Historical git commit/branch.")
-
 
 def _register_contract_subparsers(sub: Any) -> None:
     """Register core contract diff and state commands."""
@@ -80,7 +76,6 @@ def _register_contract_subparsers(sub: Any) -> None:
     p_st = sub.add_parser("state", help="Manage in-repo .refactor campaign state across conversation turns.")
     _add_state_cli_args(p_st)
 
-
 def _register_tool_subparsers(sub: Any) -> None:
     """Register tool discovery, test execution, CSS, and container audit parsers."""
     p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools.")
@@ -108,7 +103,6 @@ def _register_tool_subparsers(sub: Any) -> None:
     p_doc.add_argument("--workdir", default="/app", help="Container working directory.")
     p_doc.add_argument("--sync-check", nargs="*", default=[], help="Files to verify MD5 sync.")
 
-
 def _register_diagnostic_and_patch_subparsers(sub: Any) -> None:
     """Register diagnose, EOL normalizer, patch, and script injection parsers."""
     p_diag = sub.add_parser("diagnose", help="Execute 1-command 3-tier diagnostic (AST/DOM contract, Docker sync, live CDP).")
@@ -134,7 +128,6 @@ def _register_diagnostic_and_patch_subparsers(sub: Any) -> None:
     p_inj.add_argument("--scripts", nargs="+", required=True, help="Script paths/URLs to inject.")
     p_inj.add_argument("--before", default="", help="Existing script name to inject before.")
 
-
 def build_cli_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
     p = argparse.ArgumentParser(description="Cross-platform codebase contract snapshot and regression auditor.")
@@ -143,7 +136,6 @@ def build_cli_parser() -> argparse.ArgumentParser:
     _register_tool_subparsers(sub)
     _register_diagnostic_and_patch_subparsers(sub)
     return p
-
 
 def _dispatch_patch_or_script_cmd(subcmd: str, args: argparse.Namespace) -> int:
     """Handle patch, inject-scripts, and normalize-eol commands."""
@@ -161,7 +153,6 @@ def _dispatch_patch_or_script_cmd(subcmd: str, args: argparse.Namespace) -> int:
         return 0 if ok else 1
     return 0
 
-
 def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace) -> int:
     """Handle testing, inspection, and live verification commands."""
     if subcmd == "inspect-css":
@@ -176,7 +167,6 @@ def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace)
     if subcmd == "diagnose":
         return cmd_diagnose(target, getattr(args, "url", ""), getattr(args, "container", ""), getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "strict", False))
     return _dispatch_patch_or_script_cmd(subcmd, args)
-
 
 def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
     """Dispatch parsed subcommand to corresponding implementation function."""
@@ -201,7 +191,6 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
         )
     return _dispatch_auxiliary_cmd(subcmd, target, args)
 
-
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint."""
     args = build_cli_parser().parse_args(argv)
@@ -215,7 +204,6 @@ def main(argv: list[str] | None = None) -> int:
             print("  (None detected; running in 100% self-contained mode)")
         return 0
     return dispatch_cli(args.subcommand, target, args)
-
 
 if __name__ == "__main__":
     sys.exit(main())

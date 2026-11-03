@@ -5,8 +5,6 @@ Zero external dependencies; standard library Python 3.10+ only.
 Tests all subcommands: ui, container, surface, tests, all.
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import subprocess
@@ -23,7 +21,6 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import diagnose
-
 
 class TestAutoDiscovery(unittest.TestCase):
     """Test environment and service auto-discovery helpers."""
@@ -70,7 +67,6 @@ class TestAutoDiscovery(unittest.TestCase):
             found = diagnose.find_virtualenv_python(root)
             self.assertEqual(found, str(mock_py))
 
-
 class TestParser(unittest.TestCase):
     """Test CLI argument parsing for all subcommands."""
 
@@ -116,7 +112,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(args.url, "http://localhost:3000")
         self.assertEqual(args.wait, 3.0)
         self.assertTrue(args.strict)
-
 
 class TestSubcommandsExecution(unittest.TestCase):
     """Test execution dispatch of subcommands."""
@@ -196,7 +191,6 @@ class TestSubcommandsExecution(unittest.TestCase):
                 self.assertIn("-m", called_cmd)
                 self.assertIn("unittest", called_cmd)
 
-
 class TestMainDispatcher(unittest.TestCase):
     """Test top-level main() entrypoint."""
 
@@ -210,7 +204,6 @@ class TestMainDispatcher(unittest.TestCase):
             with patch.object(sys, "argv", ["diagnose.py", "surface", "--path", tmpdir]):
                 code = diagnose.main()
                 self.assertEqual(code, 0)
-
 
 if __name__ == "__main__":
     unittest.main()

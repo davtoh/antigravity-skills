@@ -2,7 +2,6 @@
 """Unit tests for probe_runner and dynamic probe extensions."""
 
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -17,7 +16,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import diagnose
 import probe_runner
-
 
 class TestProbeRunner(unittest.TestCase):
     """Test suite for probe discovery, execution, scaffolding, and promotion."""
@@ -91,7 +89,6 @@ if __name__ == "__main__":
         args = parser.parse_args(["probe", "list", "--path", str(self.ws_root)])
         ret = diagnose.cmd_probe(args)
         self.assertEqual(ret, 0)
-
 
 if __name__ == "__main__":
     unittest.main()

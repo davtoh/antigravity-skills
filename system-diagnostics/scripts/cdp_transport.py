@@ -5,17 +5,13 @@ Provides pure-Python RFC 6455 client via asyncio standard library,
 with seamless fallback/delegation if third-party `websockets` is installed.
 """
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import json
 import os
 import struct
-import sys
 import time
 from urllib.parse import urlparse
-
 
 class StdlibWSClient:
     """Zero-dependency RFC 6455 WebSocket client using asyncio standard library."""
@@ -153,7 +149,6 @@ class StdlibWSClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
-
 class CDPSession:
     """CDP session wrapping either websockets package or StdlibWSClient."""
 
@@ -178,7 +173,6 @@ class CDPSession:
                 if "error" in msg:
                     raise RuntimeError(f"CDP error in {method}: {msg['error']}")
                 return msg.get("result", {})
-
 
 async def connect_ws(url: str, timeout: float = 10.0):
     """Connect to WebSocket URL using websockets library if available, else pure stdlib."""

@@ -6,11 +6,8 @@ Solves Windows CRLF line-ending mismatches where tools like edit_file fail due t
 without requiring brittle inline PowerShell or ad-hoc Python scripts.
 """
 
-from __future__ import annotations
-
 import os
 import re
-import sys
 from pathlib import Path
 
 # Common text file extensions safe for line-ending normalization
@@ -21,7 +18,6 @@ TEXT_EXTENSIONS = frozenset({
     ".go", ".rs", ".cs",
 })
 
-
 def detect_file_eol(path: Path) -> str:
     """Detect whether a file uses CRLF (\\r\\n) or LF (\\n)."""
     try:
@@ -29,7 +25,6 @@ def detect_file_eol(path: Path) -> str:
         return "\r\n" if b"\r\n" in raw else "\n"
     except Exception:
         return "\n"
-
 
 def normalize_file_eol(path: Path, target_eol: str = "\n") -> tuple[bool, str]:
     """Convert line endings in a single text file to target_eol (\\n or \\r\\n)."""
@@ -52,7 +47,6 @@ def normalize_file_eol(path: Path, target_eol: str = "\n") -> tuple[bool, str]:
         return True, f"Normalized {path.name} to {('CRLF' if target_eol == '\r\n' else 'LF')}"
     except Exception as err:
         return False, f"Error normalizing {path.name}: {err}"
-
 
 def cmd_normalize_eol(target: Path, to_eol: str = "lf") -> int:
     """Recursively normalize line endings across text files in target."""
@@ -83,7 +77,6 @@ def cmd_normalize_eol(target: Path, to_eol: str = "lf") -> int:
     print(f"  Converted: {converted} file(s)")
     print(f"  Unchanged/Skipped: {skipped} file(s)")
     return 0
-
 
 def patch_file_content(file_path: Path, target: str, replacement: str, count: int = 1) -> tuple[bool, str]:
     """Replace target text with replacement text, ignoring CRLF vs LF differences."""
@@ -119,7 +112,6 @@ def patch_file_content(file_path: Path, target: str, replacement: str, count: in
     file_path.write_bytes(patched.encode("utf-8"))
     return True, f"Successfully patched {file_path.name} (preserved {('CRLF' if file_eol == '\r\n' else 'LF')})."
 
-
 def _filter_new_scripts(text: str, script_srcs: list[str]) -> list[str]:
     """Return only those scripts whose filenames are not already referenced in text."""
     scripts_to_add: list[str] = []
@@ -131,7 +123,6 @@ def _filter_new_scripts(text: str, script_srcs: list[str]) -> list[str]:
         if not pattern.search(text):
             scripts_to_add.append(s_clean)
     return scripts_to_add
-
 
 def _find_html_insertion_point(lines: list[str], before_script: str) -> tuple[int, str]:
     """Find the line index and indentation where new <script> tags should be inserted."""
@@ -149,7 +140,6 @@ def _find_html_insertion_point(lines: list[str], before_script: str) -> tuple[in
             return i, match.group(1) if match else "  "
 
     return len(lines), "  "
-
 
 def inject_html_scripts(html_path: Path, script_srcs: list[str], before_script: str = "") -> tuple[bool, str]:
     """Inject <script src="..."> tags into an HTML file with correct indentation and EOL."""

@@ -8,8 +8,6 @@ Provides lightweight, standard-library-only structural scanning for:
 - Vendor, minified, and machine-emitted asset detection
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,7 +43,6 @@ GENERATED_MARKERS: tuple[str, ...] = (
     "sourcemappingurl=",
 )
 
-
 @dataclass
 class RawSymbol:
     """Lightweight intermediate representation of a parsed class or function."""
@@ -57,7 +54,6 @@ class RawSymbol:
     end_line: int
     lines: int
     methods: list[str] = field(default_factory=list)
-
 
 _CLASS_RE = re.compile(
     r"^\s*(?:export\s+)?(?:default\s+)?(?:public\s+|private\s+|internal\s+|abstract\s+|sealed\s+|partial\s+)*"
@@ -87,7 +83,6 @@ _CONTROL_KEYWORDS: frozenset[str] = frozenset({
     "match", "super", "new", "import", "require", "else", "try",
 })
 
-
 def is_vendor_or_generated(
     file_path: Path,
     rel_parts: tuple[str, ...] = (),
@@ -110,7 +105,6 @@ def is_vendor_or_generated(
             return True
     return False
 
-
 def _strip_block_comments(source_text: str) -> str:
     """Replace multi-line /* ... */ comments with blank lines to preserve line numbers."""
     return re.sub(
@@ -120,12 +114,10 @@ def _strip_block_comments(source_text: str) -> str:
         flags=re.DOTALL,
     )
 
-
 def _strip_strings_and_comments(line: str) -> str:
     """Remove string literals and single-line comments to count braces safely."""
     cleaned = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`', '""', line)
     return re.sub(r"//.*$", "", cleaned)
-
 
 def _has_opening_brace(lines: list[str], start_idx: int) -> bool:
     """Check if a declaration opens a `{` block within 6 lines without ending in `;`."""
@@ -137,7 +129,6 @@ def _has_opening_brace(lines: list[str], start_idx: int) -> bool:
         if cleaned.endswith(";"):
             return False
     return False
-
 
 def _find_block_end(lines: list[str], start_idx: int) -> int:
     """Track curly brace depth from start_idx (0-based) and return 1-based end line."""
@@ -155,7 +146,6 @@ def _find_block_end(lines: list[str], start_idx: int) -> int:
         if not found_open and idx > start_idx + 6:
             return start_idx + 1
     return len(lines)
-
 
 def _match_brace_symbol(
     line: str, in_class: bool
@@ -178,7 +168,6 @@ def _match_brace_symbol(
         if m_cls and m_cls.group(1) not in _CONTROL_KEYWORDS:
             return ("func", m_cls.group(1), None)
     return None
-
 
 def _record_brace_symbol(
     kind: str,
@@ -208,7 +197,6 @@ def _record_brace_symbol(
     funcs.append(RawSymbol("func", name, qual, lineno, end_line, span))
     return active_class, end_line
 
-
 def analyze_brace_language(source_text: str) -> list[RawSymbol]:
     """Extract classes/structs/impls and functions/methods from C-style brace files."""
     # remove multi-line comment blocks so they don't corrupt the block depth counter.
@@ -233,10 +221,8 @@ def analyze_brace_language(source_text: str) -> list[RawSymbol]:
 
     return list(classes.values()) + funcs
 
-
 _CSS_SECTION_RE = re.compile(r"/\*\s*[=*#-]{2,}\s*([^*]+?)\s*[=*#-]{2,}\s*\*/")
 _CSS_RULE_RE = re.compile(r"^\s*([.#@:][^{;]+?)\s*\{")
-
 
 def analyze_stylesheet(source_text: str) -> list[RawSymbol]:
     """Extract section groups, @media/@layer blocks, and large rule spans from CSS/SCSS."""
@@ -273,12 +259,10 @@ def analyze_stylesheet(source_text: str) -> list[RawSymbol]:
             symbols.append(RawSymbol("class", pfx, pfx, s_line, e_line, e_line - s_line + 1, rules))
     return symbols
 
-
 _FALLBACK_DECL_RE = re.compile(
     r"^\s*(?:public\s+|private\s+|export\s+|async\s+)*"
     r"(?:def|fn|func|function|class|module|sub|proc)\s+([A-Za-z_]\w*)"
 )
-
 
 def analyze_generic_fallback(source_text: str) -> list[RawSymbol]:
     """Heuristic keyword line-span scanner for unknown or unsupported languages."""

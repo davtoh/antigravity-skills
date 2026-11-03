@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for code_health_audit and multi-language structural analyzers."""
 
-from __future__ import annotations
-
 import io
 import json
 import sys
@@ -33,7 +31,6 @@ from scripts.language_analyzers import (
     is_vendor_or_generated,
 )
 
-
 class TestClassifyCount(unittest.TestCase):
     """Test classification logic against soft and hard budget limits."""
 
@@ -48,7 +45,6 @@ class TestClassifyCount(unittest.TestCase):
     def test_critical_boundary(self) -> None:
         self.assertEqual(classify_count(501, 350, 500), "CRITICAL")
         self.assertEqual(classify_count(13, 10, 12), "CRITICAL")
-
 
 class TestPythonAstAnalysis(unittest.TestCase):
     """Test AST-level parsing and detection of Python classes and functions."""
@@ -82,7 +78,6 @@ class TestPythonAstAnalysis(unittest.TestCase):
         self.assertEqual(len(funcs), 1)
         self.assertEqual(funcs[0].name, "nested_func")
         self.assertEqual(funcs[0].status, "CRITICAL")
-
 
 class TestMultiLanguageAnalyzers(unittest.TestCase):
     """Test zero-dependency C-style brace, stylesheet, fallback, and vendor analyzers."""
@@ -139,7 +134,6 @@ class TestMultiLanguageAnalyzers(unittest.TestCase):
         funcs = [s for s in symbols if s.kind == "func"]
         self.assertEqual(len(funcs), 1)
         self.assertEqual(funcs[0].name, "cleanFn")
-
 
 class TestSourceFileAuditAndCli(unittest.TestCase):
     """Test filesystem iteration, vendor pruning, and CLI execution."""
@@ -231,7 +225,6 @@ class TestSourceFileAuditAndCli(unittest.TestCase):
         two_huge_monoliths = [FileReport(f"pkg{i}/big.py", 1800, "CRITICAL") for i in range(2)]
         self.assertEqual(recommend_mode(two_huge_monoliths), "PROJECT_CAMPAIGN")
 
-
     def test_inspect_sections_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "module.py"
@@ -263,7 +256,6 @@ class TestSourceFileAuditAndCli(unittest.TestCase):
                 val = out.getvalue()
                 self.assertIn("CRLF", val)
                 self.assertIn("SPLIT POINT", val)
-
 
 if __name__ == "__main__":
     unittest.main()

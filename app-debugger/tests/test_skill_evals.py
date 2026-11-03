@@ -7,8 +7,6 @@ pre-commit sanitization gates.
 Zero external dependencies; standard library Python 3.10+ only.
 """
 
-from __future__ import annotations
-
 import json
 import re
 import unittest
@@ -17,7 +15,6 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parent.parent
 EVALS_FILE = SKILL_DIR / "evals" / "evals.json"
 SKILL_MD = SKILL_DIR / "SKILL.md"
-
 
 def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     """Check if skill documentation provides concrete evidence for an expectation."""
@@ -150,7 +147,6 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     passed = (found_cnt / max(len(words), 1)) >= 0.4
     return passed, f"Generic keywords: {found_cnt}/{len(words)}"
 
-
 class TestAppDebuggerEvals(unittest.TestCase):
     """Test suite ensuring SKILL.md meets all evaluation and compliance requirements."""
 
@@ -220,7 +216,6 @@ class TestAppDebuggerEvals(unittest.TestCase):
         self.assertNotIn("file:" + "///", self.skill_text, "Forbidden file URI in SKILL.md")
         self.assertNotIn("C:\\" + "Users\\", self.skill_text, "Forbidden local absolute path in SKILL.md")
         self.assertNotIn("/" + "home/", self.skill_text, "Forbidden local absolute path in SKILL.md")
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,8 +14,6 @@ Usage:
   python docker_audit.py --container <container_name> --workdir /app --sync-check src/app.py static/styles.css
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import os
@@ -31,7 +29,6 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-
 def run_cmd(cmd: list[str], timeout: float = 10.0) -> str:
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
@@ -39,14 +36,12 @@ def run_cmd(cmd: list[str], timeout: float = 10.0) -> str:
     except Exception as e:
         return f"Error: {e}"
 
-
 def host_md5(path: str) -> str:
     p = Path(path)
     if not p.exists():
         return "MISSING_ON_HOST"
     # usedforsecurity=False keeps this working on FIPS-enforced hosts; MD5 is only a sync fingerprint here.
     return hashlib.md5(p.read_bytes(), usedforsecurity=False).hexdigest()
-
 
 def main():
     parser = argparse.ArgumentParser(description="Frontier Architect Cross-Platform Docker CPU & Sync Auditor")
@@ -110,7 +105,6 @@ def main():
             print("\n".join(error_lines[-20:]))
         else:
             print(f"  No recent Tracebacks/Errors in last {args.tail_errors} lines.")
-
 
 if __name__ == "__main__":
     main()

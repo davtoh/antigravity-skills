@@ -8,8 +8,6 @@ Zero external dependencies; standard library Python 3.10+ only.
 Cross-platform: Windows, macOS, Linux.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -18,7 +16,6 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
@@ -35,7 +32,6 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-
 def probe_local_port(ports: list[int] | None = None) -> str | None:
     """Probe common dev server ports on 127.0.0.1 to auto-discover active web app."""
     target_ports = ports or [8000, 3000, 5000, 8080, 5173, 4200]
@@ -46,7 +42,6 @@ def probe_local_port(ports: list[int] | None = None) -> str | None:
         except (OSError, ConnectionRefusedError, TimeoutError):
             continue
     return None
-
 
 def probe_docker_container() -> str | None:
     """Probe active Docker containers and return the first running application container."""
@@ -71,7 +66,6 @@ def probe_docker_container() -> str | None:
         return None
     return None
 
-
 def find_virtualenv_python(root: Path) -> str:
     """Auto-discover virtualenv python binary inside root or common sibling directories."""
     candidates = [
@@ -84,7 +78,6 @@ def find_virtualenv_python(root: Path) -> str:
             if py_bin.is_file():
                 return str(py_bin)
     return sys.executable
-
 
 def cmd_ui(args: argparse.Namespace) -> int:
     """Execute CDP browser layout and UI inspection."""
@@ -123,7 +116,6 @@ def cmd_ui(args: argparse.Namespace) -> int:
     res = subprocess.run(cmd)
     return res.returncode
 
-
 def cmd_container(args: argparse.Namespace) -> int:
     """Execute Docker runtime, process top, and host-container sync audit."""
     target_container = args.container or os.getenv("DOCKER_CONTAINER") or probe_docker_container()
@@ -140,7 +132,6 @@ def cmd_container(args: argparse.Namespace) -> int:
     print(f"=== Diagnose Container: Runtime Audit ({target_container or 'All Containers'}) ===")
     res = subprocess.run(cmd)
     return res.returncode
-
 
 def _walk_source_files(root: Path) -> dict[str, list[Path]]:
     """Collect source files for surface scanning, filtering ignore directories."""
@@ -160,7 +151,6 @@ def _walk_source_files(root: Path) -> dict[str, list[Path]]:
             elif ext in ("css", "scss"):
                 files["css"].append(p)
     return files
-
 
 def cmd_surface(args: argparse.Namespace) -> int:
     """Scan directory surface for HTML element IDs, JS globals, and Python routes."""
@@ -232,7 +222,6 @@ def cmd_surface(args: argparse.Namespace) -> int:
             print(f"  {r.get('method', 'GET')} {r.get('path', '')}")
     return 0
 
-
 def cmd_tests(args: argparse.Namespace) -> int:
     """Execute automated test runner using virtualenv Python if available."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
@@ -244,7 +233,6 @@ def cmd_tests(args: argparse.Namespace) -> int:
     print(f"Command: {' '.join(cmd)}\n")
     res = subprocess.run(cmd, cwd=str(target_path))
     return res.returncode
-
 
 def cmd_all(args: argparse.Namespace) -> int:
     """Execute unified 3-tier diagnostic audit in 1 command."""
@@ -305,7 +293,6 @@ def cmd_all(args: argparse.Namespace) -> int:
         if any("FAILED" in st for st in (t1_status, t2_status, t3_status)):
             return 1
     return 0
-
 
 def cmd_probe(args: argparse.Namespace) -> int:
     """Execute dynamic probe commands (list, run, new, save)."""
@@ -377,7 +364,6 @@ def cmd_probe(args: argparse.Namespace) -> int:
 
     print(f"[diagnose probe] Error: Unknown probe action '{action}'.", file=sys.stderr)
     return 2
-
 
 def build_parser() -> argparse.ArgumentParser:
     """Build unified CLI argument parser with subcommands."""
@@ -462,7 +448,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -483,7 +468,6 @@ def main() -> int:
         parser.print_help()
         return 2
     return handler(args)
-
 
 if __name__ == "__main__":
     sys.exit(main())

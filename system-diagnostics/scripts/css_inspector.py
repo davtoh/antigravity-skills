@@ -6,8 +6,6 @@ Provides zero-dependency CSS structural inspection, section banner detection,
 Eliminates ad-hoc Python line-counting and regex scripts during stylesheet refactoring.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,13 +19,11 @@ IGNORED_DIRS: frozenset[str] = frozenset({
     "scratch", "coverage", "htmlcov", "migrations", ".refactor",
 })
 
-
 def _is_vendor_or_minified(path: Path) -> bool:
     name = path.name.lower()
     return name.endswith((".min.css", ".bundle.css")) or any(
         p in ("vendor", "node_modules", "dist") for p in path.parts
     )
-
 
 def _print_css_surface_details(surf: Any, show_all: bool) -> None:
     """Print section banners, custom properties, and !important details."""
@@ -51,7 +47,6 @@ def _print_css_surface_details(surf: Any, show_all: bool) -> None:
         print("\n[CRITICAL SPECIFICITY] !important Occurrences:")
         for occ in surf.important_occurrences:
             print(f"  L{occ['line']:<5} | {occ['content']}")
-
 
 def _inspect_single_css_file(file_path: Path, show_all: bool = False) -> tuple[int, dict[str, Any]]:
     """Audit a single CSS/SCSS file and print detailed structural metrics."""
@@ -83,7 +78,6 @@ def _inspect_single_css_file(file_path: Path, show_all: bool = False) -> tuple[i
         "important": surf.important_count,
     }
 
-
 def _collect_css_summaries(css_files: list[Path], dir_path: Path) -> tuple[list[dict[str, Any]], int, int]:
     """Scan and summarize all CSS files in a directory."""
     summaries = []
@@ -111,7 +105,6 @@ def _collect_css_summaries(css_files: list[Path], dir_path: Path) -> tuple[list[
             "occurrences": surf.important_occurrences,
         })
     return summaries, total_lines, total_important
-
 
 def _inspect_css_directory(dir_path: Path, show_all: bool = False) -> tuple[int, list[dict[str, Any]]]:
     """Audit all CSS/SCSS files in a directory and print summary table."""
@@ -142,7 +135,6 @@ def _inspect_css_directory(dir_path: Path, show_all: bool = False) -> tuple[int,
                 print(f"  {b['path']}:L{occ['line']} | {occ['content']}")
 
     return (1 if total_important > 0 else 0), summaries
-
 
 def cmd_inspect_css(target: Path, show_all: bool = False, strict: bool = False) -> int:
     """CLI handler for inspect-css subcommand."""
