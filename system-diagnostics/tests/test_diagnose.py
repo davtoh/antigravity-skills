@@ -78,11 +78,18 @@ class TestParser(unittest.TestCase):
         self.parser = diagnose.build_parser()
 
     def test_parse_ui_subcommand(self):
-        args = self.parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout", "--live"])
+        args = self.parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout", "--live", "--wait", "2.5", "--strict"])
         self.assertEqual(args.subcommand, "ui")
         self.assertEqual(args.url, "http://localhost:8000")
         self.assertTrue(args.audit_layout)
         self.assertTrue(args.live)
+        self.assertEqual(args.wait, 2.5)
+        self.assertTrue(args.strict)
+
+    def test_parse_ui_defaults(self):
+        args = self.parser.parse_args(["ui"])
+        self.assertEqual(args.wait, 1.5)
+        self.assertFalse(args.strict)
 
     def test_parse_container_subcommand(self):
         args = self.parser.parse_args(["container", "--container", "my-app", "--workdir", "/srv", "--lines", "100"])
@@ -104,9 +111,10 @@ class TestParser(unittest.TestCase):
         self.assertEqual(args.args, ["tests.test_unit"])
 
     def test_parse_all_subcommand(self):
-        args = self.parser.parse_args(["all", "--url", "http://localhost:3000", "--strict"])
+        args = self.parser.parse_args(["all", "--url", "http://localhost:3000", "--wait", "3.0", "--strict"])
         self.assertEqual(args.subcommand, "all")
         self.assertEqual(args.url, "http://localhost:3000")
+        self.assertEqual(args.wait, 3.0)
         self.assertTrue(args.strict)
 
 
@@ -148,7 +156,8 @@ class TestSubcommandsExecution(unittest.TestCase):
             args = argparse.Namespace(
                 url="http://localhost:8000", list_tabs=False, audit_layout=True,
                 selectors="#app", screenshot=None, eval=None, click=None,
-                navigate=True, window_size="1920x1080", headless=True, live=False
+                navigate=True, window_size="1920x1080", headless=True, live=False,
+                wait=2.0, strict=True
             )
             code = diagnose.cmd_ui(args)
             self.assertEqual(code, 0)
@@ -157,6 +166,9 @@ class TestSubcommandsExecution(unittest.TestCase):
             self.assertIn("cdp_inspect.py", called_cmd[1])
             self.assertIn("--audit-layout", called_cmd)
             self.assertIn("--navigate", called_cmd)
+            self.assertIn("--wait", called_cmd)
+            self.assertIn("2.0", called_cmd)
+            self.assertIn("--strict", called_cmd)
 
     def test_cmd_container_invokes_docker_audit(self):
         with patch("subprocess.run") as mock_run:

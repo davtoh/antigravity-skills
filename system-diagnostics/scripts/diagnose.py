@@ -112,6 +112,10 @@ def cmd_ui(args: argparse.Namespace) -> int:
         cmd.append("--navigate")
     if args.window_size:
         cmd.extend(["--window-size", args.window_size])
+    if getattr(args, "wait", None) is not None:
+        cmd.extend(["--wait", str(args.wait)])
+    if getattr(args, "strict", False):
+        cmd.append("--strict")
     if args.headless or not args.live:
         cmd.append("--headless")
 
@@ -280,7 +284,9 @@ def cmd_all(args: argparse.Namespace) -> int:
         ui_args = argparse.Namespace(
             url=url, list_tabs=False, audit_layout=True, selectors=None,
             screenshot=None, eval=None, click=None, navigate=False,
-            window_size="1440x900", headless=True, live=False
+            window_size="1440x900", headless=True, live=False,
+            wait=getattr(args, "wait", 1.5),
+            strict=getattr(args, "strict", False)
         )
         t3_code = cmd_ui(ui_args)
         t3_status = "VERIFIED (Layout clean)" if t3_code == 0 else f"FAILED (Layout issue / Code {t3_code})"
@@ -393,6 +399,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_ui.add_argument("--eval", default=None, help="Evaluate JS expression and return JSON")
     p_ui.add_argument("--click", default=None, help="CSS selector to click before auditing")
     p_ui.add_argument("--window-size", default="1440x900", help="Viewport size WxH (default: 1440x900)")
+    p_ui.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection (default: 1.5)")
+    p_ui.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     p_ui.add_argument("--list-tabs", action="store_true", help="List active Chrome tabs")
 
     # 2. Container subcommand
@@ -420,6 +428,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_all.add_argument("--path", default=None, help="Root directory (default: current directory)")
     p_all.add_argument("--url", default=None, help="Explicit web URL")
     p_all.add_argument("--container", default=None, help="Explicit Docker container name")
+    p_all.add_argument("--wait", type=float, default=1.5, help="Seconds to wait for UI tier settle (default: 1.5)")
     p_all.add_argument("--strict", action="store_true", help="Exit code 1 if any tier fails")
 
     # 6. Probe subcommand (Dynamic & extensible diagnostic probes)

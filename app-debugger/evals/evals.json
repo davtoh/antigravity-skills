@@ -61,6 +61,30 @@
         "Verifies resolution cleanly via run_diagnose.py tests",
         "Adheres to Modularity Budgets with surgical, minimal edits"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "I'm running uvicorn --reload in my terminal and debugging a bug where users can't submit payments. Every time files change, uvicorn restarts, killing in-flight requests and popping permission alerts. How do you plan to diagnose and fix this without killing my server?",
+      "expected_output": "Recognizes active auto-reloading dev server (uvicorn --reload), isolates test fixtures, enforces single-pass atomic edits instead of multi-step file thrashing, opts for headless background verification to avoid browser permission popups, and preserves reactive task discipline.",
+      "files": [],
+      "expectations": [
+        "Applies Dev Server & File Watcher Safety by avoiding repeated edits that trigger auto-reloaders",
+        "Enforces single-pass atomic edits to batch changes into a single turn",
+        "Prefers headless sandbox mode to avoid repeated desktop permission dialogs during diagnostics",
+        "Follows reactive task discipline without polling manage_task status"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "We are on Windows with Git core.autocrlf enabled, and previous edits failed with 'target content not found' because of line endings. Debug why the carousel item isn't snapping cleanly at index 0 and fix it safely.",
+      "expected_output": "Inspects line endings (CRLF vs LF) before applying edits, uses run_diagnose.py ui with --wait to audit scroll-snap resting offsets, applies defensive CSS fix, and verifies resolution without creating disposable scratch scripts.",
+      "files": [],
+      "expectations": [
+        "Verifies target file line endings (CRLF vs LF) prior to applying multi-line edit_file replacements",
+        "Avoids disposable scratch scripts when encountering whitespace or line-ending mismatches",
+        "Utilizes run_diagnose.py ui with --wait or layout auditing to measure resting offsets and scroll-snap alignment",
+        "Constructs a Symptom-to-Root-Cause Matrix mapping the resting gap to root cause"
+      ]
     }
   ]
 }

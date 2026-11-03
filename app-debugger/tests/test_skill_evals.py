@@ -87,6 +87,34 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         has_mod = bool(re.search(r"modularity|surgical|budget", text, re.I))
         return has_mod, f"Modularity / surgical edits: {has_mod}"
 
+    if "file watcher" in exp_lower or "auto-reloader" in exp_lower or "dev server" in exp_lower:
+        has_fw = bool(re.search(r"dev server|file watcher|auto-reloader|statreload", text, re.I))
+        return has_fw, f"File watcher / dev server safety: {has_fw}"
+
+    if "single-pass" in exp_lower or "batch" in exp_lower:
+        has_sp = bool(re.search(r"single-pass|atomic|batch", text, re.I))
+        return has_sp, f"Single-pass atomic edits: {has_sp}"
+
+    if "headless sandbox" in exp_lower or "headless" in exp_lower and "permission" in exp_lower:
+        has_hl = bool(re.search(r"headless|permission", text, re.I))
+        return has_hl, f"Headless sandbox / permission: {has_hl}"
+
+    if "reactive task discipline" in exp_lower or "manage_task" in exp_lower or "polling" in exp_lower:
+        has_rt = bool(re.search(r"reactive task discipline|manage_task|polling", text, re.I))
+        return has_rt, f"Reactive task discipline: {has_rt}"
+
+    if "line ending" in exp_lower or "crlf" in exp_lower:
+        has_le = bool(re.search(r"line ending|crlf|autocrlf", text, re.I))
+        return has_le, f"Line ending discipline: {has_le}"
+
+    if "disposable scratch" in exp_lower:
+        has_ds = bool(re.search(r"disposable.*scratch|scratch/.*mismatch", text, re.I))
+        return has_ds, f"Avoid disposable scratch scripts: {has_ds}"
+
+    if "--wait" in exp_lower or "resting offset" in exp_lower or "scroll-snap" in exp_lower:
+        has_ro = bool(re.search(r"--wait|resting offset|scroll-snap", text, re.I))
+        return has_ro, f"--wait / resting offset / scroll-snap: {has_ro}"
+
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_cnt = sum(1 for w in words if w in text.lower())

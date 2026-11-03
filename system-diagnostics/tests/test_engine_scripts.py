@@ -181,6 +181,8 @@ class TestCDPInspectEngine(unittest.TestCase):
         parser.add_argument("--eval", default=None)
         parser.add_argument("--headless", action="store_true")
         parser.add_argument("--window-size", default="1440x900")
+        parser.add_argument("--wait", type=float, default=1.5)
+        parser.add_argument("--strict", action="store_true")
         parser.add_argument("--port", type=int, default=0)
 
         args = parser.parse_args([
@@ -190,6 +192,8 @@ class TestCDPInspectEngine(unittest.TestCase):
             "--eval", "document.title",
             "--headless",
             "--window-size", "1920x1080",
+            "--wait", "2.0",
+            "--strict",
             "--port", "9222",
         ])
 
@@ -199,7 +203,20 @@ class TestCDPInspectEngine(unittest.TestCase):
         self.assertEqual(args.eval, "document.title")
         self.assertTrue(args.headless)
         self.assertEqual(args.window_size, "1920x1080")
+        self.assertEqual(args.wait, 2.0)
+        self.assertTrue(args.strict)
         self.assertEqual(args.port, 9222)
+
+    def test_audit_layout_js_contains_scroll_and_offset_fields(self):
+        js_path = SCRIPTS_DIR / "audit_layout.js"
+        self.assertTrue(js_path.exists())
+        js_text = js_path.read_text(encoding="utf-8")
+        self.assertIn("hasHorizontalWindowScroll", js_text)
+        self.assertIn("scrollX", js_text)
+        self.assertIn("scrollY", js_text)
+        self.assertIn("offsetFromParent", js_text)
+        self.assertIn("scrollSnap", js_text)
+        self.assertIn("scroll", js_text)
 
     def test_url_env_fallback(self):
         with patch.dict(os.environ, {"APP_URL": "http://127.0.0.1:8000"}):

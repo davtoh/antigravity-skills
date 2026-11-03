@@ -95,6 +95,19 @@ Before touching code, synthesize findings into a structured matrix that maps eve
 
 ---
 
+## Execution Discipline & Dev Server Safety
+
+1. **Dev Server & File Watcher Safety**:
+   - When diagnosing a live web app, be aware that modifying backend or test files in active directories triggers auto-reloaders (`StatReload`, `uvicorn --reload`, `vite`, `nodemon`).
+   - Auto-reload cascades abort pending HTTP/WebSocket requests, disrupt running containers, and flood the user with browser permission prompts.
+   - **Isolate Test Fixtures**: Keep test fixtures outside watched application trees.
+   - **Single-Pass Atomic Edits**: Bundle multi-line edits into a single atomic turn rather than triggering multiple successive reloads.
+   - **Headless Sandbox for Multi-Step Audits**: Use `--headless` when running iterative automated layout audits to avoid popping live desktop browser permission banners repeatedly.
+2. **Reactive Task Discipline**:
+   - Never call `manage_task status` or sleep in a loop. Background tasks wake up the agent reactively upon completion.
+
+---
+
 ## Windows Shell & Tooling Resilience
 
 1. **PowerShell Script Policy Bypass**:
@@ -102,7 +115,9 @@ Before touching code, synthesize findings into a structured matrix that maps eve
 2. **Codebase Grepping**:
    - Prefer `git grep -n "<pattern>"` over `rg` unless `rg` is explicitly verified in `%PATH%`.
 3. **Line Ending & File Editing Safety**:
-   - When modifying files on Windows, verify target line endings (CRLF vs LF).
+   - Before applying multi-line `edit_file` replacements on Windows repositories with `core.autocrlf = true`, verify file line endings (CRLF vs LF):
+     `python -c "print('CRLF' if b'\r\n' in open('path/to/file','rb').read() else 'LF')"`
+   - Match the target line endings exactly in `Target` and `Replacement` strings.
    - Never write disposable Python file-patching scripts in `scratch/` when `edit_file` encounters a whitespace mismatch; inspect the exact context and apply targeted edits.
 
 ---
@@ -149,9 +164,11 @@ Per `executable_documentation.md`, match user intent with the exact copy-pasteab
 | Real-World Scenario / Objective | Mode / Inputs | Key Parameters | Exact Runnable Command |
 | :--- | :--- | :--- | :--- |
 | **Check Tool Engine Readiness** | Diagnostic probe | `--probe` | `python skills/app-debugger/scripts/run_diagnose.py --probe` |
+| **Inspect Live Chrome Tab with Settle Delay** | Live visible tab | `--live --wait 2.0 --audit-layout` | `python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout` |
 | **Inspect Live Chrome Tab Bug** | Live visible tab | `--live --audit-layout` | `python skills/app-debugger/scripts/run_diagnose.py ui --live --audit-layout` |
 | **Capture Pre-Fix Visual Proof** | Headless sandbox | `--screenshot` | `python skills/app-debugger/scripts/run_diagnose.py ui --screenshot scratch/bug_before.jpg` |
 | **Audit Specific Failing Elements** | CSS selectors | `--selectors` | `python skills/app-debugger/scripts/run_diagnose.py ui --selectors "#player,.error-banner"` |
+| **Inspect File Line Endings Before Edit** | Environment probe | Python one-liner | `python -c "print('CRLF' if b'\r\n' in open('file.py','rb').read() else 'LF')"` |
 | **Diagnose Container Crash / CPU** | Docker service | `--lines --sync-check` | `python skills/app-debugger/scripts/run_diagnose.py container --lines 100 --sync-check app.py` |
 | **Check AST Surface for Broken IDs** | Source repository | `--show-ids --show-routes` | `python skills/app-debugger/scripts/run_diagnose.py surface --show-ids --show-routes` |
 | **Run Virtualenv Unit Test Suite** | Test runner | Auto-detects `.venv` | `python skills/app-debugger/scripts/run_diagnose.py tests` |

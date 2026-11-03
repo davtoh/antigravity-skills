@@ -173,6 +173,11 @@ async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> i
     if args.audit_layout or custom_sels:
         result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels))
         print(json.dumps(result, indent=2, ensure_ascii=False))
+        if getattr(args, "strict", False) and isinstance(result, dict):
+            warnings = result.get("layoutOverflowWarnings", [])
+            viewport = result.get("viewport", {})
+            if warnings or viewport.get("hasHorizontalWindowScroll", False):
+                exit_code = 1
 
     if args.eval:
         eval_result = await evaluate(cdp, session_id, args.eval)
@@ -244,9 +249,12 @@ async def read_port_file(profile_dir: Path, timeout_s: float = 10.0) -> tuple[in
     deadline = asyncio.get_running_loop().time() + timeout_s
     while asyncio.get_running_loop().time() < deadline:
         if port_file.exists():
-            lines = [ln.strip() for ln in port_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
-            if len(lines) >= 2:
-                return int(lines[0]), lines[1]
+            try:
+                lines = [ln.strip() for ln in port_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
+                if len(lines) >= 2:
+                    return int(lines[0]), lines[1]
+            except OSError:
+                pass
         await asyncio.sleep(0.2)
     return None
 
@@ -282,7 +290,7 @@ async def run_headless(args) -> int:
         print("[CDP] Error: no Chrome/Chromium/Edge found. Set CHROME_BIN to the browser executable.", file=sys.stderr)
         return 1
     width, height = args.viewport
-    with tempfile.TemporaryDirectory(prefix="agy_cdp_") as tmp_profile:
+    with tempfile.TemporaryDirectory(prefix="agy_cdp_", ignore_cleanup_errors=True) as tmp_profile:
         cmd = [
             chrome_exe, "--headless=new",
             # Port 0 = OS picks a free port (avoids clashing with Node's 9229 or a user's 9222).
@@ -337,6 +345,7 @@ def main():
     parser.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
     parser.add_argument("--navigate", action="store_true", help="Force (re)navigation to target URL, e.g. a hard reload after a fix")
     parser.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection")
+    parser.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     parser.add_argument("--headless", action="store_true", help="Use isolated auto-cleaned headless browser")
     parser.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
     parser.set_defaults(fallback_headless=True)
