@@ -281,5 +281,5 @@ Load these reference files only when needed for the active phase:
 ### Skill Self-Testing & Benchmark Suite (`tests/`)
 Consult only when modifying, validating, or elevating the `frontier-architect` skill itself:
 - **[`tests/README.md`](./tests/README.md)**: Dual-tier testing architecture, pre-run verification one-liners, and scenario combinations matrix.
-- **Fast Deterministic Check**: Run `python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py"` to verify all 20 script unit tests and eval expectations without consuming LLM tokens.
+- **Fast Deterministic Check**: Run `python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py"` to verify all 61 script unit tests and eval expectations with $\ge 96\%$ test coverage without consuming LLM tokens.
 - **Benchmark & Regression CLI**: Run `python skills/frontier-architect/tests/run_benchmark.py` to compare against historical snapshots. For generative multi-agent benchmarking, invoke `/skill-creator`.

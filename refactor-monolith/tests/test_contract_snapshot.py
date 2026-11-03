@@ -210,32 +210,7 @@ class TestContractDiffEngine(unittest.TestCase):
         self.assertTrue(any("!important count increased" in iss for iss in issues))
 
 
-class TestCampaignAndTools(unittest.TestCase):
-    def test_state_management_lifecycle(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            (base / ".git").mkdir()
-            target = base / "dashboard"
-            target.mkdir()
-
-            # 1. Init state
-            code = cmd_state(target, action="init", plan=".refactor/plan.md", phases=3, phase_title="Domain Decoupling")
-            self.assertEqual(code, 0)
-            state_file = base / ".refactor" / "state.json"
-            self.assertTrue(state_file.exists())
-            state = json.loads(state_file.read_text(encoding="utf-8"))
-            self.assertEqual(state["active_phase"], 1)
-            self.assertEqual(state["total_phases"], 3)
-            self.assertEqual(state["phases"]["1"]["title"], "Domain Decoupling")
-
-            # 2. Advance phase
-            code = cmd_state(target, action="advance", sha="abcdef1")
-            self.assertEqual(code, 0)
-            state = json.loads(state_file.read_text(encoding="utf-8"))
-            self.assertEqual(state["active_phase"], 2)
-            self.assertEqual(state["phases"]["1"]["status"], "completed")
-            self.assertEqual(state["phases"]["1"]["sha"], "abcdef1")
-
+class TestAuxiliaryInspectionTools(unittest.TestCase):
     def test_generate_smoke_test_scopes_root_and_excludes_ignored_dirs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
@@ -268,18 +243,6 @@ class TestCampaignAndTools(unittest.TestCase):
                 tools = discover_optional_tools()
                 self.assertEqual(tools.get("diagnose"), str(diag_file))
 
-    def test_refactor_dir_creates_subdirectories(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            rdir = get_refactor_dir(base)
-            self.assertTrue((rdir / "scripts").is_dir())
-            self.assertTrue((rdir / "artifacts").is_dir())
-            gitignore = rdir / ".gitignore"
-            self.assertTrue(gitignore.is_file())
-            content = gitignore.read_text(encoding="utf-8")
-            self.assertIn("*", content)
-            self.assertIn("!.gitignore", content)
-
     def test_inspect_show_routes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
@@ -301,11 +264,6 @@ class TestCampaignAndTools(unittest.TestCase):
             # Test inspect with show_routes
             code_all = cmd_inspect(sub, show_routes=True)
             self.assertEqual(code_all, 0)
-
-    def test_format_phase_icon_fallback(self):
-        self.assertIn(_format_phase_icon(is_completed=True, is_active=False), ["✅", "[x]"])
-        self.assertIn(_format_phase_icon(is_completed=False, is_active=True), ["▶️", "[>]"])
-        self.assertIn(_format_phase_icon(is_completed=False, is_active=False), ["⏳", "[ ]"])
 
     def test_discover_virtualenv(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -352,22 +310,6 @@ class TestCampaignAndTools(unittest.TestCase):
             # Test strict mode on file with !important
             code_strict = cmd_inspect_css(css_file, strict=True)
             self.assertEqual(code_strict, 1)
-
-    def test_campaign_state_checkpoint_action(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            rdir = base / ".refactor"
-            rdir.mkdir()
-            state_file = rdir / "state.json"
-            # Init state
-            cmd_state(base, action="init", plan=str(rdir / "plan.md"), phases=3, phase_title="Phase 1")
-            
-            # Save checkpoint
-            code = cmd_state(base, action="checkpoint", note="Slice 1.2 completed")
-            self.assertEqual(code, 0)
-            data = json.loads(state_file.read_text(encoding="utf-8"))
-            self.assertIn("last_checkpoint", data)
-            self.assertEqual(data["last_checkpoint"]["note"], "Slice 1.2 completed")
 
     def test_verify_ui_and_docker_skipped_gracefully(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -109,6 +109,18 @@
         "Uses Virtualenv Auto-Detection to ensure Python execution has required CV packages",
         "Constructs a Symptom-to-Root-Cause Matrix mapping hardware acquisition timeout and index drift"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "We need to diagnose an intermittent Redis connection pool timeout in our worker pipeline without polluting the codebase with disposable scratch scripts. Check registered probes and run or scaffold a reusable probe for it.",
+      "expected_output": "Executes run_diagnose.py probe list to inspect available probes, runs or scaffolds a reusable domain probe using run_diagnose.py probe new or probe save, and avoids disposable scratch scripts.",
+      "files": [],
+      "expectations": [
+        "Executes run_diagnose.py probe list to discover registered domain diagnostic probes",
+        "Avoids disposable scratch scripts by utilizing probe registry workflows",
+        "Supports dynamic probe execution or scaffolding via run_diagnose.py probe run or probe new",
+        "Constructs a Symptom-to-Root-Cause Matrix mapping connection pool timeout to root cause"
+      ]
     }
   ]
 }

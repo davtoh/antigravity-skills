@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import io
 import os
+import runpy
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -130,6 +132,72 @@ class TestRunDiagnose(unittest.TestCase):
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
+
+    def test_resolve_diagnose_permission_error_handling(self):
+        """Verify resolve_diagnose_path catches PermissionError/OSError and continues."""
+        class MockPath:
+            def __init__(self, raise_error=False, valid=False):
+                self._raise = raise_error
+                self._valid = valid
+
+            def is_file(self):
+                if self._raise:
+                    raise PermissionError("Access denied")
+                return self._valid
+
+            def resolve(self):
+                return self
+
+        valid_candidate = MockPath(valid=True)
+        candidates = [MockPath(raise_error=True), valid_candidate]
+
+        with patch.object(run_diagnose, "_get_candidate_paths", return_value=candidates):
+            resolved = run_diagnose.resolve_diagnose_path()
+            self.assertEqual(resolved, valid_candidate)
+
+    def test_resolve_python_posix_venv(self):
+        """Verify resolve_python discovers POSIX virtualenv executable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            mock_py = base / ".venv" / "bin" / "python"
+            mock_py.parent.mkdir(parents=True)
+            mock_py.write_text("# mock", encoding="utf-8")
+            res = run_diagnose.resolve_python(base_dir=base)
+            self.assertEqual(res, str(mock_py.resolve()))
+
+    def test_main_non_probe_missing_diagnose(self):
+        """Verify main exits with 1 when diagnose.py is missing on command invocation."""
+        with patch.object(run_diagnose, "resolve_diagnose_path", return_value=None):
+            buf = io.StringIO()
+            with patch("sys.stderr", buf):
+                ret = run_diagnose.main(["ui", "--headless"])
+            self.assertEqual(ret, 1)
+            self.assertIn("[app-debugger] Error: 'system-diagnostics' tool engine not found", buf.getvalue())
+
+    def test_main_subprocess_execution_exception(self):
+        """Verify main catches subprocess execution exceptions and returns 1."""
+        with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        try:
+            with patch.dict(os.environ, {"DIAGNOSE_CLI_PATH": str(tmp_path)}):
+                with patch("subprocess.run", side_effect=OSError("Process creation failed")):
+                    buf = io.StringIO()
+                    with patch("sys.stderr", buf):
+                        ret = run_diagnose.main(["tests"])
+                    self.assertEqual(ret, 1)
+                    self.assertIn("Execution error: Process creation failed", buf.getvalue())
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    def test_cli_entrypoint(self):
+        """Verify script entrypoint can be executed directly via python CLI."""
+        script_file = SCRIPTS_DIR / "run_diagnose.py"
+        with patch.object(sys, "argv", ["run_diagnose.py", "--probe"]):
+            with self.assertRaises(SystemExit) as cm:
+                runpy.run_path(str(script_file), run_name="__main__")
+            self.assertIn(cm.exception.code, (0, 1))
 
     def test_modularity_and_line_count_budgets(self):
         """Verify run_diagnose.py adheres to the 80-120 line target and function length rules."""

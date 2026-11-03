@@ -314,7 +314,8 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 - **[`scripts/file_patcher.py`](./scripts/file_patcher.py)**: Line-ending normalizer (`normalize-eol`), line-ending-agnostic safe search/replace engine (`patch`), and safe HTML script tag injector (`inject-scripts`).
 - **[`scripts/audit_reporters.py`](./scripts/audit_reporters.py)**: Formatted terminal reporters for structural audits, directory breakdowns, split point previews, and section/banner comment outlines.
 - **[`scripts/surface_scanners.py`](./scripts/surface_scanners.py)**: Zero-dependency surface scanners extracting DOM IDs, interactive selects, inline handlers, `window.*` globals, Python routes, mutable globals, and CSS custom properties.
-- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, CLI command router, unified 3-tier diagnostic coordinator, and Tier 1-3 verification engine.
+- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, unified 3-tier diagnostic coordinator, and Tier 1-3 verification engine.
+- **[`scripts/contract_cli.py`](./scripts/contract_cli.py)**: Modular CLI argument parser, subcommand routing, and execution dispatcher for all contract snapshot operations.
 - **[`scripts/contract_diff_engine.py`](./scripts/contract_diff_engine.py)**: Surface contract extraction, git tree extraction, and regression diffing engine.
 - **[`scripts/auxiliary_tool_bridge.py`](./scripts/auxiliary_tool_bridge.py)**: Virtualenv test runner, CDP browser verification bridge, container sync auditor, auto-detection engine, and Axiom 9 verification matrix.
 - **[`scripts/css_inspector.py`](./scripts/css_inspector.py)**: Deep CSS/SCSS inspector analyzing `@import` chains, banner sections, CRLF line endings, and exact `!important` occurrences.
@@ -323,6 +324,9 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 - **[`scripts/language_analyzers.py`](./scripts/language_analyzers.py)**: Multi-language AST, brace, and stylesheet parsers for Python, JS/TS, Dart, Go, Rust, and C#.
 - **[`tests/test_file_patcher.py`](./tests/test_file_patcher.py)**: Automated tests for EOL normalization, CRLF/LF tolerance in file patching, HTML script tag injection, and turn ceiling banners.
 - **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite for structural parsing, multi-target audit, and `.refactor` pruning.
-- **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, equality operator exclusions, campaign state lifecycle, scoped smoke tests, and regression detection.
+- **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, equality operator exclusions, scoped smoke tests, and regression detection.
+- **[`tests/test_contract_cli.py`](./tests/test_contract_cli.py)**: CLI command router and integration tests for anchor, capture, inspect, and verify.
+- **[`tests/test_campaign_lifecycle.py`](./tests/test_campaign_lifecycle.py)**: Lifecycle tests for campaign initialization, phase advancement, and state checkpointing.
+- **[`tests/test_coverage_edge_cases.py`](./tests/test_coverage_edge_cases.py)**: Edge case and boundary tests across diagnostic bridges, file patchers, and surface scanners.
 - **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Web routers, God classes, Bidirectional Proxy Pattern for monkeypatched globals, and circular dependency rules.
 - **[`references/language-playbooks.md`](./references/language-playbooks.md)**: Vanilla JS invariants, ITCSS stylesheet decomposition, Go/Rust/Dart/C# playbooks, and safe rollback recipes.

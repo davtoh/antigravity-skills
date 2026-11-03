@@ -1,7 +1,7 @@
 ---
 name: app-debugger
 description: >-
-  Dedicated end-to-end bug fixing and regression debugging workflow. Use whenever investigating or fixing application bugs, unexpected exceptions, visual UI layout overflows, video clipping, Docker container crashes, or broken DOM event handlers. Enforces a 4-step workflow: interactive Pre-Flight UX gate (Live Chrome vs. Headless vs. Backend), empirical reproduction first via run_diagnose.py, a structured Symptom-to-Root-Cause Matrix, and surgical atomic fixes with closed-loop verification. Do NOT use for greenfield system architecture (use frontier-architect) or large file decomposition (use refactor-monolith).
+  Dedicated end-to-end bug fixing and regression debugging workflow. Use whenever investigating, reproducing, or fixing application bugs, unexpected exceptions, visual UI layout overflows, video clipping, Docker container crashes, broken DOM event handlers, scroll-snap alignment issues, DirectShow/camera hardware locks, or dev server auto-reload loops. Enforces empirical reproduction first via run_diagnose.py and domain probes, interactive Pre-Flight UX selection (Live Chrome vs. Headless vs. Backend), structured Symptom-to-Root-Cause Matrix mapping, and surgical atomic fixes with closed-loop verification. Do NOT use for greenfield system architecture (use frontier-architect) or large file decomposition (use refactor-monolith).
 ---
 
 # App Debugger: Dedicated Bug Fixing & Regression Suite
@@ -60,8 +60,9 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    ```
 3. **Tier 3 (Browser UI Layout via CDP)**:
    ```bash
-   # Live visible tab
+   # Live visible tab (with optional settle delay for scroll-snap resting offsets and transitions)
    python skills/app-debugger/scripts/run_diagnose.py ui --live --audit-layout
+   python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout
    # Or isolated headless background
    python skills/app-debugger/scripts/run_diagnose.py ui --headless --audit-layout --screenshot scratch/bug_before.jpg
    ```
@@ -81,7 +82,7 @@ Never edit code on speculation. Always establish a reproducible failing baseline
 5. **Hardware & Device Diagnostic Routing (DirectShow, Webcams, Ports)**:
    - When diagnosing hardware devices (e.g. OpenCV camera indices, DirectShow locks, OBS virtual loops, COM ports, or audio capture), **do NOT invoke browser CDP layout commands (`ui`)**.
    - Execute the project's native status command (e.g. `python scripts/camera_manager.py --status`) or run dynamic domain probes (`run_diagnose.py probe run camera_hardware`).
-   - Always run with the project's active virtualenv (e.g. `.\.venv\Scripts\python.exe` or let `run_diagnose.py` auto-resolve `.venv`) to prevent `ModuleNotFoundError: No module named 'cv2'`.
+   - Always run with the project's active virtualenv (let `run_diagnose.py` auto-resolve `.venv`, or invoke `.venv/bin/python` / `.venv/Scripts/python.exe`) to prevent `ModuleNotFoundError: No module named 'cv2'`.
 
 ### Step 3: Symptom-to-Root-Cause Matrix
 
@@ -133,7 +134,7 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - Match the target line endings exactly in `Target` and `Replacement` strings.
    - Never write disposable Python file-patching scripts in `scratch/` when `edit_file` encounters a whitespace mismatch; inspect the exact context and apply targeted edits.
 4. **Virtualenv Auto-Detection & Python Execution**:
-   - `run_diagnose.py` automatically resolves workspace `.venv/Scripts/python.exe` (or `.venv/bin/python`). When executing custom python one-liners or project scripts directly in PowerShell, always invoke `.\.venv\Scripts\python.exe` rather than bare `python` to guarantee access to project dependencies.
+   - `run_diagnose.py` automatically resolves workspace virtual environment binaries (`.venv/Scripts/python.exe` on Windows or `.venv/bin/python` on POSIX). When executing custom python one-liners or project scripts directly, resolve the active `.venv` binary rather than bare system `python` to guarantee access to project dependencies.
 
 ---
 
@@ -179,7 +180,7 @@ Per `executable_documentation.md`, match user intent with the exact copy-pasteab
 | Real-World Scenario / Objective | Mode / Inputs | Key Parameters | Exact Runnable Command |
 | :--- | :--- | :--- | :--- |
 | **Check Tool Engine Readiness** | Diagnostic probe | `--probe` | `python skills/app-debugger/scripts/run_diagnose.py --probe` |
-| **Inspect Live Chrome Tab with Settle Delay** | Live visible tab | `--live --wait 2.0 --audit-layout` | `python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout` |
+| **Inspect Live Tab with Settle Delay (Scroll-Snap / Resting Offsets)** | Live visible tab | `--live --wait 2.0 --audit-layout` | `python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout` |
 | **Inspect Live Chrome Tab Bug** | Live visible tab | `--live --audit-layout` | `python skills/app-debugger/scripts/run_diagnose.py ui --live --audit-layout` |
 | **Capture Pre-Fix Visual Proof** | Headless sandbox | `--screenshot` | `python skills/app-debugger/scripts/run_diagnose.py ui --screenshot scratch/bug_before.jpg` |
 | **Audit Specific Failing Elements** | CSS selectors | `--selectors` | `python skills/app-debugger/scripts/run_diagnose.py ui --selectors "#player,.error-banner"` |

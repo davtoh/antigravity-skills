@@ -21,45 +21,34 @@ from typing import Any
 from campaign_manager import get_repo_root
 
 
-def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
+def _tool_search_paths(name: str, base_target: Path, root: Path) -> list[str]:
+    """Assemble candidate filepaths for an optional diagnostic tool."""
     home = Path.home()
     sibling_dir = Path(__file__).resolve().parent.parent.parent
     sys_diag_dir = Path(os.environ["SYSTEM_DIAGNOSTICS_DIR"]) if os.environ.get("SYSTEM_DIAGNOSTICS_DIR") else None
+    paths = [
+        os.environ.get(f"{name.upper()}_PATH", ""),
+        str(sys_diag_dir / "scripts" / f"{name}.py") if sys_diag_dir else "",
+        str(base_target / "scripts" / f"{name}.py"),
+        str(root / "scripts" / f"{name}.py"),
+        str(sibling_dir / "system-diagnostics" / "scripts" / f"{name}.py"),
+        str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / f"{name}.py"),
+    ]
+    if name in ("cdp_inspect", "docker_audit"):
+        paths.extend([
+            str(sibling_dir / "frontier-architect" / "scripts" / f"{name}.py"),
+            str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / f"{name}.py"),
+        ])
+    elif name == "diagnose":
+        paths.append(str(root / ".gemini" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py"))
+    return paths
 
-    candidates = {
-        "diagnose": [
-            os.environ.get("DIAGNOSE_PATH", ""),
-            str(sys_diag_dir / "scripts" / "diagnose.py") if sys_diag_dir else "",
-            str(base_target / "scripts" / "diagnose.py"),
-            str(root / "scripts" / "diagnose.py"),
-            str(sibling_dir / "system-diagnostics" / "scripts" / "diagnose.py"),
-            str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py"),
-            str(root / ".gemini" / "skills" / "system-diagnostics" / "scripts" / "diagnose.py"),
-        ],
-        "cdp_inspect": [
-            os.environ.get("CDP_INSPECT_PATH", ""),
-            str(sys_diag_dir / "scripts" / "cdp_inspect.py") if sys_diag_dir else "",
-            str(base_target / "scripts" / "cdp_inspect.py"),
-            str(root / "scripts" / "cdp_inspect.py"),
-            str(sibling_dir / "system-diagnostics" / "scripts" / "cdp_inspect.py"),
-            str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / "cdp_inspect.py"),
-            str(sibling_dir / "frontier-architect" / "scripts" / "cdp_inspect.py"),
-            str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "cdp_inspect.py"),
-        ],
-        "docker_audit": [
-            os.environ.get("DOCKER_AUDIT_PATH", ""),
-            str(sys_diag_dir / "scripts" / "docker_audit.py") if sys_diag_dir else "",
-            str(base_target / "scripts" / "docker_audit.py"),
-            str(root / "scripts" / "docker_audit.py"),
-            str(sibling_dir / "system-diagnostics" / "scripts" / "docker_audit.py"),
-            str(home / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / "docker_audit.py"),
-            str(sibling_dir / "frontier-architect" / "scripts" / "docker_audit.py"),
-            str(home / ".gemini" / "config" / "skills" / "frontier-architect" / "scripts" / "docker_audit.py"),
-        ],
-    }
-    found = {}
-    for name, paths in candidates.items():
-        for p in paths:
+
+def _find_candidate_tools(base_target: Path, root: Path) -> dict[str, str]:
+    """Scan candidate locations for optional diagnostic and inspection CLIs."""
+    found: dict[str, str] = {}
+    for name in ("diagnose", "cdp_inspect", "docker_audit"):
+        for p in _tool_search_paths(name, base_target, root):
             if p and Path(p).is_file():
                 found[name] = p
                 break
