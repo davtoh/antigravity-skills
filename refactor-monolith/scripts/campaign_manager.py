@@ -47,8 +47,7 @@ def get_refactor_dir(target: Path | None = None) -> Path:
         gitignore.write_text(
             "# Local refactoring campaign state, snapshots, and helper scripts\n"
             "# Ignored by default so they never pollute git status; use `git add -f` if versioning is desired.\n"
-            "*\n"
-            "!.gitignore\n",
+            "*\n",
             encoding="utf-8",
         )
     return rdir
@@ -252,6 +251,9 @@ def cmd_state(
         return _init_campaign_state(target, state_file, plan, phases, phase_title)
 
     if not state_file.exists():
+        if action in ("show", "status", ""):
+            print(f"No active campaign state found at {state_file}. Run `contract_snapshot.py state --init` to start a campaign.")
+            return 0
         print(f"No active campaign state found at {state_file}. Run `contract_snapshot.py state --init` first.", file=sys.stderr)
         return 1
 

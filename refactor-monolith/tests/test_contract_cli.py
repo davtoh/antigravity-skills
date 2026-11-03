@@ -162,8 +162,12 @@ class TestCampaignAndReporterTools(unittest.TestCase):
 
     def test_campaign_manager_missing_state(self):
         with tempfile.TemporaryDirectory() as tmp:
-            code = main(["state", "--path", tmp, "--action", "show"])
-            self.assertEqual(code, 1)
+            # Querying missing state exits cleanly with informative message
+            code_show = main(["state", "--path", tmp, "--action", "show"])
+            self.assertEqual(code_show, 0)
+            # Mutations without existing state exit 1
+            code_adv = main(["state", "--path", tmp, "--action", "advance"])
+            self.assertEqual(code_adv, 1)
 
     def test_cdp_output_parsing(self):
         # 1. Clean output

@@ -42,7 +42,7 @@ To guarantee zero workspace pollution and instant continuation across fresh conv
 ├── baseline.json       # Pre-refactor golden contract snapshot (DOM IDs, selects, routes, CSS)
 ├── scripts/            # Temporary project-specific refactor helpers (NEVER placed in repo scripts/)
 ├── artifacts/          # Intermediate refactoring scratch notes, AST dumps, or post-mortems
-└── .gitignore          # Auto-created gitignore protecting ephemeral artifacts and helpers (*, !.gitignore)
+└── .gitignore          # Auto-created gitignore protecting ephemeral artifacts and helpers (*)
 ```
 
 > [!IMPORTANT]
@@ -51,6 +51,7 @@ To guarantee zero workspace pollution and instant continuation across fresh conv
 > 2. Any custom scratch scripts or one-off extraction helpers created during refactoring must be placed in `.refactor/scripts/` (if needed for the refactor process but not to be committed).
 > 3. Any intermediate artifacts, AST dumps, or refactor logs should be placed in `.refactor/artifacts/`.
 > 4. In committed project documentation (`MIGRATION_LOG.md`, `README.md`, `milestone_plan.md`), only reference OS-agnostic native project test commands (`python -m unittest discover tests`, `pytest tests/`).
+> 5. **Zero Root `.gitignore` Mutation**: Never modify the target repository's root `.gitignore` to add `.refactor/` or any other entry. The `.refactor/` directory is self-contained with its own `.gitignore` ignoring `*`.
 
 ---
 
@@ -63,6 +64,7 @@ Always execute these four zero-overhead steps before modifying any code:
    - If active campaign exists: run `python "<skill_dir>/scripts/contract_snapshot.py" state --show` to read the active phase and jump directly to **Mode B2 (Auto-Resume Next Phase)**.
 2. **Respect Project Memory & Rules (`AGENTS.md` / `.agents/rules/`)**:
    - Check if the workspace has an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.agents/rules/` directory. Honor established conventions.
+   - **Audit & Plan-Only Guardrail (Non-Blocking Test Check)**: When user intent is exploratory or planning (`check`, `audit`, `plan`), do NOT treat running the project test suite as a blocking prerequisite. Run at most 1 fast check (e.g. `contract_snapshot.py run-tests --path <dir> discover tests` or `Test-Path tests/`). If tests fail due to missing dependencies in the host environment (e.g., missing system OpenCV, joblib), note the environmental condition in the baseline log and proceed immediately with the static AST audit. **NEVER** spend tool turns probing unrelated virtualenvs across the OS, checking system Python paths, or running `pip install` into arbitrary environments.
 3. **Run the Multi-Language Structural Auditor (`scripts/code_health_audit.py`)**:
    - Run `python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir` to inspect lines grouped by directory.
    - Use multi-target syntax `--path <dir1> <dir2> ...` to audit multiple subdirectories or files simultaneously.
@@ -107,7 +109,8 @@ flowchart TD
     ```
     Present a clean commit command, and **STOP execution**. Advise the user to run `/refactor-monolith continue` in a fresh chat.
   - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1 (or Sub-Phase 1.1)**. Mark subsequent phases as *Deferred to Next Turn*.
-  - Save the plan to `.refactor/plan.md` (or workspace root `dashboard_refactor_plan.md`) so it survives chat resets.
+  - **Single Canonical Plan & Zero Artifact Drift**: Write `.refactor/plan.md` first as the single canonical source of truth on disk. When presenting the plan to the user in chat / UI artifact, mirror the exact same content (or reference it directly) without generating a divergent document. This eliminates redundant token generation, prevents drift between user review and disk state, and ensures resuming agents see the exact plan agreed upon.
+  - Save the plan to `.refactor/plan.md` so it survives chat resets.
   - Initialize campaign tracking:
     ```bash
     python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <target_dir> --plan .refactor/plan.md --phases 4 --phase-title "<Phase 1 Title>"

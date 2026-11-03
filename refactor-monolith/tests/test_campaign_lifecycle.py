@@ -61,7 +61,7 @@ class TestCampaignLifecycle(unittest.TestCase):
             self.assertTrue(gitignore.is_file())
             content = gitignore.read_text(encoding="utf-8")
             self.assertIn("*", content)
-            self.assertIn("!.gitignore", content)
+            self.assertNotIn("!.gitignore", content)
 
     def test_format_phase_icon_fallback(self):
         self.assertIn(_format_phase_icon(is_completed=True, is_active=False), ["✅", "[x]"])
@@ -83,6 +83,20 @@ class TestCampaignLifecycle(unittest.TestCase):
             data = json.loads(state_file.read_text(encoding="utf-8"))
             self.assertIn("last_checkpoint", data)
             self.assertEqual(data["last_checkpoint"]["note"], "Slice 1.2 completed")
+
+    def test_cmd_state_missing_state_graceful_query(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            # Inspection without existing state.json exits cleanly with code 0
+            code_show = cmd_state(base, action="show")
+            self.assertEqual(code_show, 0)
+            code_status = cmd_state(base, action="status")
+            self.assertEqual(code_status, 0)
+            # Mutation actions without state.json return code 1
+            code_adv = cmd_state(base, action="advance")
+            self.assertEqual(code_adv, 1)
+            code_cp = cmd_state(base, action="checkpoint", note="test")
+            self.assertEqual(code_cp, 1)
 
 
 if __name__ == "__main__":
