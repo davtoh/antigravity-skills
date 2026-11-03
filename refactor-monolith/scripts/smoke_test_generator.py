@@ -8,6 +8,7 @@ dropdown availability, and scoped CSS !important containment across refactor pha
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -36,13 +37,19 @@ class TestCodebaseContractInvariants(unittest.TestCase):
 
     def test_dom_interactive_selects_exist(self):
         """Verify all critical <select> dropdown IDs exist in HTML."""
+        if not {select_ids}:
+            return
         for sel in {select_ids}:
-            self.assertIn(f'id="{{sel}}"', self.html_text, f"Missing select dropdown #{{sel}} in HTML!")
+            found = bool(re.search(r'\\bid\\s*=\\s*["\\\']' + re.escape(sel) + r'["\\\']', self.html_text))
+            self.assertTrue(found, f"Missing select dropdown #{{sel}} in HTML!")
 
     def test_dom_element_ids_preserved(self):
         """Verify captured baseline HTML element IDs are preserved."""
+        if not {html_ids}:
+            return
         for el_id in {html_ids}:
-            self.assertIn(f'id="{{el_id}}"', self.html_text, f"Critical DOM element id='{{el_id}}' was removed from HTML!")
+            found = bool(re.search(r'\\bid\\s*=\\s*["\\\']' + re.escape(el_id) + r'["\\\']', self.html_text))
+            self.assertTrue(found, f"Critical DOM element id='{{el_id}}' was removed from HTML!")
 
     def test_zero_css_important_creep(self):
         """Verify scoped CSS does not exceed baseline !important threshold."""
@@ -70,14 +77,33 @@ def _build_smoke_template(root_expr: str, select_ids: list[str], important_count
     )
 
 
-def _resolve_root_expr(target: Path, repo_root: Path) -> str:
+def _resolve_root_expr(target: Path, repo_root: Path, out_p: Path | None = None) -> str:
     """Determine relative or absolute path expression for test root."""
     try:
-        rel_target = target.relative_to(repo_root)
-        if str(rel_target) in (".", ""):
-            return "pathlib.Path(__file__).resolve().parent.parent"
-        return f'pathlib.Path(__file__).resolve().parent.parent / "{rel_target.as_posix()}"'
-    except ValueError:
+        test_dir = out_p.parent.resolve() if out_p else repo_root / "tests"
+        rel_target = os.path.relpath(target.resolve(), test_dir).replace("\\", "/")
+        parts = [p for p in rel_target.split("/") if p]
+        if not parts or parts == ["."]:
+            return "pathlib.Path(__file__).resolve().parent"
+
+        dot_count = 0
+        for p in parts:
+            if p == "..":
+                dot_count += 1
+            else:
+                break
+
+        remainder = parts[dot_count:]
+        if dot_count > 0:
+            parent_chain = ".".join(["parent"] * (dot_count + 1))
+            if remainder:
+                sub = "/".join(remainder)
+                return f'pathlib.Path(__file__).resolve().{parent_chain} / "{sub}"'
+            return f"pathlib.Path(__file__).resolve().{parent_chain}"
+
+        sub = "/".join(remainder)
+        return f'pathlib.Path(__file__).resolve().parent / "{sub}"'
+    except Exception:
         return f'pathlib.Path(r"{target.as_posix()}")'
 
 
@@ -103,7 +129,7 @@ def cmd_generate_smoke_test(
     out_p = Path(out_file) if out_file else repo_root / "tests" / "test_refactor_contract.py"
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
-    root_expr = _resolve_root_expr(target, repo_root)
+    root_expr = _resolve_root_expr(target, repo_root, out_p)
     out_p.write_text(_build_smoke_template(root_expr, c.select_ids, c.css_important_count, c.html_ids), encoding="utf-8")
     print(f"Generated contract smoke test -> {out_p}")
     return 0

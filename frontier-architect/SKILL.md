@@ -83,6 +83,10 @@ Before diving in, protect the context window and classify the task:
      2. **Tool-Call Ceiling for Triage ($\le 3-5$ calls)**: The initial clarification or diagnostic gate MUST execute within **3 to 5 tool calls**. Never run a 50–100 tool exploration marathon before engaging the user.
      3. **Empirical Handoff**: `app-debugger` executes Phase 1B (diagnostics and Symptom Matrix) under its $\le 5$ tool ceiling, then yields to `frontier-architect`.
      4. **Plan-First Synthesis**: `frontier-architect` incorporates the Symptom Matrix into Phase 5, defines quantitative modularity limits, and leads atomic vertical slicing.
+
+     When the user invokes `/frontier-architect` alongside `/refactor-monolith`:
+     1. **Architectural Roadmap & Single Plan Source of Truth**: `frontier-architect` designs the domain clusters, class boundaries, and 1-phase vertical slices. It writes directly to `<workspace>/.refactor/plan.md` and aligns `.refactor/state.json` so resuming agents execute without plan drift.
+     2. **In-Flight Tool Elevation Protocol**: When an executing agent discovers a limitation or bug in an invoked skill tool, the agent enhances the reusable tool script in `<skill_dir>/scripts/` and verifies it against `<skill_dir>/tests/` before resuming project code edits, avoiding disposable scratch scripts and preventing regression thrash.
    - **Mixed requests** (e.g., "fix this bug and also redesign the page", or a bug report asking to build a new class/component): split them cleanly. Maintain strict separation of concerns:
      1. Establish the failing empirical baseline and root-cause analysis via `app-debugger` / `diagnose.py`.
      2. For the new architectural component, class, or subsystem, transition to `frontier-architect` (Phase 2 & Phase 5) to draft the API contract, trade-offs, and implementation plan artifact before touching production code.

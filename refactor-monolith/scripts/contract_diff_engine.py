@@ -7,6 +7,7 @@ without external dependencies.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
@@ -136,6 +137,10 @@ def _dispatch_scan(sfx: str, text: str, acc: dict[str, Any], rel_path: str = "")
         acc["selects"].update(h.selects)
         acc["handlers"].extend(h.inline_handlers)
         acc["scripts"].extend(h.script_srcs)
+        for inline_m in re.finditer(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', text, re.DOTALL | re.IGNORECASE):
+            j = scan_js_surface(inline_m.group(1))
+            acc["queried"].update(j.queried_ids)
+            acc["globals"].update(j.global_exports)
     elif sfx in {".js", ".ts", ".jsx", ".tsx"}:
         j = scan_js_surface(text)
         acc["queried"].update(j.queried_ids)

@@ -55,6 +55,35 @@ To guarantee zero workspace pollution and instant continuation across fresh conv
 
 ---
 
+## Zero-Help CLI Quick Reference
+
+To prevent context-exhausting `--help` query loops, use these exact commands directly:
+
+```bash
+# 1. Campaign state lifecycle
+python "<skill_dir>/scripts/contract_snapshot.py" state --show
+python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <dir> --plan .refactor/plan.md --phases 4 --phase-title "<Title>"
+python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slice X"
+python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1
+
+# 2. Golden contract baseline & verification
+python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>
+python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir>
+python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict
+
+# 3. Virtualenv-isolated automated tests (never use host system Python)
+python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> discover tests
+
+# 4. Batch modularity audits (audit multiple files simultaneously, never one-by-one)
+python "<skill_dir>/scripts/code_health_audit.py" --path <target1> <target2> ... --show-methods
+python "<skill_dir>/scripts/code_health_audit.py" --path <dir> --by-dir
+
+# 5. Regression-locking smoke tests
+python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path <dir> --out tests/test_refactor_contract.py
+```
+
+---
+
 ## Phase 0: Project Rules Check, Scope Detection & Baseline Anchor
 
 Always execute these four zero-overhead steps before modifying any code:
@@ -172,6 +201,12 @@ python "<skill_dir>/scripts/code_health_audit.py" --inspect-sections <file>
 python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
 ```
 
+> [!IMPORTANT]
+> **The Batch Audit Mandate (Anti-Micro-Audit Rule)**:
+> Never audit submodules one-by-one with individual tool calls after writing each file. Instead, write the cohesive submodules for the current slice, then audit all of them together in a single tool call:
+> `python "<skill_dir>/scripts/code_health_audit.py" --path <new_file_1> <new_file_2> ... --show-methods`
+> Single-file audit loops burn 10–20 wasteful tool calls and thousands of tokens per phase.
+
 ### Step 2: Cohesion Clustering, Surface Map & Facade Design
 1. **Interactive Surface Map**: Run `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path <target_dir>` (or pass `--show-routes` to list all backend endpoints with line ranges and handlers) to catalog all `<select>` IDs, modals, inline handlers, global exports, and API routes before modifying code.
 2. **Stylesheet & Specificity Audit**: If refactoring CSS/SCSS or frontend stylesheets, run:
@@ -250,8 +285,10 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 > - Or simply **end your turn by calling no more tools** and let the system reactively notify you when the background task completes.
 
 > [!TIP]
-> **Virtual Environment Test Runner**:
-> Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> discover tests` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`), preventing `ImportError` or `ModuleNotFoundError` on host interpreters.
+> **Virtual Environment Test Runner & Zero Test Artifact Root Pollution**:
+> 1. Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> discover tests` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`), preventing `ImportError` or `ModuleNotFoundError` on host interpreters.
+> 2. **Anti-Sequential Test Thrash**: Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once (`discover tests`).
+> 3. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
 
 ---
 
@@ -331,5 +368,25 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 - **[`tests/test_contract_cli.py`](./tests/test_contract_cli.py)**: CLI command router and integration tests for anchor, capture, inspect, and verify.
 - **[`tests/test_campaign_lifecycle.py`](./tests/test_campaign_lifecycle.py)**: Lifecycle tests for campaign initialization, phase advancement, and state checkpointing.
 - **[`tests/test_coverage_edge_cases.py`](./tests/test_coverage_edge_cases.py)**: Edge case and boundary tests across diagnostic bridges, file patchers, and surface scanners.
+- **[`tests/test_smoke_test_generator.py`](./tests/test_smoke_test_generator.py)**: Automated regression tests for root path expression resolution, quote/spacing tolerance, empty HTML scopes, and inline script function exports.
 - **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Web routers, God classes, Bidirectional Proxy Pattern for monkeypatched globals, and circular dependency rules.
 - **[`references/language-playbooks.md`](./references/language-playbooks.md)**: Vanilla JS invariants, ITCSS stylesheet decomposition, Go/Rust/Dart/C# playbooks, and safe rollback recipes.
+
+---
+
+## In-Flight Tool Elevation Protocol (How Agents Safely Improve Skills Mid-Flight)
+
+When executing a refactoring campaign, an executing agent may discover a bug or missing capability in a built-in skill script (e.g. `smoke_test_generator.py`, `surface_scanners.py`, or `contract_diff_engine.py`):
+
+1. **Improve Reusable Skill Tools (Never Write Throwaway Scratch Scripts)**:
+   - Enhancing the reusable script in `<skill_dir>/scripts/` preserves lasting value across all future refactoring campaigns, preventing fragile ad-hoc workarounds.
+2. **Respect Repository Boundaries**:
+   - The skill directory is outside the workspace repository. Never run git commands (`git grep`, `git diff`) from workspace cwd targeting `<skill_dir>` (fails with `fatal: ... is outside repository`). Use standard file tools (`read_file`, `edit_file`) or explicit Python AST inspections.
+3. **Reproduce via Isolated Skill Test in `tests/`**:
+   - Add a test case reproducing the edge case in `<skill_dir>/tests/` before or alongside script edits.
+4. **Mandatory Skill Zero-Regression Gate**:
+   - Before returning to the target project refactor, execute the skill test suite:
+     ```bash
+     python -m unittest discover -s "<skill_dir>/tests"
+     ```
+   - Verify all tests pass with zero failures. Only resume the target workspace refactor once the improved skill tool is verified green.
