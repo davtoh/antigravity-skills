@@ -120,6 +120,30 @@
         "Maintains 100% self-containment without referencing non-bundled external scripts (e.g. does not attempt to invoke non-existent local scripts)",
         "Enforces the Plan-First Gate and 1-Phase-Per-Turn execution structure before modifying any code"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "I ran camera_manager.py which shows OBS Virtual Camera busy, but main.py uses it anyway. Also /app-debugger can we diagnose this, and /frontier-architect can you design the camera resolution architecture across Docker and local Python?",
+      "expected_output": "The agent acts as Orchestrator of Intent via the Multi-Skill Co-Invocation Protocol: delegates empirical reproduction to app-debugger under the <= 3-5 tool call ceiling, receives the Symptom Matrix, evaluates SOTA architectural patterns and modularity budgets, and generates the formal Implementation Plan Artifact before modifying code.",
+      "files": [],
+      "expectations": [
+        "Applies the Multi-Skill Co-Invocation Protocol when co-invoked with /app-debugger",
+        "Acts as Orchestrator of Intent to define architectural boundaries, modularity budgets, and API contracts",
+        "Enforces the Tool-Call Ceiling for Triage (<= 3-5 calls) before user gating to avoid deep blind sweeps",
+        "Synthesizes the empirical Symptom Matrix into a formal Implementation Plan Artifact before modifying code"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "In our recent camera refactoring, we created a 10-line re-export module dashboard/services/camera_resolver.py, while intelligent_tracker/camera_resolver.py has the real logic, and camera_device.py still has a duplicate resolve_source method. How should we clean this up?",
+      "expected_output": "The agent identifies the Single Source of Truth (SSOT) anti-pattern, flags the unreferenced re-export facade as dead code debt, recommends eliminating the dummy shim, and unifies the duplicate resolve_source method by converting it into a one-line delegation to the authoritative service.",
+      "files": [],
+      "expectations": [
+        "Identifies the Single Source of Truth (SSOT) anti-pattern and flags redundant re-export shims as dead code debt",
+        "Recommends removing unreferenced zombie facades rather than maintaining duplicate shims",
+        "Unifies duplicate domain logic by delegating legacy methods directly to the authoritative service",
+        "Preserves public interface compatibility while eliminating dual-maintenance hazards"
+      ]
     }
   ]
 }

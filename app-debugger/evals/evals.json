@@ -85,6 +85,30 @@
         "Utilizes run_diagnose.py ui with --wait or layout auditing to measure resting offsets and scroll-snap alignment",
         "Constructs a Symptom-to-Root-Cause Matrix mapping the resting gap to root cause"
       ]
+    },
+    {
+      "id": 7,
+      "prompt": "I ran our camera manager status command which reports OBS Virtual Camera is locked and physical GoPro is available, but main.py --source real picks index 0 anyway. Also /frontier-architect can we design a clean camera resolver and error diagnostics UI so it works across Docker and local Python?",
+      "expected_output": "Enforces Multi-Skill Co-Invocation Protocol: keeps app-debugger strictly for empirical reproduction under the <= 3-5 tool call ceiling, produces Symptom-to-Root-Cause Matrix, then yields the floor to frontier-architect to design API contracts and the implementation plan artifact.",
+      "files": [],
+      "expectations": [
+        "Enforces Multi-Skill Co-Invocation Protocol by separating empirical reproduction from architectural design",
+        "Adheres to Pre-Flight Tool-Call Ceiling (<= 3-5 calls) before gating or presenting options",
+        "Constructs Symptom-to-Root-Cause Matrix mapping virtual camera lock and path drift",
+        "Yields floor to frontier-architect after Symptom Matrix to draft formal implementation plan artifact before editing code"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Our video ingestion script fails on Windows with 'can't grab frame. Error: -1072875772' and camera index drift after reconnecting USB webcams. Diagnose the hardware issue without running web browser layout tools.",
+      "expected_output": "Applies Hardware & Device Diagnostic Routing: checks camera hardware status, uses virtualenv auto-detection, avoids running web browser layout commands, maps symptom to root cause, and verifies physical device acquisition.",
+      "files": [],
+      "expectations": [
+        "Applies Hardware & Device Diagnostic Routing to test camera hardware and DirectShow locks",
+        "Avoids executing web browser layout or CDP commands on native hardware device bugs",
+        "Uses Virtualenv Auto-Detection to ensure Python execution has required CV packages",
+        "Constructs a Symptom-to-Root-Cause Matrix mapping hardware acquisition timeout and index drift"
+      ]
     }
   ]
 }

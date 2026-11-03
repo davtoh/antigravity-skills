@@ -73,6 +73,18 @@ To resolve this dependency:
     print(msg, file=sys.stderr)
 
 
+def resolve_python(base_dir: Path | None = None) -> str:
+    """Resolve active workspace virtualenv Python or fallback to sys.executable."""
+    cwd = base_dir.resolve() if base_dir else Path.cwd().resolve()
+    for root in [cwd, *cwd.parents[:2]]:
+        for venv in (".venv", "venv"):
+            for sub in (Path("Scripts") / "python.exe", Path("bin") / "python"):
+                cand = root / venv / sub
+                if cand.is_file():
+                    return str(cand.resolve())
+    return sys.executable
+
+
 def main(args: list[str] | None = None) -> int:
     """Discover diagnose.py and forward arguments, or report status/missing error."""
     cli_args = sys.argv[1:] if args is None else args
@@ -90,7 +102,8 @@ def main(args: list[str] | None = None) -> int:
         print_missing_dependency_recipe()
         return 1
 
-    cmd = [sys.executable, str(diagnose_bin), *cli_args]
+    py_bin = resolve_python()
+    cmd = [py_bin, str(diagnose_bin), *cli_args]
     try:
         proc = subprocess.run(cmd, check=False)
         return proc.returncode

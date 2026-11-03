@@ -115,6 +115,26 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         has_ro = bool(re.search(r"--wait|resting offset|scroll-snap", text, re.I))
         return has_ro, f"--wait / resting offset / scroll-snap: {has_ro}"
 
+    if "co-invocation" in exp_lower or "multi-skill" in exp_lower:
+        has_ci = bool(re.search(r"co-invocation|separation of concerns|frontier-architect", text, re.I))
+        return has_ci, f"Co-invocation protocol: {has_ci}"
+
+    if "tool-call ceiling" in exp_lower or "<= 3-5" in exp_lower:
+        has_tc = bool(re.search(r"tool-call ceiling|3 to 5|3–5", text, re.I))
+        return has_tc, f"Tool-call ceiling: {has_tc}"
+
+    if "yield" in exp_lower and "frontier-architect" in exp_lower:
+        has_yd = bool(re.search(r"yield.*frontier-architect|yield the floor", text, re.I))
+        return has_yd, f"Yield floor to frontier-architect: {has_yd}"
+
+    if "hardware & device diagnostic routing" in exp_lower or "hardware" in exp_lower and "routing" in exp_lower:
+        has_hr = bool(re.search(r"hardware.*diagnostic routing|directshow.*lock|camera_hardware", text, re.I))
+        return has_hr, f"Hardware diagnostic routing: {has_hr}"
+
+    if "virtualenv auto-detection" in exp_lower or "virtualenv" in exp_lower and "auto-detect" in exp_lower:
+        has_va = bool(re.search(r"virtualenv auto-detection|\.venv", text, re.I))
+        return has_va, f"Virtualenv auto-detection: {has_va}"
+
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_cnt = sum(1 for w in words if w in text.lower())

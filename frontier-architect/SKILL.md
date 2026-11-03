@@ -77,6 +77,12 @@ Before diving in, protect the context window and classify the task:
    - **Bucket C (Complex / Architectural / SOTA Product)**: New modules, architectural redesigns, or requests to elevate a product. Go to **Phase 2 & Phase 3**.
    - **Bucket D (Multi-Symptom Bug, UI Regression, or Resource/CPU Bottleneck)**: Any report involving multiple UI/state bugs, follow-up regressions after a prior fix, visual overflow, stuck status indicators, or high Docker/WSL (`vmmem`) CPU usage. **NEVER treat Bucket D as Bucket A.** Go immediately to **Phase 1B**.
 3. **Triage Edge Cases**:
+   - **Multi-Skill Co-Invocation Protocol (Co-working with `/app-debugger` or `/refactor-monolith`)**:
+     When the user invokes `/frontier-architect` alongside `/app-debugger`:
+     1. **Orchestrator of Intent**: `frontier-architect` acts as the overall system architect, establishing modularity boundaries, API contracts, 3-tier proposals, and the formal Implementation Plan Artifact.
+     2. **Tool-Call Ceiling for Triage ($\le 3-5$ calls)**: The initial clarification or diagnostic gate MUST execute within **3 to 5 tool calls**. Never run a 50–100 tool exploration marathon before engaging the user.
+     3. **Empirical Handoff**: `app-debugger` executes Phase 1B (diagnostics and Symptom Matrix) under its $\le 5$ tool ceiling, then yields to `frontier-architect`.
+     4. **Plan-First Synthesis**: `frontier-architect` incorporates the Symptom Matrix into Phase 5, defines quantitative modularity limits, and leads atomic vertical slicing.
    - **Mixed requests** (e.g., "fix this bug and also redesign the page", or a bug report asking to build a new class/component): split them cleanly. Maintain strict separation of concerns:
      1. Establish the failing empirical baseline and root-cause analysis via `app-debugger` / `diagnose.py`.
      2. For the new architectural component, class, or subsystem, transition to `frontier-architect` (Phase 2 & Phase 5) to draft the API contract, trade-offs, and implementation plan artifact before touching production code.
@@ -214,6 +220,9 @@ Before modifying production files on any multi-step task:
      - **OS-Agnostic Verification Commands**: Write portable commands (`python -m unittest discover tests`, `pytest tests/`, `python scripts/cdp_inspect.py`) and use `$APP_URL` placeholders. Never embed OS-locked virtualenv binaries or personal customization paths. If a helper script is needed across sessions, reference it in `<workspace>/scripts/`.
      - **Zero Hardcoded Infrastructure Details**: Follow 12-factor rules (parameterize hosts/ports; no literal host/port strings hardcoded in plans or configs).
      - **Scenario Combinations Matrix**: Include an executable test matrix per `executable_documentation.md`.
+   - **Single Source of Truth (SSOT) vs. Zombie Facade Debt**:
+     - **Zero Dead Re-Export Shims**: Never create empty re-export shims (e.g. creating a dummy facade `dashboard/services/camera_resolver.py` re-exporting `intelligent_tracker.camera_resolver`) simply to check a box in a pre-written plan. If callers consume the core module directly, an unreferenced shim is dead code debt.
+     - **Unify Duplicate Domain Logic**: Never leave legacy resolution methods active alongside newly minted services (e.g. `CameraDeviceHandler.resolve_source()` left un-unified with `CameraPathResolver.resolve_camera_source()`). All callers must point to the authoritative SSOT, and legacy methods must either be deleted or converted to a 1-line delegation pass-through with clear deprecation notes.
    - Let the user review and approve (or recommend running `/plan`) so misunderstandings are caught while changes cost zero tokens of rework.
 2. **Codify Persistent Rules (`AGENTS.md` / `.agents/rules/`)**:
    - If the workspace lacks an `AGENTS.md` (or when new architectural boundaries are established), propose creating or updating it with the folder ownership, coding conventions, modularity budgets, and exact OS-agnostic test/build commands. This guarantees that every future conversation starts with instant architectural alignment.

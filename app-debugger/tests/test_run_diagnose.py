@@ -62,6 +62,22 @@ class TestRunDiagnose(unittest.TestCase):
                 resolved = run_diagnose.resolve_diagnose_path()
                 self.assertIsNone(resolved)
 
+    def test_resolve_python_virtualenv(self):
+        """Verify resolve_python discovers virtualenv executable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            mock_py = base / ".venv" / "Scripts" / "python.exe"
+            mock_py.parent.mkdir(parents=True)
+            mock_py.write_text("# mock", encoding="utf-8")
+            res = run_diagnose.resolve_python(base_dir=base)
+            self.assertEqual(res, str(mock_py.resolve()))
+
+    def test_resolve_python_fallback(self):
+        """Verify resolve_python falls back to sys.executable when no venv exists."""
+        with tempfile.TemporaryDirectory() as empty_dir:
+            res = run_diagnose.resolve_python(base_dir=Path(empty_dir))
+            self.assertEqual(res, sys.executable)
+
     def test_print_missing_dependency_recipe(self):
         """Verify actionable error recipe is printed to stderr when missing."""
         buf = io.StringIO()

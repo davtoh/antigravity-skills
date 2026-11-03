@@ -18,16 +18,25 @@ The **App Debugger** skill provides an end-to-end, empirical debugging workflow.
   component architecture?   (no 100-step delays)        ui or dynamic probe runner     file/line -> check            lifecycle verification
 ```
 
-### Step 0: Intelligent Architectural Triage Gate
+### Step 0: Intelligent Architectural Triage Gate & Co-Invocation Protocol
 
 Before jumping into code, classify the user's request:
 - **Pure Bug / Regressed State**: Isolated typo, broken selector, missing null-check, or straightforward layout overflow. Proceed directly to Step 1.
 - **Architectural Solution or New Component**: The user's prompt combines a bug with a design or subsystem request (e.g., *"Can we create a class to manage all names..."*, *"Should we create a sturdy camera handler..."*).
   - **Enforce Separation of Concerns**: Maintain `app-debugger` for empirical reproduction (Steps 1–3), but **delegate architectural design to `frontier-architect`** or generate a formal **Implementation Plan Artifact** (`RequestFeedback: true`) defining API contracts, trade-offs, and invariants before modifying code.
+- **Multi-Skill Co-Invocation Protocol (with `/frontier-architect`)**:
+  When the user co-invokes `/app-debugger` and `/frontier-architect` in the same prompt:
+  1. **Strict Division of Labor**: `app-debugger` handles empirical diagnosis and reproduction (Steps 1–3) strictly under the Pre-Flight Tool-Call Ceiling ($\le 3-5$ tools).
+  2. **Yield Gate**: Once the Symptom-to-Root-Cause Matrix is constructed, `app-debugger` **must yield the floor to `frontier-architect`** to evaluate 3-tier SOTA alternatives, establish API contracts, and draft the formal Implementation Plan Artifact before modifying production code.
+  3. `app-debugger` resumes in Step 4 for closed-loop verification after architectural plan approval.
 
 ### Step 1: Pre-Flight UX Gate (`ask_question`)
 
 Before running browser diagnostics or when the execution mode is ambiguous, ask the user their preferred inspection environment via `ask_question` **immediately** (do not perform broad codebase sweeps or read dozens of files first):
+
+> [!IMPORTANT]
+> **Pre-Flight Tool-Call Ceiling ($\le 3-5$ calls)**:
+> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted grep, or 1 device probe). **NEVER** embark on a 50–100 tool exploration marathon, read dozens of unrelated files, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
 
 - **Option 1 (Recommended)**: `(Recommended) Live Chrome Tab - Attach to active visible browser tab to inspect DOM layout and errors in real time`
 - **Option 2**: `Headless Background Sandbox - Run isolated Chrome in the background without disturbing desktop windows`
@@ -69,6 +78,10 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    - When a missing domain requires new probing logic:
      - Scaffold a reusable probe: `python skills/app-debugger/scripts/run_diagnose.py probe new <name> --domain <domain>`
      - Or promote a verified script: `python skills/app-debugger/scripts/run_diagnose.py probe save <script> <name>`
+5. **Hardware & Device Diagnostic Routing (DirectShow, Webcams, Ports)**:
+   - When diagnosing hardware devices (e.g. OpenCV camera indices, DirectShow locks, OBS virtual loops, COM ports, or audio capture), **do NOT invoke browser CDP layout commands (`ui`)**.
+   - Execute the project's native status command (e.g. `python scripts/camera_manager.py --status`) or run dynamic domain probes (`run_diagnose.py probe run camera_hardware`).
+   - Always run with the project's active virtualenv (e.g. `.\.venv\Scripts\python.exe` or let `run_diagnose.py` auto-resolve `.venv`) to prevent `ModuleNotFoundError: No module named 'cv2'`.
 
 ### Step 3: Symptom-to-Root-Cause Matrix
 
@@ -119,6 +132,8 @@ Before touching code, synthesize findings into a structured matrix that maps eve
      `python -c "print('CRLF' if b'\r\n' in open('path/to/file','rb').read() else 'LF')"`
    - Match the target line endings exactly in `Target` and `Replacement` strings.
    - Never write disposable Python file-patching scripts in `scratch/` when `edit_file` encounters a whitespace mismatch; inspect the exact context and apply targeted edits.
+4. **Virtualenv Auto-Detection & Python Execution**:
+   - `run_diagnose.py` automatically resolves workspace `.venv/Scripts/python.exe` (or `.venv/bin/python`). When executing custom python one-liners or project scripts directly in PowerShell, always invoke `.\.venv\Scripts\python.exe` rather than bare `python` to guarantee access to project dependencies.
 
 ---
 

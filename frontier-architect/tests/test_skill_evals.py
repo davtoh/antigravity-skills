@@ -120,6 +120,22 @@ def evaluate_expectation_against_text(text: str, expectation: str) -> tuple[bool
         has_self_contained = bool(re.search(r"self-contained|standalone|invariant", text, re.I))
         return has_self_contained, f"Self-containment verified: {has_self_contained}"
 
+    if "multi-skill co-invocation" in exp_lower or "orchestrator of intent" in exp_lower:
+        has_co = bool(re.search(r"multi-skill co-invocation|orchestrator of intent|app-debugger", text, re.I))
+        return has_co, f"Co-invocation protocol / Orchestrator of Intent: {has_co}"
+
+    if "tool-call ceiling" in exp_lower or "<= 3-5" in exp_lower:
+        has_tc = bool(re.search(r"tool-call ceiling|3 to 5|3–5", text, re.I))
+        return has_tc, f"Tool-call ceiling: {has_tc}"
+
+    if "single source of truth" in exp_lower or "ssot" in exp_lower or "re-export" in exp_lower or "facade" in exp_lower:
+        has_ssot = bool(re.search(r"single source of truth|ssot|re-export|facade|zombie", text, re.I))
+        return has_ssot, f"SSOT / Zombie facade prevention: {has_ssot}"
+
+    if "duplicate domain logic" in exp_lower or "delegating legacy" in exp_lower:
+        has_dup = bool(re.search(r"duplicate domain logic|unify duplicate|delegation", text, re.I))
+        return has_dup, f"Duplicate logic unification: {has_dup}"
+
     # Generic keyword fallback
     keywords = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_kw = sum(1 for kw in keywords if kw in text.lower())
@@ -142,10 +158,10 @@ class TestSkillEvals(unittest.TestCase):
         cls.skill_text = SKILL_MD.read_text(encoding="utf-8")
 
     def test_evals_json_structure(self):
-        """Ensure evals.json contains at least 9 valid scenarios with >= 4 expectations each."""
-        self.assertGreaterEqual(len(self.evals), 9)
+        """Ensure evals.json contains at least 11 valid scenarios with >= 4 expectations each."""
+        self.assertGreaterEqual(len(self.evals), 11)
         total_expectations = sum(len(e.get("expectations", [])) for e in self.evals)
-        self.assertGreaterEqual(total_expectations, 48)
+        self.assertGreaterEqual(total_expectations, 56)
 
         for e in self.evals:
             self.assertIn("id", e)
@@ -154,7 +170,7 @@ class TestSkillEvals(unittest.TestCase):
             self.assertGreaterEqual(len(e.get("expectations", [])), 4)
 
     def test_skill_passes_all_eval_expectations(self):
-        """Assert current SKILL.md achieves 100% pass rate across all 48 expectations."""
+        """Assert current SKILL.md achieves 100% pass rate across all 56 expectations."""
         failed_expectations = []
         for e in self.evals:
             eid = e["id"]
