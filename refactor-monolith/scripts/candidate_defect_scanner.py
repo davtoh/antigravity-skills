@@ -179,6 +179,14 @@ def save_defect_catalog(root: Path, defects: list[dict[str, Any]], mod_catalog: 
         return mod_catalog.save_catalog(root, defects)
     diag_dir = root / ".diagnostics"
     diag_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = diag_dir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(
+            "# Auto-generated SSOT defect catalog gitignore\n"
+            "# Ignored by default so they never pollute git status; use `git add -f` if versioning is desired.\n"
+            "*\n",
+            encoding="utf-8",
+        )
     json_path = diag_dir / "defect_catalog.json"
     json_path.write_text(
         json.dumps({"schema_version": "1.0", "workspace": str(root.as_posix()), "defects": defects}, indent=2),

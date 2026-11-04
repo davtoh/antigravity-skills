@@ -41,8 +41,7 @@ class TestDefectCatalog(unittest.TestCase):
         gitignore = diag_dir / ".gitignore"
         self.assertTrue(gitignore.is_file())
         content = gitignore.read_text(encoding="utf-8")
-        self.assertIn("defect_catalog.json", content)
-        self.assertIn("DEFECT_CATALOG.md", content)
+        self.assertIn("*", content)
 
     def test_save_and_load_catalog_roundtrip(self):
         fp = compute_fingerprint("MUTABLE_DEFAULT_ARG", "UserService.add_role", "roles=[]")

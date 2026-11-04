@@ -15,6 +15,7 @@ from campaign_manager import get_repo_root
 
 _SMOKE_TEST_TEMPLATE = '''# Generated Contract Smoke Test - Enforces Zero-Regression Refactoring Parity
 import ast
+import enum
 import importlib
 import inspect
 import pathlib
@@ -93,6 +94,8 @@ class TestCodebaseContractInvariants(unittest.TestCase):
             for name, obj in inspect.getmembers(mod):
                 if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:
                     if inspect.isabstract(obj):
+                        continue
+                    if issubclass(obj, (enum.Enum, BaseException)):
                         continue
                     try:
                         sig = inspect.signature(obj)

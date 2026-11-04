@@ -55,7 +55,7 @@ class CodebaseContract:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CodebaseContract:
+    def from_dict(cls, data: dict[str, Any]) -> "CodebaseContract":
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 def _run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:

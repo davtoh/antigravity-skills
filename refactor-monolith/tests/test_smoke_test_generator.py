@@ -209,6 +209,29 @@ class TestCallableSmokeParity(unittest.TestCase):
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("Initialization TypeError in FaultyClass", res.stderr + res.stdout)
 
+    def test_callable_smoke_skips_enums_and_exceptions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            pkg = base / "enum_pkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "types.py").write_text(
+                "import enum\n\n"
+                "class Status(enum.Enum):\n"
+                "    PENDING = 1\n"
+                "    ACTIVE = 2\n\n"
+                "class CustomError(Exception):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            out_test = base / "tests" / "test_smoke_enums.py"
+            code = cmd_generate_smoke_test(pkg, out_file=str(out_test))
+            self.assertEqual(code, 0)
+            self.assertTrue(out_test.exists())
+            res = subprocess.run([sys.executable, str(out_test)], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"Enum smoke test failed: {res.stderr}\nOutput: {res.stdout}")
+
 
 if __name__ == "__main__":
     unittest.main()

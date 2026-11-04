@@ -8,6 +8,7 @@ assets to enforce quantitative modularity budgets.
 
 import argparse
 import ast
+import glob
 import json
 import sys
 from dataclasses import asdict, dataclass, field
@@ -30,6 +31,12 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+from audit_models import (
+    AuditThresholds,
+    ClassMetric,
+    FileReport,
+    FunctionMetric,
+)
 from language_analyzers import (  # noqa: E402
     BRACE_EXTENSIONS,
     STYLE_EXTENSIONS,
@@ -51,46 +58,6 @@ IGNORED_DIRS: frozenset[str] = frozenset({
     "dist", "build", "_build", "out", "target", ".idea", ".vscode",
     "scratch", "coverage", "htmlcov", "migrations", ".refactor",
 })
-
-@dataclass(frozen=True)
-class AuditThresholds:
-    """Quantitative modularity thresholds for files, classes, and functions."""
-    warn_file_lines: int = 350
-    max_file_lines: int = 500
-    warn_class_methods: int = 10
-    max_class_methods: int = 12
-    max_func_lines: int = 40
-
-@dataclass
-class FunctionMetric:
-    """Line span and status for a single function, method, or rule block."""
-    name: str
-    qualname: str
-    start_line: int
-    end_line: int
-    lines: int
-    status: str
-
-@dataclass
-class ClassMetric:
-    """Method count, line span, and status for a class, struct, or selector group."""
-    name: str
-    start_line: int
-    end_line: int
-    lines: int
-    method_count: int
-    status: str
-    methods: list[str] = field(default_factory=list)
-
-@dataclass
-class FileReport:
-    """Aggregated modularity report for a single source file."""
-    rel_path: str
-    lines: int
-    status: str
-    classes: list[ClassMetric] = field(default_factory=list)
-    oversized_functions: list[FunctionMetric] = field(default_factory=list)
-    parser_mode: str = "ast"
 
 def classify_count(value: int, warn_limit: int, max_limit: int) -> str:
     """Return 'CRITICAL', 'WARNING', or 'OK' against soft/hard thresholds."""
@@ -289,6 +256,13 @@ def main(argv: list[str] | None = None) -> int:
     raw_paths = args.path if isinstance(args.path, list) else [args.path]
     targets: list[Path] = []
     for rp in raw_paths:
+        if any(c in rp for c in ("*", "?", "[")):
+            matches = glob.glob(rp, recursive=True)
+            if not matches:
+                print(f"Error: glob pattern matched no files: {rp}", file=sys.stderr)
+                return 2
+            targets.extend([Path(m).resolve() for m in matches])
+            continue
         tp = Path(rp).resolve()
         if not tp.exists():
             print(f"Error: path does not exist: {rp}", file=sys.stderr)

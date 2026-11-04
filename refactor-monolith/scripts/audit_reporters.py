@@ -9,10 +9,8 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from code_health_audit import AuditThresholds, FileReport
+from audit_models import AuditThresholds, ClassMetric, FileReport, FunctionMetric
 
 def print_by_dir_summary(reports: list[FileReport], thresholds: AuditThresholds) -> None:
     """Print directory-level aggregated summary of files, lines, and breaches."""

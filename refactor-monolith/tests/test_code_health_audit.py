@@ -278,5 +278,17 @@ class TestSourceFileAuditAndCli(unittest.TestCase):
                 # --strict-warnings exits 1 when any warning exists
                 self.assertEqual(main(["--path", tmpdir, "--strict-warnings"]), 1)
 
+    def test_cli_resolves_glob_pattern_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f1 = Path(tmpdir) / "mod1.py"
+            f2 = Path(tmpdir) / "mod2.py"
+            f1.write_text("def a(): pass\n", encoding="utf-8")
+            f2.write_text("def b(): pass\n", encoding="utf-8")
+            pattern = str(Path(tmpdir) / "*.py")
+            with patch("sys.stdout", new_callable=io.StringIO) as out:
+                self.assertEqual(main(["--path", pattern, "--json"]), 0)
+                payload = json.loads(out.getvalue())
+                self.assertEqual(payload["total_files"], 2)
+
 if __name__ == "__main__":
     unittest.main()

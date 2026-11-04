@@ -51,7 +51,9 @@ def ensure_diagnostics_dir(workspace: Path) -> Path:
     gitignore = diag_dir / GITIGNORE_FILENAME
     if not gitignore.exists():
         gitignore.write_text(
-            "# Auto-generated SSOT defect catalog gitignore\ndefect_catalog.json\nDEFECT_CATALOG.md\n",
+            "# Auto-generated SSOT defect catalog gitignore\n"
+            "# Ignored by default so they never pollute git status; use `git add -f` if versioning is desired.\n"
+            "*\n",
             encoding="utf-8",
         )
     return diag_dir

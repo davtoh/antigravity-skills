@@ -231,6 +231,11 @@ The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \
    ```
    This records the defect in `.diagnostics/defect_catalog.json` with **zero modifications to `plan.md`**.
 4. **Independent Lifecycle Handoff**: Upon campaign completion, `campaign_manager.py` summarizes quarantined defects with copy-pasteable commands for `/app-debugger` (Tactical Red-to-Green cycle) or `/frontier-architect` (Architectural Elevation).
+5. **Phase-Isolation & Latent Test Defect Quarantining**:
+   - **Targeted Slicing**: Intermediate verification commands during a decomposition phase must target the test suite of the active slice (e.g. `run-tests --path . -- discover tests -p "test_<module>*.py"`), NOT unrelated whole-repo suites.
+   - **Out-of-Phase Failures**: If a whole-repo test suite is executed and a failure occurs in an un-refactored file scheduled for a future phase (e.g. `dashboard/stream_manager.py` during Phase 5):
+     - The agent **MUST NOT** expand turn scope to refactor or fix the unrelated file inline.
+     - Verify against the pre-refactor baseline. If pre-existing, record the failure as a quarantined defect (`state --record-defect`) and proceed with the active phase.
 
 ---
 
