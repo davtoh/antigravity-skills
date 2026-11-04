@@ -22,6 +22,9 @@ The **App Debugger** skill provides an end-to-end, empirical debugging workflow.
 
 Before jumping into code, classify the user's request:
 - **Pure Bug / Regressed State**: Isolated typo, broken selector, missing null-check, or straightforward layout overflow. Proceed directly to Step 1.
+- **Quarantined Defect Remediation**: When resolving defects cataloged in `.diagnostics/defect_catalog.json` (or uncovered via `diagnose.py scan`):
+  - Unlock tactical defects via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> [--branch]`. This synthesizes an empirical failing test in `tests/quarantine/test_<id>.py`. Skip UX interviews and proceed directly to Step 2 to verify failing Red status, followed by surgical fix in Step 4.
+  - If classified as `track: architectural` (or unlocked with `--elevate`), yield to `/frontier-architect` + `/grill-me` for holistic architectural redesign instead of applying brittle local band-aids.
 - **Architectural Solution or New Component**: The user's prompt combines a bug with a design or subsystem request (e.g., *"Can we create a class to manage all names..."*, *"Should we create a sturdy camera handler..."*).
   - **Enforce Separation of Concerns**: Maintain `app-debugger` for empirical reproduction (Steps 1–3), but **delegate architectural design to `frontier-architect`** or generate a formal **Implementation Plan Artifact** (`RequestFeedback: true`) defining API contracts, trade-offs, and invariants before modifying code.
 - **Multi-Skill Co-Invocation Protocol (with `/frontier-architect`)**:
@@ -83,6 +86,16 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    - When diagnosing hardware devices (e.g. OpenCV camera indices, DirectShow locks, OBS virtual loops, COM ports, or audio capture), **do NOT invoke browser CDP layout commands (`ui`)**.
    - Execute the project's native status command (e.g. `python scripts/camera_manager.py --status`) or run dynamic domain probes (`run_diagnose.py probe run camera_hardware`).
    - Always run with the project's active virtualenv (let `run_diagnose.py` auto-resolve `.venv`, or invoke `.venv/bin/python` / `.venv/Scripts/python.exe`) to prevent `ModuleNotFoundError: No module named 'cv2'`.
+6. **Quarantined Tactical Defect Reproduction (Red-to-Green)**:
+   - Unlock the quarantined defect and checkout an isolated micro-branch:
+     ```bash
+     python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch
+     ```
+   - Execute the synthesized test to verify it fails (**Red**):
+     ```bash
+     python -m unittest tests/quarantine/test_defect_001.py
+     ```
+   - Proceed to Step 3 and Step 4 to apply the surgical fix guided by the defect's `suggested_fix` and re-verify (**Green**).
 
 ### Step 3: Symptom-to-Root-Cause Matrix
 
@@ -193,6 +206,9 @@ Per `executable_documentation.md`, match user intent with the exact copy-pasteab
 | **Probe Camera Hardware & Acquisition** | Video capture | Tests DirectShow/V4L2 & locks | `python skills/app-debugger/scripts/run_diagnose.py probe run camera_hardware` |
 | **Scaffold Reusable Domain Probe** | Missing domain | Generates boilerplate probe | `python skills/app-debugger/scripts/run_diagnose.py probe new db_pool --domain database` |
 | **Promote Scratch Script to Probe** | Verified scratch | Saves script to probe registry | `python skills/app-debugger/scripts/run_diagnose.py probe save scratch/probe.py db_pool` |
+| **Unlock Quarantined Tactical Defect** | Quarantined defect | Generates failing Red repro in tests/quarantine/ | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
+| **Unlock Defect & Checkout Micro-Branch** | Quarantined defect | Clean git branch checkout + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
+| **Polyglot Latent Defect & Smell Scan** | Source repository | Scans across Py, JS/TS, CSS, Dart (SSOT) | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/` |
 
 ---
 

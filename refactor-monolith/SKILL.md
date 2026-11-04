@@ -83,6 +83,9 @@ python "<skill_dir>/scripts/code_health_audit.py" --path <dir> --by-dir
 
 # 5. Regression-locking smoke tests
 python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path <dir> --out tests/test_refactor_contract.py
+
+# 6. Latent defect quarantine & campaign hook (SSOT in .diagnostics/, zero plan.md drift)
+python "<skill_dir>/scripts/contract_snapshot.py" state --record-defect --file <file> --symbol <sym> --rule <rule> --message "<msg>" [--track {tactical,architectural}]
 ```
 
 ---
@@ -311,9 +314,11 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
      - Dart: Use `if (Platform.isWindows)` or `if (kIsWeb)`.
    - **Zero-Drift Latent Defect & Smell Quarantine Protocol**:
      - **Behavior Preservation Invariant ($\Delta(\text{Observable Behavior}) \equiv 0$)**: The prime directive of refactoring is restructuring code without altering behavior. The agent must **NEVER modify production business logic** during a decomposition turn, even if an upstream bug, dead branch, or signature mismatch is detected.
-     - **Quarantine & Log**: When a latent defect or code smell is uncovered via AST inspection or `typecheck`, document it under `[Latent Defects & Code Smells Discovered (Quarantined)]` in `.refactor/plan.md` and the turn summary. Include: Target File & Line, Observed Defect / AST Signature, Estimated Impact, and Remediation Recommendation.
-     - **Quarantine Test Harness (Zero-Regression)**: The agent may optionally author an isolated regression test in `tests/quarantine/` or mark it with `@pytest.mark.xfail` or `unittest.expectedFailure` to lock in reproduction without failing the zero-regression refactoring gate.
-     - **User Approval & Dedicated Remediation Gate**: All behavioral fixes must be explicitly reviewed by the user and deferred to a dedicated bug-fixing turn (using `/app-debugger`), preserving bisectability, clean git provenance, and preventing cascade regressions.
+     - **Single Source of Truth (SSOT) Quarantine Hook**: When a latent defect or code smell is uncovered via AST inspection or `typecheck`, record it directly into `<workspace>/.diagnostics/defect_catalog.json` (and `DEFECT_CATALOG.md`) using `contract_snapshot.py state --record-defect --file <f> --symbol <s> --rule <r> --message <m> [--track {tactical,architectural}]`.
+     - **Zero `plan.md` Drift**: `.refactor/plan.md` remains strictly dedicated to structural decomposition slices ($\Delta\text{Behavior} \equiv 0$), referencing `.diagnostics/DEFECT_CATALOG.md` with a single static link. Never burn tokens duplicating defect tables inside `plan.md`.
+     - **Completion Handoff & Dual-Track Remediation**: When the campaign completes (`state --advance` to completion), `campaign_manager.py` automatically summarizes all quarantined defects with copy-pasteable remediation commands:
+       - **Tactical Defects**: `python <diagnostics>/scripts/diagnose.py scaffold-defect --id <ID> [--branch]` for `/app-debugger` (Red-to-Green cycle).
+       - **Architectural Defects**: `python <diagnostics>/scripts/diagnose.py scaffold-defect --id <ID> --elevate` for `/frontier-architect` + `/grill-me`.
 3. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
 4. **Strict No-Staging Invariant (Leave Working Tree Unstaged)**:
    - **NEVER run `git add` or `git rm` during a refactoring turn.**
@@ -367,6 +372,7 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Show Campaign Progress** | Check active phase and status | `state --show` | `python "<skill_dir>/scripts/contract_snapshot.py" state --show` |
 | **Save Phase Checkpoint** | Save sub-phase note & prevent token drain | `state --checkpoint` | `python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Slices 1-3 complete"` |
 | **Advance Campaign Phase** | Mark phase complete and advance | `state --advance` | `python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1` |
+| **Record Discovered Latent Defect** | Quarantine defect to .diagnostics/ without plan drift | `state --record-defect` | `python "<skill_dir>/scripts/contract_snapshot.py" state --record-defect --file src/app.py --symbol run --rule MUTABLE_DEFAULT_ARG --message "items=[] persists state"` |
 | **Per-Slice & Checkpoint Verification** | Diff against baseline contract | `verify --path <dir> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path <dir> --strict` |
 | **Multi-Directory Verification** | Verify contract across source and test packages | `verify --path <dir1> <dir2> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path erp tests/erp --strict` |
 | **Post-Refactor Regression Audit** | Diff live tree directly against pre-refactor Git SHA | `verify --path <dir> --git-ref <sha> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref HEAD~1 --strict` |

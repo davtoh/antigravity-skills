@@ -41,6 +41,13 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
    - Detects dynamic platform import ladder smells (`try...except ImportError` on platform libraries like `win32api`, `fcntl`, `_xlmac`) and recommends static platform guards (`if sys.platform == 'win32':`).
    - Runs callable smoke tests to verify module importability, signature validity, and catch constructor `TypeErrors` before runtime.
    - **Strict Token-Budget Guard**: Automatically truncates error output to the top 5 defects per checker/category, preventing context window explosion during AI agent interactions.
+8. **Polyglot Defect Scanner & JIT Scaffolder (`diagnose.py scan` & `diagnose.py scaffold-defect`)**:
+   - Statically scans across Python (AST), JavaScript/TypeScript, CSS/SCSS, and Dart for 12+ classes of latent defects, smells, resource leaks, and vulnerabilities.
+   - Computes deterministic Dual-Key identifiers: sequential `DEFECT-XXX` + AST symbol/arity content fingerprint (`DEF-<RULE>-<6HEX>`), maintaining identity stability across file moves and line shifts.
+   - Persists ground truth in the workspace's Single Source of Truth (SSOT) catalog: machine-readable `<workspace>/.diagnostics/defect_catalog.json` and human-readable `DEFECT_CATALOG.md` (protected by auto-generated `.gitignore`).
+   - Dispatches **Dual-Track Remediation**:
+     - **Track A (Tactical)**: Generates self-contained Red-to-Green tests in `tests/quarantine/test_<id>.py` with optional micro-branching (`--branch`) guarded by git dirty-tree safety checks.
+     - **Track B (Architectural)**: Emits structured Architectural Elevation Briefs for `/frontier-architect` + `/grill-me` when defects reveal structural design flaws.
 
 ---
 
@@ -49,7 +56,7 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
 Before executing diagnostic commands on a project, verify the diagnostics test suite:
 
 ```bash
-# Run the fast automated diagnostic test suite (63 unit tests, < 0.3s)
+# Run the comprehensive diagnostic test suite (93 unit & integration tests, < 3.5s)
 python -m unittest discover -s skills/system-diagnostics/tests -p "test_*.py"
 ```
 
@@ -79,6 +86,12 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Detect Platform Import Smells** | Source repository | Flags dynamic try..except ladders | `python skills/system-diagnostics/scripts/diagnose.py audit --smells` |
 | **Callable Smoke & Init Check** | Source repository | Checks signatures & constructor TypeErrors | `python skills/system-diagnostics/scripts/diagnose.py audit --callable-smoke` |
 | **Export Static Defect JSON** | Source repository | Full machine-readable audit report | `python skills/system-diagnostics/scripts/diagnose.py audit --json` |
+| **Polyglot Latent Defect Scan** | Source repository | Scans Py, JS/TS, CSS, Dart (SSOT catalog) | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/` |
+| **Deep Scan with CSS & Extended AST** | Source repository | Full polyglot rules + specificity leaks | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/ --deep` |
+| **Strict CI Defect Gate** | CI / Pre-commit | Returncode 1 if any defects found | `python skills/system-diagnostics/scripts/diagnose.py scan --strict` |
+| **Unlock Tactical Defect (Test Synthesis)** | Quarantined defect | Generates Red repro in tests/quarantine/ | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
+| **Unlock Tactical Defect + Micro-Branch** | Quarantined defect | Clean git checkout + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
+| **Elevate Structural Defect to Architecture**| Quarantined defect | Emits brief for /frontier-architect | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-002 --elevate` |
 
 ---
 
@@ -154,6 +167,26 @@ python skills/system-diagnostics/scripts/diagnose.py audit [OPTIONS]
 - `--json`: Outputs structured JSON report.
 - `--strict`: Exits with return code 1 if any defects or smells are detected.
 
+### Subcommand: `scan`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py scan [OPTIONS]
+```
+- `--path <PATH>`: Target file or directory to scan across Python, JS/TS, CSS, and Dart (default: current directory).
+- `--deep` / `--all`: Scans extended rules (CSS `!important` specificity overruns, unbounded container growth, blocking loops).
+- `--json`: Outputs machine-readable catalog JSON to stdout.
+- `--strict`: Exits with return code 1 if any defects are detected (ideal for CI pipelines).
+- *Automatic Catalog Sync*: Automatically saves findings into `<workspace>/.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`.
+
+### Subcommand: `scaffold-defect`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID_OR_FP> [OPTIONS]
+```
+- `--id <ID_OR_FP>`: Sequential ID (`DEFECT-001`) or content fingerprint (`DEF-MUTABLE-8749e9`).
+- `--branch`: Pre-flight checks git status (ignoring `.diagnostics/` and `.refactor/`). If clean, checks out micro-branch `fix/<defect_id>`. If dirty, prints safety notice and proceeds safely in-place.
+- `--fix`: Forces Track A tactical test generation (`tests/quarantine/test_<id>.py`) even if classified as architectural.
+- `--elevate`: Forces Track B architectural elevation brief generation for `/frontier-architect` + `/grill-me`.
+- `--workspace <PATH>`: Target project directory (defaults to current directory).
+
 ---
 
 ## Windows Shell & Tooling Resilience
@@ -175,8 +208,11 @@ skills/system-diagnostics/
 ├── probes/                           # Global diagnostic probe extensions
 │   └── camera_hardware.py            # Built-in camera hardware & acquisition probe
 ├── scripts/
-│   ├── diagnose.py                   # Unified CLI entrypoint with auto-discovery
+│   ├── diagnose.py                   # Unified CLI entrypoint with delegated subparsers
 │   ├── static_auditor.py             # Modular static defect, smell & callable auditor
+│   ├── shadow_prober.py              # Polyglot AST/lexer rules, sandbox & scan runner
+│   ├── defect_catalog.py             # SSOT catalog manager, git safety & JIT router
+│   ├── scaffold_templates.py         # Tactical Red/Green tests & architectural briefs
 │   ├── probe_runner.py               # Pluggable extension runner & probe registry
 │   ├── cdp_inspect.py                # CDP layout, DOMrect, and overflow inspector
 │   ├── cdp_transport.py              # Zero-dependency RFC 6455 WebSocket client
@@ -187,5 +223,8 @@ skills/system-diagnostics/
 └── tests/
     ├── test_diagnose.py              # Automated unit tests for CLI & discovery
     ├── test_static_auditor.py        # Automated unit tests for static & smell audit
+    ├── test_shadow_prober.py         # Automated unit tests for AST rules & sandbox
+    ├── test_defect_catalog.py        # Automated unit tests for catalog & git safety
+    ├── test_e2e_latent_defects.py    # E2E integration tests for Dual-Key & dual-track
     └── test_probe_runner.py          # Automated unit tests for dynamic probe extensions
 ```
