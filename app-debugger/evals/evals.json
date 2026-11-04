@@ -121,6 +121,18 @@
         "Supports dynamic probe execution or scaffolding via run_diagnose.py probe run or probe new",
         "Constructs a Symptom-to-Root-Cause Matrix mapping connection pool timeout to root cause"
       ]
+    },
+    {
+      "id": 10,
+      "prompt": "There is a quarantined tactical defect DEFECT-001 in .diagnostics/defect_catalog.json caused by a mutable default argument in service.py. Unlock it, checkout an isolated micro-branch, verify the synthesized reproduction test fails Red, apply the surgical fix, and verify Green.",
+      "expected_output": "Unlocks the defect via diagnose.py scaffold-defect --id DEFECT-001 --branch to generate tests/quarantine/test_defect_001.py, skips exploratory UX questions, runs the test to verify failing Red status, applies the surgical fix guided by suggested_fix, and verifies Green.",
+      "files": [],
+      "expectations": [
+        "Unlocks tactical defect using diagnose.py scaffold-defect --id DEFECT-001 --branch to synthesize Red-to-Green test in tests/quarantine/",
+        "Skips exploratory UX interviews and proceeds directly to Step 2 to verify failing Red test status",
+        "Applies surgical fix guided by defect's suggested_fix and verifies Green resolution",
+        "Yields structural defects to /frontier-architect and /grill-me when classified as track: architectural"
+      ]
     }
   ]
 }

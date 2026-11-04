@@ -60,7 +60,7 @@
         "Identifies and excludes third-party vendor/minified files (static/js/slick.js) and checks whether static/css/main.css is a compiled output of static/scss/theme/ before splitting it directly",
         "Respects AGENTS.md and project rules while keeping refactor-monolith 100% self-contained (not requiring external custom skills to be installed)",
         "Uses code_health_audit.py multi-language structural modes (brace, stylesheet, ast, fallback) and loads references/language-playbooks.md on-demand for language-idiomatic facades (TS barrel export * + custom hooks, Go same-package file split, ITCSS order)",
-        "Applies the Unknown Language Guard and 'Leave at Best Working Version' safe bailout rule to legacy_rules.dsl—refusing to split blindly, reverting failed attempts to the best working previous version, and advising the user unless forced to continue"
+        "Applies the Unknown Language Guard and 'Leave at Best Working Version' safe bailout rule to legacy_rules.dsl\u2014refusing to split blindly, reverting failed attempts to the best working previous version, and advising the user unless forced to continue"
       ]
     },
     {
@@ -99,6 +99,18 @@
         "Passes test runner flags (-k, -v, -p) transparently without CLI parser errors",
         "Refrains from polling manage_task status in a loop or calling python time.sleep / Start-Sleep when a background task is launched",
         "Runs git status --short defensively before staging files to avoid fatal pathspec errors on deleted or renamed files"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "While decomposing a 1,200-line server.py during a refactoring campaign, we discovered an upstream signature mismatch with a mutable default argument in service.py. Quarantine this defect according to the Zero-Drift Refactoring Invariant without fixing it in-flight or polluting plan.md.",
+      "expected_output": "Adheres to the Behavior Preservation Invariant (Delta(Observable Behavior) == 0) by refusing to modify production logic during the refactoring turn. Records the defect directly into <workspace>/.diagnostics/defect_catalog.json using contract_snapshot.py state --record-defect, keeps plan.md clean with a single reference link, and summarizes pending defects upon campaign completion.",
+      "files": [],
+      "expectations": [
+        "Enforces the Refactoring Invariant (Delta(Observable Behavior) == 0) and refrains from modifying business logic during decomposition turns",
+        "Quarantines discovered defects directly into .diagnostics/defect_catalog.json using contract_snapshot.py state --record-defect",
+        "Maintains zero plan.md drift by referencing .diagnostics/DEFECT_CATALOG.md with a single link instead of duplicating defect tables",
+        "Summarizes quarantined defects upon campaign completion with copy-pasteable remediation commands for /app-debugger and /frontier-architect"
       ]
     }
   ]

@@ -83,6 +83,42 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         has_test = bool(re.search(r"diagnose\.py\s+tests|virtualenv|\.venv", text, re.I))
         return has_test, f"Virtualenv test runner: {has_test}"
 
+    if "diagnose.py audit" in exp_lower or "code smell audit" in exp_lower:
+        has_audit = bool(re.search(r"diagnose\.py\s+audit|static quality", text, re.I))
+        return has_audit, f"Static quality audit: {has_audit}"
+
+    if "import ladder" in exp_lower or "--smells" in exp_lower:
+        has_smell = bool(re.search(r"import ladder|--smells|try\.\.\.except\s+importerror", text, re.I))
+        return has_smell, f"Import ladder smells: {has_smell}"
+
+    if "callable smoke" in exp_lower or "--callable-smoke" in exp_lower:
+        has_smoke = bool(re.search(r"--callable-smoke|callable smoke", text, re.I))
+        return has_smoke, f"Callable smoke tests: {has_smoke}"
+
+    if "top 5" in exp_lower or "token budget" in exp_lower:
+        has_budget = bool(re.search(r"top\s*5|token-budget", text, re.I))
+        return has_budget, f"Token budgeting / top 5: {has_budget}"
+
+    if "diagnose.py scan" in exp_lower:
+        has_scan = bool(re.search(r"diagnose\.py\s+scan", text, re.I))
+        return has_scan, f"Polyglot scan: {has_scan}"
+
+    if "dual-key" in exp_lower:
+        has_dk = bool(re.search(r"dual-key|defect-xxx", text, re.I))
+        return has_dk, f"Dual-key IDs: {has_dk}"
+
+    if "single source of truth" in exp_lower or "ssot" in exp_lower:
+        has_ssot = bool(re.search(r"single source of truth|ssot|defect_catalog\.json", text, re.I))
+        return has_ssot, f"SSOT catalog: {has_ssot}"
+
+    if "scaffold-defect" in exp_lower:
+        has_scaf = bool(re.search(r"scaffold-defect", text, re.I))
+        return has_scaf, f"Scaffold defect: {has_scaf}"
+
+    if "dual-track" in exp_lower or "/app-debugger" in exp_lower:
+        has_dt = bool(re.search(r"dual-track|/app-debugger|frontier-architect", text, re.I))
+        return has_dt, f"Dual-track remediation: {has_dt}"
+
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_cnt = sum(1 for w in words if w in text.lower())

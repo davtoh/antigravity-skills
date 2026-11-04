@@ -60,6 +60,32 @@
         "Forwards test arguments cleanly to unittest or pytest",
         "Handles missing virtualenv by falling back cleanly to system Python"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "Run a static defect and code smell audit on our project to detect dynamic platform import ladders (try...except ImportError on win32api/fcntl), verify callable signatures, and check static types with top-5 error capping.",
+      "expected_output": "Executes diagnose.py audit with --smells, --callable-smoke, and --typecheck to flag platform import smells, catch initialization TypeErrors, and run venv linters with strict token limits.",
+      "files": [],
+      "expectations": [
+        "Runs diagnose.py audit to perform static quality, defect, and code smell audits",
+        "Detects dynamic platform import ladders (try...except ImportError) via --smells and recommends static platform guards",
+        "Runs callable smoke tests via --callable-smoke to check class instantiability and catch constructor TypeErrors",
+        "Applies strict token budgeting by truncating defect output to top 5 issues per category",
+        "Supports --strict flag to return exit code 1 if defects or smells are detected"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Scan our polyglot repository across Python, TypeScript, and CSS for latent defects, store the findings in the Single Source of Truth catalog, and unlock a quarantined defect to generate a reproduction test in an isolated micro-branch.",
+      "expected_output": "Executes diagnose.py scan across polyglot files to detect latent defects and persists ground truth into .diagnostics/defect_catalog.json and DEFECT_CATALOG.md with Dual-Key IDs. Then unlocks the defect via diagnose.py scaffold-defect --id <ID> --branch to generate a Red reproduction test in tests/quarantine/ with git dirty-tree safety checks.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py scan across Python, JS/TS, CSS, and Dart to statically detect latent defects and smells",
+        "Assigns deterministic Dual-Key identifiers (DEFECT-XXX + DEF-<RULE>-<HEX>) that survive file moves and line shifts",
+        "Persists findings into Single Source of Truth (SSOT) catalog in .diagnostics/defect_catalog.json and DEFECT_CATALOG.md",
+        "Unlocks tactical defects via diagnose.py scaffold-defect --id <ID> --branch with dirty-tree safety guard",
+        "Dispatches Dual-Track Remediation routing tactical defects to /app-debugger and architectural flaws to /frontier-architect"
+      ]
     }
   ]
 }
