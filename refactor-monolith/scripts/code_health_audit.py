@@ -209,8 +209,11 @@ def audit_file(file_path: Path, base_dir: Path, thresholds: AuditThresholds) -> 
         text = ""
     line_count = len(text.splitlines())
     rel_path = file_path.name if file_path == base_dir else file_path.relative_to(base_dir).as_posix()
-    status = classify_count(line_count, thresholds.warn_file_lines, thresholds.max_file_lines)
+    line_status = classify_count(line_count, thresholds.warn_file_lines, thresholds.max_file_lines)
     classes, funcs, mode = _dispatch_language_analysis(file_path.suffix.lower(), text, thresholds)
+    has_crit = line_status == "CRITICAL" or any(c.status == "CRITICAL" for c in classes) or any(f.status == "CRITICAL" for f in funcs)
+    has_warn = line_status == "WARNING" or any(c.status == "WARNING" for c in classes) or any(f.status == "WARNING" for f in funcs)
+    status = "CRITICAL" if has_crit else ("WARNING" if has_warn else "OK")
     return FileReport(rel_path, line_count, status, classes, funcs, mode)
 
 def has_hard_breach(reports: Iterable[FileReport]) -> bool:
@@ -254,6 +257,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-vendor", action="store_true", help="Include vendor/minified files.")
     p.add_argument("--json", action="store_true", help="Emit JSON output.")
     p.add_argument("--strict", action="store_true", help="Exit 1 on CRITICAL breach.")
+    p.add_argument("--strict-warnings", action="store_true", help="Exit 1 on WARNING or CRITICAL breach.")
     return p
 
 def _collect_reports(
@@ -306,7 +310,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         mode = recommend_mode(reports, thresholds.max_file_lines)
         print_text_summary(reports, thresholds, top_limit, args.show_methods, args.compact, args.by_dir, mode=mode)
-    return 1 if (args.strict and has_hard_breach(reports)) else 0
+    has_warn = any(r.status == "WARNING" for r in reports)
+    hard_breach = has_hard_breach(reports)
+    if args.strict and hard_breach:
+        return 1
+    if getattr(args, "strict_warnings", False) and (hard_breach or has_warn):
+        return 1
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

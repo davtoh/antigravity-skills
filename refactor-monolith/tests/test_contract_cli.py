@@ -282,5 +282,62 @@ class TestCampaignAndReporterTools(unittest.TestCase):
         print_text_summary([rep], thresholds, top_n=5, show_methods=True, by_dir=True)
         print_text_summary([rep], thresholds, top_n=5, show_methods=True, by_dir=False)
 
+    def test_verify_supports_multiple_path_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "mod1").mkdir()
+            (tmp_path / "mod2").mkdir()
+            (tmp_path / "mod1" / "app.py").write_text("x = 1\n", encoding="utf-8")
+            (tmp_path / "mod2" / "test.py").write_text("y = 2\n", encoding="utf-8")
+            self.assertEqual(main(["capture", "--path", str(tmp_path)]), 0)
+            code = main(["verify", "--path", str(tmp_path / "mod1"), str(tmp_path / "mod2"), "--strict"])
+            self.assertEqual(code, 0)
+
+    def test_run_tests_cli_module_flag_and_headless_env(self):
+        from unittest.mock import patch, MagicMock
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            with tempfile.TemporaryDirectory() as tmp:
+                code = main(["run-tests", "--path", tmp, "-m", "sphinx", "-W", "--keep-going"])
+                self.assertEqual(code, 0)
+                cmd = mock_run.call_args[0][0]
+                self.assertIn("-m", cmd)
+                self.assertIn("sphinx", cmd)
+                env = mock_run.call_args[1].get("env", {})
+                self.assertEqual(env.get("MPLBACKEND"), "Agg")
+                self.assertEqual(env.get("QT_QPA_PLATFORM"), "offscreen")
+                self.assertEqual(mock_run.call_args[1].get("timeout"), 180)
+
+    def test_run_tests_timeout_expired_returns_124(self):
+        from unittest.mock import patch
+        from scripts.auxiliary_tool_bridge import cmd_run_tests
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["test"], timeout=1)):
+            with tempfile.TemporaryDirectory() as tmp:
+                code = cmd_run_tests(Path(tmp), ["discover", "tests"], timeout=1)
+                self.assertEqual(code, 124)
+
+    def test_merge_contracts_deduplication(self):
+        from scripts.contract_diff_engine import CodebaseContract, merge_contracts
+        c1 = CodebaseContract(
+            html_ids=["b", "a"],
+            select_ids=["sel1"],
+            inline_handlers=[{"event": "click", "target": "run"}],
+            css_important_count=2,
+            python_globals=["User"],
+        )
+        c2 = CodebaseContract(
+            html_ids=["a", "c"],
+            select_ids=["sel1", "sel2"],
+            inline_handlers=[{"event": "click", "target": "run"}, {"event": "load", "target": "init"}],
+            css_important_count=3,
+            python_globals=["User", "Admin"],
+        )
+        merged = merge_contracts([c1, c2])
+        self.assertEqual(merged.html_ids, ["a", "b", "c"])
+        self.assertEqual(merged.select_ids, ["sel1", "sel2"])
+        self.assertEqual(len(merged.inline_handlers), 2)
+        self.assertEqual(merged.css_important_count, 5)
+        self.assertEqual(merged.python_globals, ["Admin", "User"])
+
 if __name__ == "__main__":
     unittest.main()

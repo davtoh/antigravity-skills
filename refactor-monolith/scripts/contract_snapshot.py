@@ -43,6 +43,7 @@ from contract_diff_engine import (  # noqa: E402
     build_contract,
     diff_contracts,
     iter_repo_files,
+    merge_contracts,
     resolve_baseline_contract,
 )
 
@@ -159,7 +160,7 @@ def _execute_live_audits(
 
 
 def cmd_verify(
-    target: Path,
+    target: Path | list[Path],
     before_file: str = "",
     git_ref: str = "",
     strict: bool = False,
@@ -168,16 +169,21 @@ def cmd_verify(
     app_url: str = "",
 ) -> int:
     """Diff current codebase contract against baseline or historical git commit."""
-    before = _resolve_baseline_contract(target, before_file, git_ref)
+    target_list = target if isinstance(target, list) else [target]
+    primary_target = target_list[0]
+    before = resolve_baseline_contract(target, before_file, git_ref)
     if not before:
         print("Error: provide --before <file.json> or --git-ref <sha> to verify against (or ensure .refactor/baseline.json exists).", file=sys.stderr)
         return 2
 
-    after = build_contract(target)
+    if len(target_list) == 1:
+        after = build_contract(primary_target)
+    else:
+        after = merge_contracts([build_contract(t) for t in target_list])
     issues = diff_contracts(before, after)
     _print_verification_results(before, after, issues)
 
-    opt_tools = discover_optional_tools(target)
+    opt_tools = discover_optional_tools(primary_target)
     print("\n--- Tool Discovery Status ---")
     if opt_tools:
         for name, p in opt_tools.items():
@@ -185,8 +191,8 @@ def cmd_verify(
     else:
         print("  [Self-Contained Mode] Built-in static contract verifier active. (Optional live tools not found)")
 
-    _check_missing_smoke_test(target)
-    ui_code, docker_code, ui_st, doc_st = _execute_live_audits(target, run_ui, run_docker, app_url, strict, opt_tools)
+    _check_missing_smoke_test(primary_target)
+    ui_code, docker_code, ui_st, doc_st = _execute_live_audits(primary_target, run_ui, run_docker, app_url, strict, opt_tools)
     print_verification_matrix(issues, ui_st, doc_st)
     return 1 if (strict and (issues or ui_code != 0 or docker_code != 0)) else 0
 

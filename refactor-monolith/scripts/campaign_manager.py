@@ -24,10 +24,10 @@ if hasattr(sys.stderr, "reconfigure"):
         pass
 
 def get_repo_root(target: Path | None = None) -> Path:
-    """Find the root git repository directory containing target."""
+    """Find the root git repository or .refactor directory containing target."""
     cur = (target or Path.cwd()).resolve()
     for parent in [cur, *cur.parents]:
-        if (parent / ".git").exists():
+        if (parent / ".git").exists() or (parent / ".refactor").exists():
             return parent
     return cur
 

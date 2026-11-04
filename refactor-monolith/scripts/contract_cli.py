@@ -44,7 +44,7 @@ from css_inspector import cmd_inspect_css  # noqa: E402
 
 def _add_common_path_args(parser: argparse.ArgumentParser) -> None:
     """Add standard --path, --before, and --git-ref arguments."""
-    parser.add_argument("--path", default=".", help="Target repository directory.")
+    parser.add_argument("--path", nargs="+", default=["."], help="Target repository directory or paths.")
     parser.add_argument("--before", default="", help="Baseline JSON path.")
     parser.add_argument("--git-ref", default="", help="Historical git commit/branch.")
 
@@ -89,7 +89,9 @@ def _register_tool_subparsers(sub: Any) -> None:
     p_tst = sub.add_parser("run-tests", help="Run test suite using auto-detected virtualenv interpreter.")
     p_tst.add_argument("--path", default=".", help="Target repository directory.")
     p_tst.add_argument("--runner", choices=["auto", "unittest", "pytest"], default="auto", help="Test runner framework (default: auto).")
+    p_tst.add_argument("--timeout", type=int, default=180, help="Test execution timeout in seconds (default: 180).")
     p_tst.add_argument("-c", "--command", default=None, help="Execute Python command string directly in virtualenv.")
+    p_tst.add_argument("-m", "--module", default=None, help="Execute Python module directly in virtualenv.")
     p_tst.add_argument("test_args", nargs=argparse.REMAINDER, help="Arguments forwarded to test runner or python.")
 
     p_vui = sub.add_parser("verify-ui", help="Run CDP browser layout and overflow inspection.")
@@ -163,7 +165,10 @@ def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace)
         test_args = list(getattr(args, "test_args", []))
         if getattr(args, "command", None):
             test_args = ["-c", args.command]
-        return cmd_run_tests(target, test_args, runner=getattr(args, "runner", "auto"))
+        elif getattr(args, "module", None):
+            test_args = ["-m", args.module, *test_args]
+        timeout = getattr(args, "timeout", 180)
+        return cmd_run_tests(target, test_args, runner=getattr(args, "runner", "auto"), timeout=timeout)
     if subcmd == "verify-ui":
         is_headless = not getattr(args, "live", False)
         return cmd_verify_ui(target, getattr(args, "url", ""), getattr(args, "selectors", ""), is_headless, getattr(args, "strict", False))
@@ -184,7 +189,10 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
     if subcmd == "inspect":
         return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
     if subcmd == "verify":
-        return cmd_verify(target, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
+        raw_paths = args.path if isinstance(args.path, list) else [args.path]
+        targets = [Path(p).resolve() for p in raw_paths]
+        target_param = targets if len(targets) > 1 else targets[0]
+        return cmd_verify(target_param, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
     if subcmd == "generate-smoke-test":
         return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
     if subcmd == "state":
@@ -205,7 +213,8 @@ def main(argv: list[str] | None = None) -> int:
             args.test_args.extend(extra)
         else:
             parser.error("unrecognized arguments: " + " ".join(extra))
-    target = Path(getattr(args, "path", ".")).resolve()
+    raw_paths = args.path if isinstance(getattr(args, "path", "."), list) else [getattr(args, "path", ".")]
+    target = Path(raw_paths[0]).resolve()
     if args.subcommand == "probe-tools":
         tools = discover_optional_tools(target)
         print("=== Optional Auxiliary Tools Discovery ===")

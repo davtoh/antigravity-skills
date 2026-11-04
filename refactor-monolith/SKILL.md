@@ -290,8 +290,10 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 ### Virtual Environment Test Runner, Unstaged Working Tree & Zero Root Pollution
 
 1. **Virtualenv Test Runner (`run-tests`)**: Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> ...` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`).
+   - Automatically injects headless environments (`MPLBACKEND=Agg`, `QT_QPA_PLATFORM=offscreen`, `PYTHONUNBUFFERED=1`, `CI=true`) and enforces a safety timeout (`--timeout 180`, default 180s) to kill hanging GUI or stdin processes.
    - **Unittest discovery with pattern/flags**: `run-tests --path . -- discover tests -p "test_*.py" -v`
    - **Pytest test suite**: `run-tests --path . --runner pytest -- tests/ -v`
+   - **Direct module execution in venv**: `run-tests --path . -m <module> <args...>` (e.g. `run-tests --path . -m sphinx -W ...` or `run-tests --path . -m mypy src/`)
    - **Ad-hoc Python check**: `run-tests --path . -c "import pkg; print(pkg.__all__)"`
    - **OS-Agnostic Invariant**: NEVER hardcode OS-locked binary paths (`.\.venv\Scripts\python.exe` or `.venv/bin/python`). Always use `run-tests` to maintain cross-platform portability.
 2. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
@@ -300,7 +302,9 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
    - When deleting a superseded monolith file (e.g. replacing `cache.py` with `cache/__init__.py`), delete it via standard filesystem tools (`Remove-Item` or `python -c "import os; os.remove('...')"`), NOT `git rm`.
    - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs with `git diff` and `git status`.
    - Run `git status --short` before composing the closing suggested `git add` and `git commit` commands for the user to execute manually.
-4. **Anti-Sequential Test Thrash**: Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once (`discover tests`).
+4. **Anti-Sequential Test Thrash & Legacy Test Discovery Guard**:
+   - Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once.
+   - **Legacy Test Discovery Guard**: Always inspect `.refactor/plan.md` for designated test subdirectories before running discovery (e.g. `tests/unittest_tests/` or `tests/unit/`). Never run unbounded `discover tests` on repositories containing legacy scripts, vision experiments, or prototypes that invoke `plt.show()`, `cv2.imshow()`, `cv2.waitKey()`, or `input()`.
 5. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
 
 ---
@@ -346,6 +350,7 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Save Phase Checkpoint** | Save sub-phase note & prevent token drain | `state --checkpoint` | `python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Slices 1-3 complete"` |
 | **Advance Campaign Phase** | Mark phase complete and advance | `state --advance` | `python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1` |
 | **Per-Slice & Checkpoint Verification** | Diff against baseline contract | `verify --path <dir> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path <dir> --strict` |
+| **Multi-Directory Verification** | Verify contract across source and test packages | `verify --path <dir1> <dir2> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path erp tests/erp --strict` |
 | **Post-Refactor Regression Audit** | Diff live tree directly against pre-refactor Git SHA | `verify --path <dir> --git-ref <sha> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref HEAD~1 --strict` |
 | **Unified 3-Tier Diagnostic** | 1-call AST diff + Docker audit + live CDP UI | `diagnose --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path .` |
 | **Line-Ending Normalizer** | Normalize files to LF/CRLF before editing | `normalize-eol --path <dir> --to lf` | `python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path . --to lf` |
@@ -353,6 +358,7 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Safe HTML Script Injector** | Insert modular <script> tags safely into HTML | `inject-scripts --html <f> --scripts ..` | `python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html index.html --before app.js --scripts /static/js/a.js` |
 | **Venv Automated Test Runner (Unittest)** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -- discover tests -p "test_*.py"` |
 | **Venv Test Runner (Pytest)** | Run pytest suite in target virtualenv | `run-tests --runner pytest -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . --runner pytest -- tests/ -v` |
+| **Venv Direct Module Execution** | Run module (sphinx, mypy, pytest) in virtualenv | `run-tests -m <module> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -m sphinx -W documentation/ _build/` |
 | **Venv Direct Python Verification** | Run Python one-liner in target virtualenv | `run-tests -c "<code>"` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -c "import pkg; print(pkg.__all__)"` |
 | **Headless CDP Layout Audit** | Tier 3 UI verification (100% automated, default) | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL` |
 | **Live Browser UI Audit** | Attach to open visible Chrome (requires Allow) | `verify-ui --url <url> --live` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live` |

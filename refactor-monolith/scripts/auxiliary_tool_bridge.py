@@ -95,15 +95,28 @@ def _build_test_runner_command(target: Path, py_bin: str, extra_args: list[str],
     args = [a for a in clean if a.lower() != "unittest"] or ["discover", "tests"]
     return [py_bin, "-m", "unittest", *args]
 
-def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto") -> int:
-    """Execute test suite using virtualenv python if detected, falling back to sys.executable."""
+def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto", timeout: int = 180) -> int:
+    """Execute test suite using virtualenv python if detected, with headless env and safety timeout."""
     tools = discover_optional_tools(target)
     py_bin = tools.get("virtualenv_python") or sys.executable
     cmd = _build_test_runner_command(target, py_bin, extra_args, runner)
-    print(f"=== Test Runner (Interpreter: {py_bin}) ===\nExecuting: {' '.join(cmd)}\n")
+    env = os.environ.copy()
+    env.setdefault("MPLBACKEND", "Agg")
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env.setdefault("CI", "true")
+    print(f"=== Test Runner (Interpreter: {py_bin}, Timeout: {timeout}s) ===\nExecuting: {' '.join(cmd)}\n")
     try:
-        proc = subprocess.run(cmd, cwd=target, check=False)
+        proc = subprocess.run(cmd, cwd=target, env=env, timeout=timeout, check=False)
         return proc.returncode
+    except subprocess.TimeoutExpired:
+        print(
+            f"\n[TIMEOUT ERROR] Test execution timed out after {timeout} seconds!\n"
+            "The test runner may be hanging on interactive UI windows (plt.show, cv2.imshow, cv2.waitKey) or waiting for stdin (input()).\n"
+            "Please isolate headless tests (e.g. `run-tests --path . -- discover tests/unit`) or increase timeout via `run-tests --timeout <seconds>`.\n",
+            file=sys.stderr,
+        )
+        return 124
     except Exception as err:
         print(f"Error launching test runner: {err}", file=sys.stderr)
         return 1

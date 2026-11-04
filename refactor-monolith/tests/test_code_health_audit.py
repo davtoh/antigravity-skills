@@ -257,5 +257,26 @@ class TestSourceFileAuditAndCli(unittest.TestCase):
                 self.assertIn("CRLF", val)
                 self.assertIn("SPLIT POINT", val)
 
+    def test_audit_file_elevates_status_on_class_or_func_breach(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f = Path(tmpdir) / "god_class.py"
+            methods = "\n".join(f"    def m_{i}(self): pass" for i in range(15))
+            f.write_text(f"class BigBoss:\n{methods}\n", encoding="utf-8")
+            rep = audit_file(f, Path(tmpdir), AuditThresholds(warn_file_lines=350, max_file_lines=500, warn_class_methods=10, max_class_methods=12))
+            self.assertEqual(rep.status, "CRITICAL")
+            self.assertEqual(len(rep.classes), 1)
+            self.assertEqual(rep.classes[0].status, "CRITICAL")
+
+    def test_strict_vs_strict_warnings_exit_codes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f = Path(tmpdir) / "warning_only.py"
+            # 360 lines triggers file WARNING (> 350) but not CRITICAL (<= 500)
+            f.write_text("\n".join(f"x_{i} = {i}" for i in range(360)), encoding="utf-8")
+            with patch("sys.stdout", new_callable=io.StringIO):
+                # --strict exits 0 on warnings only
+                self.assertEqual(main(["--path", tmpdir, "--strict"]), 0)
+                # --strict-warnings exits 1 when any warning exists
+                self.assertEqual(main(["--path", tmpdir, "--strict-warnings"]), 1)
+
 if __name__ == "__main__":
     unittest.main()

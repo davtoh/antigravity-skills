@@ -261,17 +261,59 @@ def scope_baseline_to_target(before: CodebaseContract, target: Path, repo_root: 
     )
 
 
-def resolve_baseline_contract(target: Path, before_file: str = "", git_ref: str = "") -> CodebaseContract | None:
-    """Locate and load pre-refactor baseline contract from file, .refactor, or git ref, scoped to target."""
+def merge_contracts(contracts: list[CodebaseContract]) -> CodebaseContract:
+    """Merge multiple contracts into a single unified contract."""
+    if not contracts:
+        return CodebaseContract()
+    merged = CodebaseContract(commit_sha=contracts[0].commit_sha)
+    seen_handlers: set[tuple[str, str]] = set()
+    for c in contracts:
+        merged.html_ids = sorted(set(merged.html_ids) | set(c.html_ids))
+        merged.select_ids = sorted(set(merged.select_ids) | set(c.select_ids))
+        for h in c.inline_handlers:
+            key = (h.get("event", ""), h.get("target", ""))
+            if key not in seen_handlers:
+                seen_handlers.add(key)
+                merged.inline_handlers.append(h)
+        for s in c.script_order:
+            if s not in merged.script_order:
+                merged.script_order.append(s)
+        merged.js_queried_ids = sorted(set(merged.js_queried_ids) | set(c.js_queried_ids))
+        merged.js_global_exports = sorted(set(merged.js_global_exports) | set(c.js_global_exports))
+        for r in c.python_routes:
+            if r not in merged.python_routes:
+                merged.python_routes.append(r)
+        merged.python_globals = sorted(set(merged.python_globals) | set(c.python_globals))
+        merged.css_important_count += c.css_important_count
+        merged.css_custom_properties = sorted(set(merged.css_custom_properties) | set(c.css_custom_properties))
+    return merged
+
+
+def scope_baseline_to_targets(before: CodebaseContract, targets: list[Path], repo_root: Path) -> CodebaseContract:
+    """Scope baseline contract to multiple target subdirectories."""
+    if not targets:
+        return before
+    if len(targets) == 1:
+        return scope_baseline_to_target(before, targets[0], repo_root)
+    scoped_list = [scope_baseline_to_target(before, t, repo_root) for t in targets]
+    return merge_contracts(scoped_list)
+
+
+def resolve_baseline_contract(target: Path | list[Path], before_file: str = "", git_ref: str = "") -> CodebaseContract | None:
+    """Locate and load pre-refactor baseline contract from file, .refactor, or git ref, scoped to target(s)."""
+    targets = target if isinstance(target, list) else [target]
+    primary = targets[0]
     if before_file and Path(before_file).is_file():
         return CodebaseContract.from_dict(json.loads(Path(before_file).read_text(encoding="utf-8")))
     if git_ref:
-        return build_contract(target, git_ref)
+        if len(targets) > 1:
+            return merge_contracts([build_contract(t, git_ref) for t in targets])
+        return build_contract(primary, git_ref)
     if not before_file:
-        candidate = get_refactor_dir(target) / "baseline.json"
-        legacy_candidate = target / ".refactor_baseline.json"
+        candidate = get_refactor_dir(primary) / "baseline.json"
+        legacy_candidate = primary / ".refactor_baseline.json"
         before_path = candidate if candidate.is_file() else (legacy_candidate if legacy_candidate.is_file() else None)
         if before_path:
             loaded = CodebaseContract.from_dict(json.loads(before_path.read_text(encoding="utf-8")))
-            return scope_baseline_to_target(loaded, target, get_repo_root(target))
+            return scope_baseline_to_targets(loaded, targets, get_repo_root(primary))
     return None
