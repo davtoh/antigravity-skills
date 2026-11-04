@@ -272,3 +272,31 @@ def save_probe(
     # Write normalized LF content
     target_file.write_text(content.replace("\r\n", "\n"), encoding="utf-8")
     return target_file
+
+
+def register_parser(subparsers: Any) -> Any:
+    """Register 'probe' subparser and its subactions into diagnose.py CLI."""
+    p_probe = subparsers.add_parser("probe", help="Dynamic & extensible diagnostic probes (hardware, DB, etc.)")
+    probe_sub = p_probe.add_subparsers(dest="probe_action", help="Probe action to execute")
+
+    p_plist = probe_sub.add_parser("list", help="List registered diagnostic probes")
+    p_plist.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_plist.add_argument("--json", action="store_true", help="Output JSON format")
+
+    p_prun = probe_sub.add_parser("run", help="Run a diagnostic probe by name or file path")
+    p_prun.add_argument("name", help="Probe name or file path")
+    p_prun.add_argument("probe_args", nargs="*", default=[], help="Arguments passed to the probe")
+    p_prun.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_prun.add_argument("--json", action="store_true", help="Output JSON format")
+
+    p_pnew = probe_sub.add_parser("new", help="Scaffold a new probe template in .diagnostics/probes/")
+    p_pnew.add_argument("name", help="Probe name to create")
+    p_pnew.add_argument("--domain", default="general", help="Diagnostic domain (e.g. hardware, database)")
+    p_pnew.add_argument("--path", default=None, help="Root directory (default: current directory)")
+
+    p_psave = probe_sub.add_parser("save", help="Promote a verified script into the probe registry")
+    p_psave.add_argument("source", help="Source script path (e.g. from scratch/)")
+    p_psave.add_argument("name", help="Registered probe name")
+    p_psave.add_argument("--workspace", action="store_true", help="Save to workspace .diagnostics/ instead of global")
+    p_psave.add_argument("--path", default=None, help="Root workspace directory")
+    return p_probe

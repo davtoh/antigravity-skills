@@ -297,3 +297,44 @@ def scaffold_defect(
             f"python -m unittest {rel_test}",
         ],
     }
+
+
+def cmd_scaffold_defect(args: Any) -> int:
+    """CLI handler for `diagnose.py scaffold-defect`."""
+    workspace = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd()
+    try:
+        result = scaffold_defect(
+            workspace=workspace,
+            defect_id_or_fp=args.id,
+            branch=getattr(args, "branch", False),
+            elevate=getattr(args, "elevate", False),
+            fix=getattr(args, "fix", False),
+        )
+    except Exception as exc:
+        print(f"[diagnose scaffold-defect] Error: {exc}", file=sys.stderr)
+        return 1
+
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2))
+        return 0
+
+    d = result["defect"]
+    track = result["track"]
+    print(f"\n=== Defect Remediation Dispatch: {d.get('id')} ({track.upper()}) ===")
+    print(f"File:        {d.get('file')}:{d.get('line')}")
+    print(f"Rule:        {d.get('rule_id')} ({d.get('category')})")
+    print(f"Message:     {d.get('message')}")
+    print(f"Fix Hint:    {d.get('suggested_fix')}")
+    if result.get("branch"):
+        print(f"Branch:      {result.get('branch')} (Active)")
+
+    if track == "architectural":
+        print("\n" + result.get("brief", ""))
+        print("\nNext Action: Invoke /frontier-architect and /grill-me with the brief above.")
+    else:
+        print(f"\nQuarantine Test: {result.get('test_file_rel')}")
+        print("\nVerification Commands (/app-debugger):")
+        for cmd in result.get("commands", []):
+            print(f"  {cmd}")
+    print()
+    return 0

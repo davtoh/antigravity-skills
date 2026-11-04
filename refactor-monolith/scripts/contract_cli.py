@@ -210,6 +210,7 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
             phase=getattr(args, "phase", None), phase_title=getattr(args, "phase_title", ""),
             status=getattr(args, "status", ""), sha=getattr(args, "sha", ""), note=getattr(args, "note", ""),
             as_json=getattr(args, "json", False),
+            record_defect=getattr(args, "record_defect", ""),
         )
     return _dispatch_auxiliary_cmd(subcmd, target, args)
 

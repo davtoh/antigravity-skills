@@ -113,6 +113,21 @@ class TestParser(unittest.TestCase):
         self.assertEqual(args.wait, 3.0)
         self.assertTrue(args.strict)
 
+    def test_parse_scan_subcommand(self):
+        args = self.parser.parse_args(["scan", "--path", "src", "--deep", "--json", "--strict"])
+        self.assertEqual(args.subcommand, "scan")
+        self.assertEqual(args.path, "src")
+        self.assertTrue(args.deep)
+        self.assertTrue(args.json)
+        self.assertTrue(args.strict)
+
+    def test_parse_scaffold_defect_subcommand(self):
+        args = self.parser.parse_args(["scaffold-defect", "--id", "DEFECT-001", "--branch", "--elevate"])
+        self.assertEqual(args.subcommand, "scaffold-defect")
+        self.assertEqual(args.id, "DEFECT-001")
+        self.assertTrue(args.branch)
+        self.assertTrue(args.elevate)
+
 class TestSubcommandsExecution(unittest.TestCase):
     """Test execution dispatch of subcommands."""
 
@@ -190,6 +205,27 @@ class TestSubcommandsExecution(unittest.TestCase):
                 called_cmd = mock_run.call_args[0][0]
                 self.assertIn("-m", called_cmd)
                 self.assertIn("unittest", called_cmd)
+
+    def test_cmd_scan_and_scaffold_execution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            code_file = root / "service.py"
+            code_file.write_text("def process(items=[]):\n    pass\n", encoding="utf-8")
+
+            # 1. Test cmd_scan
+            args_scan = argparse.Namespace(path=str(root), deep=False, json=True, strict=False)
+            code = diagnose.cmd_scan(args_scan)
+            self.assertEqual(code, 0)
+            cat_file = root / ".diagnostics" / "defect_catalog.json"
+            self.assertTrue(cat_file.is_file())
+
+            # 2. Test cmd_scaffold_defect
+            args_scaf = argparse.Namespace(
+                path=str(root), id="DEFECT-001", branch=False, elevate=False, fix=True, json=True
+            )
+            code_scaf = diagnose.cmd_scaffold_defect(args_scaf)
+            self.assertEqual(code_scaf, 0)
+            self.assertTrue((root / "tests" / "quarantine" / "test_defect_001.py").is_file())
 
 class TestMainDispatcher(unittest.TestCase):
     """Test top-level main() entrypoint."""

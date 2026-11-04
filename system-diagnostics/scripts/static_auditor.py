@@ -269,3 +269,16 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
 
     print(f"\nAudit Result: {results['status']}\n")
     return overall_code
+
+
+def register_parser(subparsers: Any) -> Any:
+    """Register 'audit' subparser into diagnose.py CLI."""
+    p_aud = subparsers.add_parser("audit", help="Static quality, defect, typecheck and code smell audit")
+    p_aud.add_argument("--path", default=None, help="Root directory or file to audit")
+    p_aud.add_argument("--typecheck", action="store_true", help="Run virtualenv typecheckers (ruff/mypy)")
+    p_aud.add_argument("--smells", action="store_true", help="Scan for platform import smells")
+    p_aud.add_argument("--callable-smoke", action="store_true", help="Run callable signature and constructor smoke checks")
+    p_aud.add_argument("--json", action="store_true", help="Output JSON report")
+    p_aud.add_argument("--strict", action="store_true", help="Exit code 1 if any smells or defects found")
+    return p_aud
+

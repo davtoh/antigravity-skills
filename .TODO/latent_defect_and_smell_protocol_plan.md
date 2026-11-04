@@ -281,7 +281,11 @@ When you authorize execution, Tier 3 will proceed across 4 non-breaking vertical
    - Dynamic line and file reconciliation across moves.
    - Red-to-Green tactical test synthesizer (`tests/quarantine/test_<id>.py`) and `--elevate` architectural briefing generator for `/frontier-architect` + `/grill-me`.
    - Verified with 7 dedicated unit tests (81/81 total passing in `system-diagnostics`).
-3. **Slice 3 — Parser Delegation in `diagnose.py` & Campaign Hook in `campaign_manager.py`: [NEXT]**
-   - Delegate `audit`, `scan`, and `scaffold-defect` subparser definitions from `diagnose.py` to keep `diagnose.py` at **~450 lines** (safely under the 500L ceiling). Wire `campaign_manager.py` to record discovered defects directly into `.diagnostics/defect_catalog.json` with zero changes to `plan.md`.
-4. **Slice 4 — Closed-Loop Unit Tests & Executable Documentation Sync: [DEFERRED]**
+3. **Slice 3 — Parser Delegation in `diagnose.py` & Campaign Hook in `campaign_manager.py`: [COMPLETED]**
+   - Delegated `audit`, `probe`, `scan`, and `scaffold-defect` subparser definitions from `diagnose.py` to keep `diagnose.py` at **461 lines** (shrunk from 490 lines, safely under the 500L ceiling).
+   - Exposed `diagnose.py scan` and `diagnose.py scaffold-defect` CLI commands.
+   - Wired `campaign_manager.py` with `record_campaign_defect` and `--record-defect` to record discovered defects directly into `.diagnostics/defect_catalog.json` with zero changes to `plan.md`.
+   - Added handoff summary for quarantined defects upon campaign completion.
+   - Verified with 3 new CLI tests (84/84 passing in `system-diagnostics`) and 6 campaign lifecycle tests (136/136 in `refactor-monolith`).
+4. **Slice 4 — Closed-Loop Unit Tests & Executable Documentation Sync: [NEXT]**
    - Add end-to-end integration tests for Dual-Key fingerprint stability across file moves, sandbox side-effect containment, dirty-tree branch safety, and dual-track scaffolding. Update `skills/system-diagnostics/SKILL.md`, `skills/refactor-monolith/SKILL.md`, and `skills/app-debugger/SKILL.md`.

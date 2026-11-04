@@ -19,6 +19,7 @@ from scripts.campaign_manager import (
     cmd_state,
     get_refactor_dir,
     _format_phase_icon,
+    record_campaign_defect,
 )
 
 class TestCampaignLifecycle(unittest.TestCase):
@@ -93,6 +94,51 @@ class TestCampaignLifecycle(unittest.TestCase):
             self.assertEqual(code_adv, 1)
             code_cp = cmd_state(base, action="checkpoint", note="test")
             self.assertEqual(code_cp, 1)
+
+    def test_record_campaign_defect_zero_plan_drift(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            rdir = base / ".refactor"
+            rdir.mkdir()
+            plan_file = rdir / "plan.md"
+            plan_file.write_text("# SOTA Plan\nOriginal plan content.\n", encoding="utf-8")
+
+            # 1. Record defect directly
+            json_path, entry = record_campaign_defect(
+                base,
+                defect_data={
+                    "rule_id": "MUTABLE_DEFAULT_ARG",
+                    "file": "src/worker.py",
+                    "line": 42,
+                    "symbol": "Worker.process",
+                    "message": "Mutable default list detected.",
+                    "suggested_fix": "Use items=None.",
+                    "track": "tactical",
+                }
+            )
+            self.assertTrue(json_path.is_file())
+            cat_data = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(cat_data["summary"]["total"], 1)
+            self.assertEqual(cat_data["defects"][0]["id"], "DEFECT-001")
+            self.assertEqual(cat_data["defects"][0]["track"], "tactical")
+
+            # 2. Assert zero modification to plan.md (Refactoring Invariant)
+            self.assertEqual(plan_file.read_text(encoding="utf-8"), "# SOTA Plan\nOriginal plan content.\n")
+
+            # 3. Record defect via cmd_state --record-defect CLI hook
+            cmd_state(base, action="init", plan=str(plan_file), phases=1, phase_title="Phase 1")
+            code = cmd_state(base, action="", record_defect="UNHANDLED_ASYNC_COROUTINE:src/events.py:10:Async coroutine not awaited")
+            self.assertEqual(code, 0)
+            cat_data_after = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(cat_data_after["summary"]["total"], 2)
+
+            # 4. Advance campaign to completion and verify handoff summary
+            import unittest.mock
+            with unittest.mock.patch("builtins.print") as mock_print:
+                cmd_state(base, action="advance")
+                printed = [call_args[0][0] for call_args in mock_print.call_args_list if call_args[0]]
+                self.assertTrue(any("Latent Defect Handoff" in str(p) for p in printed))
 
 if __name__ == "__main__":
     unittest.main()

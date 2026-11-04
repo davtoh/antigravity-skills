@@ -24,6 +24,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import surface_scanners
 import probe_runner
 import static_auditor
+import shadow_prober
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -157,30 +158,26 @@ def cmd_surface(args: argparse.Namespace) -> int:
     """Scan directory surface for HTML element IDs, JS globals, and Python routes."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
     files = _walk_source_files(target_path)
-
     all_ids, all_selects, all_globals, all_routes, important_count = set(), set(), set(), [], 0
+
     for hp in files["html"]:
         try:
             surf = surface_scanners.scan_html_surface(hp.read_text(encoding="utf-8", errors="replace"))
-            all_ids.update(surf.ids)
-            all_selects.update(surf.selects)
+            all_ids.update(surf.ids); all_selects.update(surf.selects)
         except Exception:
             pass
-
     for jp in files["js"]:
         try:
             surf = surface_scanners.scan_js_surface(jp.read_text(encoding="utf-8", errors="replace"))
             all_globals.update(surf.global_exports)
         except Exception:
             pass
-
     for pp in files["py"]:
         try:
             surf = surface_scanners.scan_python_surface(pp.read_text(encoding="utf-8", errors="replace"))
             all_routes.extend(surf.routes)
         except Exception:
             pass
-
     for cp in files["css"]:
         try:
             surf = surface_scanners.scan_css_surface(cp.read_text(encoding="utf-8", errors="replace"))
@@ -198,7 +195,6 @@ def cmd_surface(args: argparse.Namespace) -> int:
         "backend_routes": all_routes,
         "css_important_count": important_count,
     }
-
     if args.json:
         print(json.dumps(data, indent=2))
         return 0
@@ -241,17 +237,22 @@ def cmd_audit(args: argparse.Namespace) -> int:
     py_bin = find_virtualenv_python(target_path)
     return static_auditor.cmd_audit(target_path, py_bin, args)
 
+def cmd_scan(args: argparse.Namespace) -> int:
+    """Execute polyglot defect scan and update .diagnostics/ SSOT catalog."""
+    return shadow_prober.cmd_scan(args)
+
+def cmd_scaffold_defect(args: argparse.Namespace) -> int:
+    """Execute JIT defect scaffolding for remediation."""
+    return shadow_prober.cmd_scaffold_defect(args)
+
 def cmd_all(args: argparse.Namespace) -> int:
     """Execute unified 3-tier diagnostic audit in 1 command."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
-    print("================================================================================")
-    print("                    UNIFIED 3-TIER SYSTEM DIAGNOSTIC AUDIT                      ")
-    print("================================================================================\n")
+    print("=" * 80 + "\n                    UNIFIED 3-TIER SYSTEM DIAGNOSTIC AUDIT                      \n" + "=" * 80 + "\n")
 
     # Tier 1: Static Surface & Test Suite Check
     print("--- Tier 1: Static Surface & Tests ---")
-    surface_args = argparse.Namespace(path=str(target_path), json=False, show_ids=False, show_globals=False, show_routes=False)
-    cmd_surface(surface_args)
+    cmd_surface(argparse.Namespace(path=str(target_path), json=False, show_ids=False, show_globals=False, show_routes=False))
 
     tests_dir = target_path / "tests"
     t1_status = "SKIPPED (no tests/ directory)"
@@ -288,17 +289,14 @@ def cmd_all(args: argparse.Namespace) -> int:
     else:
         print(f"[Tier 3] Notice: {t3_status}")
 
-    print("\n================================================================================")
-    print("                         AXIOM 9 VERIFICATION SUMMARY                           ")
-    print("================================================================================")
+    print("\n" + "=" * 80 + "\n                         AXIOM 9 VERIFICATION SUMMARY                           \n" + "=" * 80)
     print(f"  Tier 1 (Surface & Tests):   {t1_status}")
     print(f"  Tier 2 (Container Runtime): {t2_status}")
     print(f"  Tier 3 (Browser UI/Layout): {t3_status}")
-    print("================================================================================\n")
+    print("=" * 80 + "\n")
 
-    if args.strict:
-        if any("FAILED" in st for st in (t1_status, t2_status, t3_status)):
-            return 1
+    if args.strict and any("FAILED" in st for st in (t1_status, t2_status, t3_status)):
+        return 1
     return 0
 
 def cmd_probe(args: argparse.Namespace) -> int:
@@ -424,43 +422,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_all.add_argument("--wait", type=float, default=1.5, help="Seconds to wait for UI tier settle (default: 1.5)")
     p_all.add_argument("--strict", action="store_true", help="Exit code 1 if any tier fails")
 
-    # 6. Probe subcommand (Dynamic & extensible diagnostic probes)
-    p_probe = sub.add_parser("probe", help="Dynamic & extensible diagnostic probes (hardware, DB, etc.)")
-    probe_sub = p_probe.add_subparsers(dest="probe_action", help="Probe action to execute")
+    # 6. Extensible diagnostic probes
+    probe_runner.register_parser(sub)
 
-    # probe list
-    p_plist = probe_sub.add_parser("list", help="List registered diagnostic probes")
-    p_plist.add_argument("--path", default=None, help="Root directory (default: current directory)")
-    p_plist.add_argument("--json", action="store_true", help="Output JSON format")
+    # 7. Static quality, defect, typecheck and code smell audit
+    static_auditor.register_parser(sub)
 
-    # probe run
-    p_prun = probe_sub.add_parser("run", help="Run a diagnostic probe by name or file path")
-    p_prun.add_argument("name", help="Probe name or file path")
-    p_prun.add_argument("probe_args", nargs="*", default=[], help="Arguments passed to the probe")
-    p_prun.add_argument("--path", default=None, help="Root directory (default: current directory)")
-    p_prun.add_argument("--json", action="store_true", help="Output JSON format")
-
-    # probe new
-    p_pnew = probe_sub.add_parser("new", help="Scaffold a new probe template in .diagnostics/probes/")
-    p_pnew.add_argument("name", help="Probe name to create")
-    p_pnew.add_argument("--domain", default="general", help="Diagnostic domain (e.g. hardware, database)")
-    p_pnew.add_argument("--path", default=None, help="Root directory (default: current directory)")
-
-    # probe save
-    p_psave = probe_sub.add_parser("save", help="Promote a verified script into the probe registry")
-    p_psave.add_argument("source", help="Source script path (e.g. from scratch/)")
-    p_psave.add_argument("name", help="Registered probe name")
-    p_psave.add_argument("--workspace", action="store_true", help="Save to workspace .diagnostics/ instead of global")
-    p_psave.add_argument("--path", default=None, help="Root workspace directory")
-
-    # 7. Audit subcommand (Static Defect, Type and Code Smell Audit)
-    p_aud = sub.add_parser("audit", help="Static quality, defect, typecheck and code smell audit")
-    p_aud.add_argument("--path", default=None, help="Root directory or file to audit")
-    p_aud.add_argument("--typecheck", action="store_true", help="Run virtualenv typecheckers (ruff/mypy)")
-    p_aud.add_argument("--smells", action="store_true", help="Scan for platform import smells")
-    p_aud.add_argument("--callable-smoke", action="store_true", help="Run callable signature and constructor smoke checks")
-    p_aud.add_argument("--json", action="store_true", help="Output JSON report")
-    p_aud.add_argument("--strict", action="store_true", help="Exit code 1 if any smells or defects found")
+    # 8. Polyglot defect scan and JIT scaffolder
+    shadow_prober.register_parsers(sub)
 
     return parser
 
@@ -479,6 +448,8 @@ def main() -> int:
         "all": cmd_all,
         "probe": cmd_probe,
         "audit": cmd_audit,
+        "scan": cmd_scan,
+        "scaffold-defect": cmd_scaffold_defect,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:
