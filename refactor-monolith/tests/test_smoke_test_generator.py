@@ -150,5 +150,65 @@ class TestInlineScriptFunctionExtraction(unittest.TestCase):
             issues = diff_contracts(c_before, c_after)
             self.assertEqual(issues, [], f"Unexpected contract issues found: {issues}")
 
+
+class TestCallableSmokeParity(unittest.TestCase):
+    """Test generated smoke test callable signature and class instantiation verification."""
+
+    def test_callable_smoke_verifies_classes_and_functions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            pkg = base / "pkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "service.py").write_text(
+                "import abc\n"
+                "class AbstractWorker(abc.ABC):\n"
+                "    @abc.abstractmethod\n"
+                "    def work(self):\n"
+                "        pass\n\n"
+                "class DataProcessor:\n"
+                "    def __init__(self, mode: str = 'default'):\n"
+                "        self.mode = mode\n"
+                "    def process(self):\n"
+                "        return 100\n\n"
+                "def calculate(factor: int = 1) -> int:\n"
+                "    return 42 * factor\n",
+                encoding="utf-8",
+            )
+
+            out_test = base / "tests" / "test_smoke_callables.py"
+            code = cmd_generate_smoke_test(pkg, out_file=str(out_test))
+            self.assertEqual(code, 0)
+            self.assertTrue(out_test.exists())
+
+            # Execute generated smoke test - should pass cleanly
+            res = subprocess.run([sys.executable, str(out_test)], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"Smoke test failed: {res.stderr}\nOutput: {res.stdout}")
+
+    def test_callable_smoke_catches_init_type_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            pkg = base / "broken_pkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "faulty.py").write_text(
+                "class FaultyClass:\n"
+                "    def __init__(self):\n"
+                "        raise TypeError('missing 1 required positional argument: stage')\n",
+                encoding="utf-8",
+            )
+
+            out_test = base / "tests" / "test_smoke_broken.py"
+            code = cmd_generate_smoke_test(pkg, out_file=str(out_test))
+            self.assertEqual(code, 0)
+
+            # Execution of generated smoke test should catch the TypeError and fail with returncode != 0
+            res = subprocess.run([sys.executable, str(out_test)], capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Initialization TypeError in FaultyClass", res.stderr + res.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

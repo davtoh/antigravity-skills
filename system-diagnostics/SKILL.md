@@ -36,6 +36,11 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
    - Discovers, runs, scaffolds, and promotes reusable domain probes (e.g., `camera_hardware`, databases, sockets) across global and workspace `.diagnostics/probes/` registries.
    - Eliminates disposable scratch script sprawl: agents test domain-specific logic and promote working checks into permanent diagnostic tools via `diagnose.py probe save`.
    - Built-in `camera_hardware.py` probe tests DirectShow, Media Foundation, and V4L2 device indices, validates pixel frame decoding without crashing on `-1.0` register queries, and audits Windows PnP device states.
+7. **Static Quality, Defect & Code Smell Audit (`diagnose.py audit`)**:
+   - Executes virtualenv-native static typecheckers (`ruff`, `mypy`, `pyright`, `dart analyze`) on target paths or whole repositories.
+   - Detects dynamic platform import ladder smells (`try...except ImportError` on platform libraries like `win32api`, `fcntl`, `_xlmac`) and recommends static platform guards (`if sys.platform == 'win32':`).
+   - Runs callable smoke tests to verify module importability, signature validity, and catch constructor `TypeErrors` before runtime.
+   - **Strict Token-Budget Guard**: Automatically truncates error output to the top 5 defects per checker/category, preventing context window explosion during AI agent interactions.
 
 ---
 
@@ -44,7 +49,7 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
 Before executing diagnostic commands on a project, verify the diagnostics test suite:
 
 ```bash
-# Run the fast automated diagnostic test suite (18 unit tests, < 0.1s)
+# Run the fast automated diagnostic test suite (63 unit tests, < 0.3s)
 python -m unittest discover -s skills/system-diagnostics/tests -p "test_*.py"
 ```
 
@@ -70,6 +75,10 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Probe Camera Hardware & Locks** | Physical/virtual video | Probes backends, decoding & locks | `python skills/system-diagnostics/scripts/diagnose.py probe run camera_hardware` |
 | **Scaffold New Domain Probe** | Missing domain | Generates protocol boilerplate | `python skills/system-diagnostics/scripts/diagnose.py probe new db_pool --domain database` |
 | **Promote Scratch Script to Probe** | Verified scratch | Saves script to reusable registry | `python skills/system-diagnostics/scripts/diagnose.py probe save scratch/check_db.py db_pool` |
+| **Static Defect & Type Audit** | Source repository | Runs venv ruff/mypy (top-5 capped) | `python skills/system-diagnostics/scripts/diagnose.py audit --path src/` |
+| **Detect Platform Import Smells** | Source repository | Flags dynamic try..except ladders | `python skills/system-diagnostics/scripts/diagnose.py audit --smells` |
+| **Callable Smoke & Init Check** | Source repository | Checks signatures & constructor TypeErrors | `python skills/system-diagnostics/scripts/diagnose.py audit --callable-smoke` |
+| **Export Static Defect JSON** | Source repository | Full machine-readable audit report | `python skills/system-diagnostics/scripts/diagnose.py audit --json` |
 
 ---
 
@@ -134,6 +143,17 @@ python skills/system-diagnostics/scripts/diagnose.py probe {list,run,new,save} [
 - `new <NAME> [--domain <DOMAIN>]`: Scaffolds a new probe boilerplate in `.diagnostics/probes/<name>.py`.
 - `save <SOURCE_PATH> <NAME> [--workspace]`: Promotes a verified scratch script into the reusable probe registry.
 
+### Subcommand: `audit`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py audit [OPTIONS]
+```
+- `--path <PATH>`: Target root directory or file to audit (default: current directory).
+- `--typecheck`: Runs virtualenv-detected static type checkers (`ruff`, `mypy`).
+- `--smells`: Scans for dynamic platform import ladders (`try...except ImportError`) and recommends static guards.
+- `--callable-smoke`: Runs AST and signature checks, testing class instantiability to catch initialization `TypeErrors`.
+- `--json`: Outputs structured JSON report.
+- `--strict`: Exits with return code 1 if any defects or smells are detected.
+
 ---
 
 ## Windows Shell & Tooling Resilience
@@ -156,6 +176,7 @@ skills/system-diagnostics/
 │   └── camera_hardware.py            # Built-in camera hardware & acquisition probe
 ├── scripts/
 │   ├── diagnose.py                   # Unified CLI entrypoint with auto-discovery
+│   ├── static_auditor.py             # Modular static defect, smell & callable auditor
 │   ├── probe_runner.py               # Pluggable extension runner & probe registry
 │   ├── cdp_inspect.py                # CDP layout, DOMrect, and overflow inspector
 │   ├── cdp_transport.py              # Zero-dependency RFC 6455 WebSocket client
@@ -165,5 +186,6 @@ skills/system-diagnostics/
 │   └── css_inspector.py              # CSS layout, overflow, and specificity checks
 └── tests/
     ├── test_diagnose.py              # Automated unit tests for CLI & discovery
+    ├── test_static_auditor.py        # Automated unit tests for static & smell audit
     └── test_probe_runner.py          # Automated unit tests for dynamic probe extensions
 ```

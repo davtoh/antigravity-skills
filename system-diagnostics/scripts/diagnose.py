@@ -23,6 +23,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import surface_scanners
 import probe_runner
+import static_auditor
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -233,6 +234,12 @@ def cmd_tests(args: argparse.Namespace) -> int:
     print(f"Command: {' '.join(cmd)}\n")
     res = subprocess.run(cmd, cwd=str(target_path))
     return res.returncode
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Execute static quality, defect, and code smell audit."""
+    target_path = Path(args.path).resolve() if args.path else Path.cwd()
+    py_bin = find_virtualenv_python(target_path)
+    return static_auditor.cmd_audit(target_path, py_bin, args)
 
 def cmd_all(args: argparse.Namespace) -> int:
     """Execute unified 3-tier diagnostic audit in 1 command."""
@@ -446,6 +453,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_psave.add_argument("--workspace", action="store_true", help="Save to workspace .diagnostics/ instead of global")
     p_psave.add_argument("--path", default=None, help="Root workspace directory")
 
+    # 7. Audit subcommand (Static Defect, Type and Code Smell Audit)
+    p_aud = sub.add_parser("audit", help="Static quality, defect, typecheck and code smell audit")
+    p_aud.add_argument("--path", default=None, help="Root directory or file to audit")
+    p_aud.add_argument("--typecheck", action="store_true", help="Run virtualenv typecheckers (ruff/mypy)")
+    p_aud.add_argument("--smells", action="store_true", help="Scan for platform import smells")
+    p_aud.add_argument("--callable-smoke", action="store_true", help="Run callable signature and constructor smoke checks")
+    p_aud.add_argument("--json", action="store_true", help="Output JSON report")
+    p_aud.add_argument("--strict", action="store_true", help="Exit code 1 if any smells or defects found")
+
     return parser
 
 def main() -> int:
@@ -462,6 +478,7 @@ def main() -> int:
         "tests": cmd_tests,
         "all": cmd_all,
         "probe": cmd_probe,
+        "audit": cmd_audit,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

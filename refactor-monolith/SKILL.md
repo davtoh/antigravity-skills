@@ -309,14 +309,18 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
      - Python: Use static guards `if sys.platform == "win32":` / `elif sys.platform == "darwin":` or `if sys.version_info >= (3, 11):`. Provide explicit typed stubs or interfaces rather than leaving symbols untyped.
      - JS/TS: Use `if (typeof window !== 'undefined')` or `if (process.platform === 'win32')`.
      - Dart: Use `if (Platform.isWindows)` or `if (kIsWeb)`.
-   - **Latent Defect & Smell Protocol**: If an existing bug or signature mismatch (e.g. missing required parameter in an upstream library) is discovered during decomposition, document it under `[Latent Defects & Code Smells Discovered]`, add a targeted test, and fix it under test verification rather than ignoring it or performing silent untracked rewrites.
+   - **Zero-Drift Latent Defect & Smell Quarantine Protocol**:
+     - **Behavior Preservation Invariant ($\Delta(\text{Observable Behavior}) \equiv 0$)**: The prime directive of refactoring is restructuring code without altering behavior. The agent must **NEVER modify production business logic** during a decomposition turn, even if an upstream bug, dead branch, or signature mismatch is detected.
+     - **Quarantine & Log**: When a latent defect or code smell is uncovered via AST inspection or `typecheck`, document it under `[Latent Defects & Code Smells Discovered (Quarantined)]` in `.refactor/plan.md` and the turn summary. Include: Target File & Line, Observed Defect / AST Signature, Estimated Impact, and Remediation Recommendation.
+     - **Quarantine Test Harness (Zero-Regression)**: The agent may optionally author an isolated regression test in `tests/quarantine/` or mark it with `@pytest.mark.xfail` or `unittest.expectedFailure` to lock in reproduction without failing the zero-regression refactoring gate.
+     - **User Approval & Dedicated Remediation Gate**: All behavioral fixes must be explicitly reviewed by the user and deferred to a dedicated bug-fixing turn (using `/app-debugger`), preserving bisectability, clean git provenance, and preventing cascade regressions.
 3. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
 4. **Strict No-Staging Invariant (Leave Working Tree Unstaged)**:
    - **NEVER run `git add` or `git rm` during a refactoring turn.**
    - When deleting a superseded monolith file (e.g. replacing `cache.py` with `cache/__init__.py`), delete it via standard filesystem tools (`Remove-Item` or `python -c "import os; os.remove('...')"`), NOT `git rm`.
    - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs with `git diff` and `git status`.
    - Run `git status --short` before composing the closing suggested `git add` and `git commit` commands for the user to execute manually.
-4. **Anti-Sequential Test Thrash & Legacy Test Discovery Guard**:
+5. **Anti-Sequential Test Thrash & Legacy Test Discovery Guard**:
    - Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once.
    - **Legacy Test Discovery Guard**: Always inspect `.refactor/plan.md` for designated test subdirectories before running discovery (e.g. `tests/unittest_tests/` or `tests/unit/`). Never run unbounded `discover tests` on repositories containing legacy scripts, vision experiments, or prototypes that invoke `plt.show()`, `cv2.imshow()`, `cv2.waitKey()`, or `input()`.
 5. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
