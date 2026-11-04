@@ -21,6 +21,8 @@ from scripts.campaign_manager import (
     _format_phase_icon,
     record_campaign_defect,
 )
+from scripts.candidate_defect_scanner import scan_candidate_defects, DefectEntry
+from scripts.contract_cli import main as cli_main
 
 class TestCampaignLifecycle(unittest.TestCase):
     def test_state_management_lifecycle(self):
@@ -139,6 +141,85 @@ class TestCampaignLifecycle(unittest.TestCase):
                 cmd_state(base, action="advance")
                 printed = [call_args[0][0] for call_args in mock_print.call_args_list if call_args[0]]
                 self.assertTrue(any("Latent Defect Handoff" in str(p) for p in printed))
+
+    def test_candidate_defect_scanner_high_signal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            sample = base / "sample_service.py"
+            sample.write_text(
+                "def calculate(items=[]):\n"
+                "    a = missing_name_xyz + 1\n"
+                "    return a\n"
+                "    print('unreachable')\n",
+                encoding="utf-8",
+            )
+            findings = scan_candidate_defects([sample])
+            rules = {f.rule_id for f in findings}
+            self.assertIn("MUTABLE_DEFAULT_ARG", rules)
+            self.assertIn("UNREACHABLE_CODE", rules)
+            self.assertIn("UNDEFINED_NAME", rules)
+
+            syntax_err = base / "broken_syntax.py"
+            syntax_err.write_text("def broken(\n", encoding="utf-8")
+            findings_syntax = scan_candidate_defects([syntax_err])
+            self.assertEqual(len(findings_syntax), 1)
+            self.assertEqual(findings_syntax[0].rule_id, "SYNTAX_ERROR")
+
+    def test_state_init_opt_in_defect_scan_and_plan_link(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            src = base / "src"
+            src.mkdir()
+            (src / "service.py").write_text("def run(queue=[]):\n    return queue\n", encoding="utf-8")
+
+            # Default init: scan_defects is False -> zero .diagnostics directory
+            cmd_state(base, action="init", plan=".refactor/plan.md", phases=2, scan_defects=False)
+            self.assertFalse((base / ".diagnostics").exists())
+
+            # Opt-in init with scan_defects=True -> creates .diagnostics/ and links in plan.md
+            cmd_state(base, action="init", plan=".refactor/plan.md", phases=2, scan_defects=True)
+            self.assertTrue((base / ".diagnostics" / "defect_catalog.json").is_file())
+            self.assertTrue((base / ".diagnostics" / "DEFECT_CATALOG.md").is_file())
+            plan_content = (base / ".refactor" / "plan.md").read_text(encoding="utf-8")
+            self.assertIn("DEFECT_CATALOG.md", plan_content)
+
+    def test_state_cli_record_defect_with_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            (base / ".refactor").mkdir()
+            (base / ".refactor" / "plan.md").write_text("# Plan\n", encoding="utf-8")
+            cmd_state(base, action="init", plan=".refactor/plan.md", phases=1)
+
+            # Record using individual flags via contract_cli main
+            code = cli_main([
+                "state", "--path", str(base), "--record-defect",
+                "--file", "src/core.py", "--symbol", "process",
+                "--rule", "MUTABLE_DEFAULT_ARG", "--message", "Arg list default mutated",
+                "--line", "25", "--track", "tactical"
+            ])
+            self.assertEqual(code, 0)
+            cat_file = base / ".diagnostics" / "defect_catalog.json"
+            self.assertTrue(cat_file.is_file())
+            data = json.loads(cat_file.read_text(encoding="utf-8"))
+            defects = data.get("defects", [])
+            self.assertTrue(any(d.get("rule_id") == "MUTABLE_DEFAULT_ARG" for d in defects))
+
+    def test_cli_plan_subcommand(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / ".git").mkdir()
+            (base / "app.py").write_text("def task(opts={}):\n    return opts\n", encoding="utf-8")
+
+            # Run contract_snapshot plan --scan-defects
+            code = cli_main(["plan", "--path", str(base), "--phases", "3", "--scan-defects"])
+            self.assertEqual(code, 0)
+            state_file = base / ".refactor" / "state.json"
+            self.assertTrue(state_file.is_file())
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertEqual(state["total_phases"], 3)
+            self.assertTrue((base / ".diagnostics" / "defect_catalog.json").is_file())
 
 if __name__ == "__main__":
     unittest.main()

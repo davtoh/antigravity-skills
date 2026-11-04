@@ -6,21 +6,11 @@ description: >-
 
 # Refactor Monolith: Adaptive Decomposition, Parity & Modularity Engine
 
-The **Refactor Monolith** skill provides a deterministic, 100% self-contained workflow for auditing codebase modularity, decomposing oversized "God Files" and "God Classes", and guaranteeing **zero behavioral regressions** across both backend endpoints and frontend DOM interactions.
-
-Why do naive file-splitting attempts fail?
-1. **The Frontend Test Blindspot**: Backend unit tests pass 100% while subtle UI behaviors break because element IDs (`getElementById`), global `window.*` exports, inline `on*=` handlers, or `<script>` load orders are silently dropped or renamed during decomposition.
-2. **Context-Exhausting Single Turns**: Attempting to execute an entire 4-phase, 15-slice migration in a single turn burns millions of tokens and causes attention degradation.
-3. **Broken Import Graphs & Circular Dependencies**: Moving classes or routes without backward-compatible re-export facades breaks downstream callers.
-4. **Ad-Hoc Shell Line-Counting Thrashing**: Abandoning structured audit CLIs for fragile inline PowerShell/Python commands causes quoting and syntax failures.
-5. **The Cross-Chat Context Gap**: Writing plans exclusively to ephemeral session artifact folders forces users to manually download and re-paste plans in subsequent chats.
-6. **Workspace Tooling Pollution**: Copying internal skill audit scripts into the target project's `scripts/` directory pollutes git repositories with non-domain tools.
-
-This skill eliminates those risks with **Zero-Token Structural Auditing** (`scripts/code_health_audit.py`), **Full-Surface Contract Snapshots** (`scripts/contract_snapshot.py`), **Standardized In-Repo `.refactor/` State Anchoring**, **1-Phase Turn Gates**, **Git Worktree Recipes**, and the **"Best Working Version" Bailout Guarantee**.
+The **Refactor Monolith** skill provides a deterministic, 100% self-contained workflow for auditing codebase modularity, decomposing oversized "God Files" and "God Classes", and guaranteeing **zero behavioral regressions** ($\Delta\text{Behavior} \equiv 0$) across backend routes, services, and frontend DOM interactions.
 
 ---
 
-## Quantitative Modularity Budgets
+## 1. Quantitative Modularity Budgets
 
 | Code Element | Healthy Target | Soft Warning (Refactor Trigger) | Hard Ceiling (Mandatory Split) | Remediation Strategy |
 | :--- | :--- | :--- | :--- | :--- |
@@ -31,39 +21,36 @@ This skill eliminates those risks with **Zero-Token Structural Auditing** (`scri
 
 ---
 
-## The Standardized `.refactor/` Workspace Architecture
+## 2. Standardized `.refactor/` Workspace Architecture
 
-To guarantee zero workspace pollution and instant continuation across fresh conversation chats, all persistent refactoring metadata lives in `<workspace>/.refactor/`:
+All persistent refactoring metadata lives in `<workspace>/.refactor/` so campaigns seamlessly resume across fresh chats:
 
 ```text
 <workspace>/.refactor/
 ├── state.json          # Machine-readable campaign state (active phase, plan path, commit SHAs)
-├── plan.md             # The multi-phase architectural roadmap (resumable across fresh chats)
+├── plan.md             # Multi-phase architectural roadmap (resumable across fresh chats)
 ├── baseline.json       # Pre-refactor golden contract snapshot (DOM IDs, selects, routes, CSS)
-├── scripts/            # Temporary project-specific refactor helpers (NEVER placed in repo scripts/)
-├── artifacts/          # Intermediate refactoring scratch notes, AST dumps, or post-mortems
-└── .gitignore          # Auto-created gitignore protecting ephemeral artifacts and helpers (*)
+├── scripts/            # Temporary project refactor helpers (NEVER placed in repo scripts/)
+├── artifacts/          # Intermediate scratch notes, AST dumps, or post-mortems
+└── .gitignore          # Self-contained gitignore protecting ephemeral artifacts and helpers (*)
 ```
 
 > [!IMPORTANT]
 > **Zero-Pollution & Anti-Vendoring Mandate**:
-> 1. **NEVER copy skill scripts** (`code_health_audit.py`, `contract_snapshot.py`, `surface_scanners.py`) into the user's `<workspace>/scripts/` directory. Run them directly from `<skill_dir>/scripts/...` during the agent's turn.
-> 2. Any custom scratch scripts or one-off extraction helpers created during refactoring must be placed in `.refactor/scripts/` (if needed for the refactor process but not to be committed).
-> 3. Any intermediate artifacts, AST dumps, or refactor logs should be placed in `.refactor/artifacts/`.
-> 4. In committed project documentation (`MIGRATION_LOG.md`, `README.md`, `milestone_plan.md`), only reference OS-agnostic native project test commands (`python -m unittest discover tests`, `pytest tests/`).
-> 5. **Zero Root `.gitignore` Mutation**: Never modify the target repository's root `.gitignore` to add `.refactor/` or any other entry. The `.refactor/` directory is self-contained with its own `.gitignore` ignoring `*`.
+> 1. **NEVER copy skill scripts** into the user's `<workspace>/scripts/`. Run them directly from `<skill_dir>/scripts/...` during the agent's turn.
+> 2. Custom scratch scripts or one-off extraction helpers must be placed in `.refactor/scripts/`.
+> 3. Never modify the target repository's root `.gitignore` to add `.refactor/`. The directory manages its own self-contained `.gitignore`.
 
 ---
 
-## Zero-Help CLI Quick Reference
-
-To prevent context-exhausting `--help` query loops, use these exact commands directly:
+## 3. Fast CLI Quick Reference
 
 ```bash
-# 1. Campaign state lifecycle
+# 1. Campaign state & planning
 python "<skill_dir>/scripts/contract_snapshot.py" state --show
-python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <dir> --plan .refactor/plan.md --phases 4 --phase-title "<Title>"
-python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slice X"
+python "<skill_dir>/scripts/contract_snapshot.py" plan --path <target_dir> --phases 4 [--scan-defects]
+python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <dir> --plan .refactor/plan.md --phases 4 [--scan-defects]
+python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
 python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1
 
 # 2. Golden contract baseline & verification
@@ -71,43 +58,28 @@ python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>
 python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir>
 python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict
 
-# 3. Virtualenv-isolated automated tests (never use host system Python or hardcode OS-locked .venv\Scripts\...)
-python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> discover tests
-python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> -- discover tests -p "test_*.py"
-python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> --runner pytest -- tests/ -v
-python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> -c "import <pkg>; print(<pkg>.__all__)"
+# 3. Virtualenv-isolated automated tests (headless guards, CI=true)
+# Passes test runner flags (-k, -v, -p) transparently without CLI parser errors:
+python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> -- discover tests -p "test_*.py" -v -k "test_feature"
+python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> --runner pytest -- tests/ -v -k "test_unit"
 
-# 4. Batch modularity audits (audit candidate files at start and end of phase; avoid polling unchanged files)
+# 4. Batch modularity audits
 python "<skill_dir>/scripts/code_health_audit.py" --path <target1> <target2> ... --show-methods
 python "<skill_dir>/scripts/code_health_audit.py" --path <dir> --by-dir
 
-# 5. Regression-locking smoke tests
-python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path <dir> --out tests/test_refactor_contract.py
+# 5. Cross-platform patching & template script injection
+python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path <dir> --to lf
+python "<skill_dir>/scripts/contract_snapshot.py" patch --file <f> --find "<target>" --replace "<replacement>"
+python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html <f> --before <target> --scripts <srcs...> [--format '<script src="{src}"></script>']
 
-# 6. Latent defect quarantine & campaign hook (SSOT in .diagnostics/, zero plan.md drift)
-python "<skill_dir>/scripts/contract_snapshot.py" state --record-defect --file <file> --symbol <sym> --rule <rule> --message "<msg>" [--track {tactical,architectural}]
+# 6. Passive defect quarantine hook (zero plan.md drift)
+python "<skill_dir>/scripts/contract_snapshot.py" state --record-defect --file <f> --symbol <s> --rule <r> --message "<m>"
 ```
+*(For all flag permutations and template recipes, see [`references/cli-reference.md`](./references/cli-reference.md)).*
 
 ---
 
-## Phase 0: Project Rules Check, Scope Detection & Baseline Anchor
-
-Always execute these four zero-overhead steps before modifying any code:
-
-1. **Check for Existing Campaign (`.refactor/state.json`)**:
-   - Check if `<workspace>/.refactor/state.json` exists or if the user invoked `/refactor-monolith continue` or `resume`.
-   - If active campaign exists: run `python "<skill_dir>/scripts/contract_snapshot.py" state --show` to read the active phase and jump directly to **Mode B2 (Auto-Resume Next Phase)**.
-2. **Respect Project Memory & Rules (`AGENTS.md` / `.agents/rules/`)**:
-   - Check if the workspace has an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.agents/rules/` directory. Honor established conventions.
-   - **Audit & Plan-Only Guardrail (Non-Blocking Test Check)**: When user intent is exploratory or planning (`check`, `audit`, `plan`), do NOT treat running the project test suite as a blocking prerequisite. Run at most 1 fast check (e.g. `contract_snapshot.py run-tests --path <dir> discover tests` or `Test-Path tests/`). If tests fail due to missing dependencies in the host environment (e.g., missing system OpenCV, joblib), note the environmental condition in the baseline log and proceed immediately with the static AST audit. **NEVER** spend tool turns probing unrelated virtualenvs across the OS, checking system Python paths, or running `pip install` into arbitrary environments.
-3. **Run the Multi-Language Structural Auditor (`scripts/code_health_audit.py`)**:
-   - Run `python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir` to inspect lines grouped by directory.
-   - Use multi-target syntax `--path <dir1> <dir2> ...` to audit multiple subdirectories or files simultaneously.
-   - Use `--compact` for quick file status, or `--split-preview <file>:<line>[:window]` to preview lines around extraction points.
-   - **Strict Rule**: Never write ad-hoc PowerShell or Python inline scripts to count lines; always use `code_health_audit.py`.
-4. **Anchor Git State & Capture Pre-Refactor Contract (`scripts/contract_snapshot.py`)**:
-   - Run `python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>` to record the clean Git SHA and worktree recipe.
-   - Run `python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir>` (defaults automatically to `.refactor/baseline.json`) to lock in all DOM element IDs, `<select>` dropdowns, `window.*` exports, inline handlers, and API routes before a single line is edited.
+## 4. Execution Workflow & Turn-Boundary Discipline
 
 ```mermaid
 flowchart TD
@@ -118,225 +90,164 @@ flowchart TD
     StateCheck -->|No| Rules["Phase 0: Project Rules + code_health_audit.py (--by-dir) +\ncontract_snapshot.py (anchor & capture to .refactor/baseline.json)"]
     Rules --> ScopeCheck{"Target Scope & Mode?"}
 
-    ScopeCheck -->|"Targeting bug fixes from past refactor\nOR --git-ref <sha> provided"| ModeC["Mode C: Post-Refactor Regression Recovery\nCompare current tree vs. --git-ref <sha> or git worktree\nPinpoint broken IDs/globals -> Generate Smoke Test -> Fix"]
+    ScopeCheck -->|"Targeting bug fixes from past refactor\nOR --git-ref <sha> provided"| ModeC["Mode C: Post-Refactor Regression Recovery\nCompare current tree vs. --git-ref <sha>\nPinpoint broken IDs/globals -> Generate Smoke Test -> Fix"]
 
     ScopeCheck -->|"Specific file/class named OR\nRecommended Mode == SINGLE_FILE"| ModeA["Mode A: Single-File Fast-Track\nExecute 5-Step Workflow with per-slice verify\nFinish within current turn"]
 
     ScopeCheck -->|"Whole project targeted AND\nRecommended Mode == PROJECT_CAMPAIGN"| InitCampaign["Mode B1: Initialize Project Campaign\n1. Write .refactor/plan.md + Initialize .refactor/state.json\n2. Authorize Phase 1 ONLY (1-Phase Turn Gate)\n3. Execute Phase 1 Slices -> Step 5 Verify -> Advance State -> STOP"]
 ```
 
----
-
-## Execution Modes & Turn-Boundary Discipline
-
 ### Mode A: Single-File Fast-Track (`SINGLE_FILE`)
-- **Trigger**: Specific file/class named **OR** `code_health_audit.py` reports `Recommended Mode: SINGLE_FILE` ($\le 2$ critical files).
-- **Action**: Outline cohesion clusters concisely, extract submodules one by one, run `contract_snapshot.py verify` after each slice, and complete in the current turn.
+- **Trigger**: Specific file/class named OR $\le 2$ critical files.
+- **Action**: Outline cohesion clusters, extract submodules sequentially, verify per slice, finish in current turn.
 
 ### Mode B1: Initialize Project Campaign (`PROJECT_CAMPAIGN`)
-- **Trigger**: Entire project targeted **AND** `code_health_audit.py` reports `Recommended Mode: PROJECT_CAMPAIGN` ($> 2$ critical files).
-- **The 2-Monolith / 25-Tool-Call Hard Turn Ceiling (Anti-Token-Explosion Gate)**:
-  - **Never execute all phases or more than 2 monoliths in a single turn.** Running mega-turns (e.g. 200+ steps) saturates context, triggers context compaction, degrades reasoning, and causes silent regressions.
-  - **The 2-Monolith Hard Turn Ceiling**: If an active phase contains $> 2$ monolith files or $> 4\text{--}6$ submodules (e.g. 5 JS monoliths or 16 stylesheets), it **MUST** be split into sub-batches of 1–2 monolith files per turn (e.g. Sub-Phase 4.1 Slices 1–2, Sub-Phase 4.2 Slices 3–4, Sub-Phase 4.3 Slice 5 + HTML).
-  - When the sub-batch is extracted and verified (or if a turn approaches 20–25 tool calls), save an intermediate checkpoint:
+- **The 2-Monolith / 25-Tool-Call Turn Ceiling Gate**:
+  - **Never execute all phases or $> 2$ monoliths in a single turn.** Running mega-turns (100+ steps) saturates context and causes silent regressions.
+  - If a phase contains $> 2$ monolith files, split into sub-batches (e.g. Sub-Phase 1.1 Slices 1–2).
+  - When verified or approaching 20–25 tool calls, save checkpoint:
     ```bash
     python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
     ```
-    Present a clean commit command, and **STOP execution**. Advise the user to run `/refactor-monolith continue` in a fresh chat.
-  - In the implementation plan, present the full 4-phase roadmap but **explicitly state that clicking 'Proceed' authorizes only Phase 1 (or Sub-Phase 1.1)**. Mark subsequent phases as *Deferred to Next Turn*.
-  - **Single Canonical Plan & Zero Artifact Drift**: Write `.refactor/plan.md` first as the single canonical source of truth on disk. When presenting the plan to the user in chat / UI artifact, mirror the exact same content (or reference it directly) without generating a divergent document. This eliminates redundant token generation, prevents drift between user review and disk state, and ensures resuming agents see the exact plan agreed upon.
-  - Save the plan to `.refactor/plan.md` so it survives chat resets.
-  - Initialize campaign tracking:
-    ```bash
-    python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <target_dir> --plan .refactor/plan.md --phases 4 --phase-title "<Phase 1 Title>"
-    ```
-  - When the phase completes Step 5 verification:
-    ```bash
-    python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1
-    ```
-  - Update `MIGRATION_LOG.md`, present the clean commit command, and **stop**. Advise the user to commit and start a fresh turn:
-    > *"To proceed with the next sub-phase in a fresh conversation, start a new chat and run: `/refactor-monolith continue`"*
+    Present a clean commit command and **STOP**. Advise running `/refactor-monolith continue` in a fresh chat.
+  - Clicking 'Proceed' on the implementation plan authorizes **Phase 1 (or Sub-Phase 1.1) only**. Subsequent phases are *Deferred to Next Turn*.
+  - Write `.refactor/plan.md` as the single canonical plan on disk. When presenting in chat, mirror the exact same content without divergence.
 
 ### Mode B2: Auto-Resume Campaign (`CAMPAIGN_RESUME`)
-- **Trigger**: User starts a fresh chat and runs `/refactor-monolith continue`, `/refactor-monolith resume`, or invokes the skill with an active `.refactor/state.json`.
-- **Workflow**:
-  1. Inspect campaign state: `python "<skill_dir>/scripts/contract_snapshot.py" state --show`.
-  2. Read `.refactor/plan.md` to load the objectives and file targets for the active phase.
-  3. Report resumption to the user: *"Resuming refactoring campaign for `<target>` at Phase X (`<Title>`). Authorizing Phase X (or Sub-Phase X.1) only."*
-  4. Decompose strictly $\le 2$ monolith files in this turn, run Step 5 verification, save checkpoint (`state --checkpoint`), advance state, present the commit command, and stop.
+- **Trigger**: User runs `/refactor-monolith continue` or starts a fresh chat with active `state.json`.
+- **Action**: Read `state.json` and `plan.md`, report resumption, extract $\le 2$ monolith files, run Step 5 verification, save checkpoint, advance state, and stop.
 
 ### Mode C: Post-Refactor Regression Recovery (`REGRESSION_RECOVERY`)
-- **Trigger**: The user reports that a previous refactor broke functionality (e.g. flickering, page reloading loops, broken dropdowns, modals, lost event handlers, or container errors), or asks to diagnose/remedy refactoring regressions.
-- **Workflow (1-Command 3-Tier Diagnostic)**:
-  1. **Run 1-Command Unified Diagnostic**:
-     ```bash
-     python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path <target_dir>
-     ```
-     This automatically:
-     - Diffs against baseline contract or pre-refactor Git ref (detects dropped IDs, missing globals, broken routes).
-     - Auto-detects running Docker containers (`docker_audit`) to verify container sync, CPU, memory, and recent error logs.
-     - Auto-detects local dev servers on localhost (`cdp_inspect`) to detect JavaScript exceptions, reload loops, and layout overflows.
-     - Emits the complete 3-tier Axiom 9 verification matrix in a single tool call.
-  2. If specific URLs or container names are non-standard, pass explicit flags:
-     ```bash
-     python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path . --url $APP_URL --container <name> --git-ref <sha>
-     ```
-  3. Optionally spin up a parallel worktree (`git worktree add ../pre_refactor <sha>`) for side-by-side behavioral comparison.
-  4. Generate or execute the permanent contract smoke test (`contract_snapshot.py generate-smoke-test --path <target_dir>`).
-  5. Apply surgical fixes without shell quoting failures:
-     - For HTML script injection: use `contract_snapshot.py inject-scripts` (never write ad-hoc Python/PowerShell scripts).
-     - For Windows CRLF line endings: use `contract_snapshot.py patch` or `normalize-eol` (never write multiline PowerShell inline scripts).
-  6. Re-run `contract_snapshot.py diagnose --path <target_dir> --strict` to verify 100% resolution before closing turn.
+- **Action**: Run 1-command unified diagnostic:
+  ```bash
+  python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path <target_dir> [--git-ref <sha>] [--url $APP_URL] [--container <name>]
+  ```
+  Pinpoint broken element IDs, missing globals, or route discrepancies. Apply surgical fixes with `patch` or `inject-scripts`, verify with `--strict`, and resolve regressions cleanly.
 
 ---
 
-## The 5-Step Zero-Regression Decomposition Workflow
+## 5. Phase 0: Project Rules Check, Scope Detection & Baseline Anchor
+
+1. **Check for Existing Campaign**: If `<workspace>/.refactor/state.json` exists, run `state --show` and jump to Mode B2.
+2. **Respect Project Memory & Rules**: Check for `AGENTS.md` or `.agents/rules/`. Do NOT treat running project tests as a blocking prerequisite during planning or audit. If tests fail due to missing host dependencies (e.g. system OpenCV, CUDA), note it in the baseline log and proceed with static AST analysis. Never run `pip install` into arbitrary host environments.
+3. **Run Multi-Language Structural Auditor**:
+   `python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir`
+4. **Anchor Git State & Capture Pre-Refactor Contract**:
+   `python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>`
+   `python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir>` (snapshots golden baseline to `.refactor/baseline.json`).
+
+---
+
+## 6. The 5-Step Zero-Regression Decomposition Workflow
 
 ### Step 1: Zero-Token Structural & Directory Audit
-```bash
-# Check directory-level line aggregation and breach summary
-python "<skill_dir>/scripts/code_health_audit.py" --path <target_dir> --by-dir
-
-# Inspect class/method/rule details of the active file
-python "<skill_dir>/scripts/code_health_audit.py" --path <target_file> --show-methods
-
-# Outline sections, classes, and banner comments without ad-hoc scripts
-python "<skill_dir>/scripts/code_health_audit.py" --inspect-sections <file>
-
-# Audit multiple targets simultaneously
-python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <dir2>
-```
-
-> [!IMPORTANT]
-> **The Batch Audit Mandate (Anti-Micro-Audit Rule)**:
-> Never audit submodules one-by-one with individual tool calls after writing each file. Instead, write the cohesive submodules for the current slice, then audit all of them together in a single tool call:
-> `python "<skill_dir>/scripts/code_health_audit.py" --path <new_file_1> <new_file_2> ... --show-methods`
-> Single-file audit loops burn 10–20 wasteful tool calls and thousands of tokens per phase.
+- Audit target files with `code_health_audit.py --show-methods` or `--split-preview <file>:<line>[:window]`.
+- **The Batch Audit Mandate (Anti-Micro-Audit Rule)**: Never audit extracted submodules one-by-one with individual tool calls. Write all cohesive submodules for the current slice, then audit them together in a single tool call:
+  `python "<skill_dir>/scripts/code_health_audit.py" --path <file1> <file2> ... --show-methods`
 
 ### Step 2: Cohesion Clustering, Surface Map & Facade Design
-1. **Interactive Surface Map**: Run `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path <target_dir>` (or pass `--show-routes` to list all backend endpoints with line ranges and handlers) to catalog all `<select>` IDs, modals, inline handlers, global exports, and API routes before modifying code.
-2. **Stylesheet & Specificity Audit**: If refactoring CSS/SCSS or frontend stylesheets, run:
-   ```bash
-   python "<skill_dir>/scripts/contract_snapshot.py" inspect-css --path <css_file_or_dir>
-   ```
-   This catalogs all `@import` rules, section banners, CRLF line endings, and exact line numbers of all `!important` occurrences without running brittle inline grep/Python commands.
+1. **Interactive Surface Map**: Run `contract_snapshot.py inspect --path <target_dir> --show-routes` to inventory element IDs, interactive dropdowns, global exports, and API routes.
+2. **Stylesheet & Specificity Audit**: For CSS/SCSS, run `contract_snapshot.py inspect-css --path <css_path>` to audit `@import` chains, section banners, CRLF endings, and `!important` occurrences.
 3. **Load On-Demand References**:
-   - Web routes, God classes, and DAG rules: [`references/decomposition-patterns.md`](./references/decomposition-patterns.md).
-   - Non-Python files (`.js`, `.ts`, `.css`, `.dart`, `.go`, `.rs`, `.cs`): [`references/language-playbooks.md`](./references/language-playbooks.md).
-4. **The Zero-Breaking-Import & Zero-Broken-DOM Invariant**:
-   - Python: Keep original module path as a re-export facade; use the **Bidirectional Proxy Pattern** in `dependencies.py` if tests monkeypatch module globals.
-   - JavaScript (Vanilla): Never rename DOM element IDs; preserve all `window.<Namespace>` exports; ensure `<script src="...">` load order satisfies dependencies.
+   - Python DAG routes & Bidirectional Proxy Pattern: [`references/decomposition-patterns.md`](./references/decomposition-patterns.md).
+   - Non-Python Playbooks (JS/TS, CSS, Dart, Go, Rust, C#): [`references/language-playbooks.md`](./references/language-playbooks.md).
+4. **Zero-Breaking-Import & Zero-Broken-DOM Invariant**:
+   - Python: Retain original module path as a re-export facade; use Bidirectional Proxy if tests monkeypatch module globals.
+   - JavaScript: Never rename DOM element IDs; preserve all `window.<Namespace>` exports; ensure `<script>` order satisfies dependencies.
 
 ### Step 3: Atomic Slice Extraction (One Cluster at a Time)
-1. Create the new module below the **350-line target** (classes $\le 10$–$12$ methods, functions $\le 40$ lines).
-2. Move cohesive logic and imports. Use `--split-preview <file>:<line>` to check boundaries safely.
-3. **Preserve Comments & Math**: Carry over all mathematical formulas, OpenCV coordinates, and rationale verbatim.
-4. **CRLF Line-Ending & Tooling Discipline on Windows**:
-   - **Normalize to LF before editing**: Run `python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path <target_dir> --to lf` to ensure all workspace text files use consistent LF endings.
-   - **Line-Ending Agnostic Patching**: If `edit_file` fails with `target content not found`, **DO NOT** attempt multiline PowerShell inline Python replacement commands (`python -c "target = '''...'''"`)—PowerShell parsing fails on nested brackets and quotes. Instead, use:
-     ```bash
-     python "<skill_dir>/scripts/contract_snapshot.py" patch --file <file_path> --find "<target>" --replace "<replacement>"
-     ```
-     This normalizes newlines in both target and content, preserves native file endings, and never fails on PowerShell nested quotes.
-   - **Safe HTML Script Injection**: When adding new modular submodules to an HTML file, never write ad-hoc Python/PowerShell scripts (`update_html.py`). Instead, use:
-     ```bash
-     python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html <html_file> --before <target_script> --scripts <script_urls...>
-     ```
-     This automatically detects indentation, preserves CRLF/LF, skips duplicate tags, and places new tags in correct dependency order.
+1. Keep new modules below **350 lines** (classes $\le 10$–$12$ methods, functions $\le 40$ lines).
+2. **Preserve Comments & Math**: Retain mathematical algorithms, OpenCV matrices, and business rationale verbatim.
+3. **CRLF Line-Ending & Cross-Platform Tooling**:
+   - Normalize to LF before editing: `contract_snapshot.py normalize-eol --path <target_dir> --to lf`
+   - Line-ending agnostic patching: `contract_snapshot.py patch --file <f> --find "<target>" --replace "<replacement>"`
+   - Safe HTML script injection: `contract_snapshot.py inject-scripts --html <f> --before <target> --scripts <srcs...> [--format '...']`
 
 > [!WARNING]
 > **Anti-Mega-Batch Rule (Atomic Slicing Gate)**:
-> Never write or generate more than 1–2 files/routers in a single step without testing imports or contract parity.
-> Writing 8–12 files in a single uninterrupted burst introduces massive compound risk: if any import or signature fails, diagnosing across 12 newly created files simultaneously burns tens of thousands of tokens in backtracking.
-> Always sequence slices:
-> `Slice 1 (Dependencies / Schemas) -> Verify Contract -> Slice 2 (Router 1-2) -> Verify Contract -> Slice 3 (Remaining Routers) -> Wire Facade & Parity`.
+> Never generate more than 1–2 files/routers in a single step without testing imports or contract parity. Sequence:
+> `Slice 1 (Dependencies / Schemas) -> Verify Contract -> Slice 2 (Routers 1-2) -> Verify Contract -> Wire Facade & Parity`.
 
 ### Step 4: Wire Facade & Per-Slice Contract Verification
 1. Re-export extracted symbols in the monolith facade.
-2. Guard against circular imports: enforce strict DAG (`Facade -> Routers/UI -> Services -> Repositories -> Leaf Utils`).
+2. Enforce strict acyclic DAG (`Facade -> Routers/UI -> Services -> Repositories -> Leaf Utils`).
 3. **Immediate Slice Verification**:
-   ```bash
-   python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict
-   ```
-   If any DOM ID was dropped or global export lost, fix it *now* before starting the next slice.
+   `python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict`
+   If any DOM ID was dropped or global export lost, fix it immediately before starting the next slice.
 
 ### Step 5: 3-Tier Closed-Loop Verification Ladder
 
-Execute verification in three strictly ordered tiers complying with **Axiom 9 (Honest Verification Reporting)**:
+Order verification strictly complying with **Axiom 9 (Honest Verification Reporting)**:
 
 ```text
 Tier 1: Static Contracts & Automated Tests (Always, 100% Self-Contained)
-  ├── 1. Automated unit test suite via virtualenv:
-  │      python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> discover tests
+  ├── 1. Automated test suite via virtualenv:
+  │      python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <dir> -- discover tests -p "test_*.py"
   ├── 2. Structural line budgets (code_health_audit.py --path <target_dir> --strict)
   ├── 3. DOM & API contract parity (contract_snapshot.py verify --path <target_dir> --strict)
   └── 4. Generate permanent regression test (contract_snapshot.py generate-smoke-test --path <target_dir>)
 
-Tier 2: Container Sync Audit (If Docker / Containerized)
+Tier 2: Container Sync Audit (If Containerized)
   └── python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path <dir> --container <name> --sync-check <files...>
 
-Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
-  ├── 1. Run live layout audit via CDP bridge (Defaults to 100% Unattended Headless, 0 clicks/prompts):
-  │      python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL
-  ├── 2. Optional: Attach to visible live Chrome (prompts user for 'Allow' on first connection):
-  │      python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live
-  └── 3. Axiom 9 Honest Reporting: If server is offline, report:
+Tier 3: Live Browser Verification (If UI Touched)
+  ├── 1. Layout audit via headless CDP: python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL
+  └── 2. Axiom 9 Reporting: If server is offline, report:
          "Tier 1: VERIFIED | Tier 2: SKIPPED | Tier 3: SKIPPED (Server offline / URL unset)"
 ```
 
-> [!IMPORTANT]
-> **Reactive Wakeup, Anti-Polling & Anti-Sleep Mandate**:
-> When running long-running verification suites or builds via `run_command`, always set `WaitMsBeforeAsync: 10000` (10s).
-> - **Zero Delay Invariant**: `WaitMsBeforeAsync: 10000` is a **timeout ceiling**, NOT a sleep. Fast commands returning in 1–2 seconds return **immediately** without waiting. The 10s ceiling prevents fast or medium tests (pytest, django checks, doc builds) from unnecessarily dropping into background tasks.
-> - **The Async Task Handoff Rule**: If a command takes longer than 10s and transitions to a background task (`task-id`):
->   1. If you have independent static work to perform (reading code, creating next submodule skeletons), you may proceed.
->   2. If all code edits for the phase/turn are complete and you are awaiting test results: **STOP CALLING TOOLS IMMEDIATELY**.
->   3. Output a 1-sentence handoff: *"Launched verification suite in background task `<task-id>`. Yielding turn for reactive notification."* and end your turn.
->   4. **Strict Ban on Polling**: Calling `manage_task(Action='status')` in loops or setting timers to poll background tasks is strictly forbidden. The system runtime will reactively re-invoke you the moment the background task finishes.
->   5. **Anti-Sleep Mandate**: NEVER run `python -c "import time; time.sleep(...)"` or PowerShell `Start-Sleep`.
+---
 
-### Virtual Environment Test Runner, Unstaged Working Tree & Zero Root Pollution
+## 7. Two-Tier Execution & Reactive Turn-Yield Protocol
 
-1. **Virtualenv Test Runner (`run-tests`)**: Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> ...` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`).
-   - Automatically injects headless environments (`MPLBACKEND=Agg`, `QT_QPA_PLATFORM=offscreen`, `PYTHONUNBUFFERED=1`, `CI=true`) and enforces a safety timeout (`--timeout 180`, default 180s) to kill hanging GUI or stdin processes.
-   - **Django Auto-Configuration**: Automatically detects `DJANGO_SETTINGS_MODULE` from `manage.py` if present and injects it into the environment. Also supports direct script execution via `run-tests --path . manage.py check` or `run-tests --path . manage.py test`.
-   - **Unittest discovery with pattern/flags**: `run-tests --path . -- discover tests -p "test_*.py" -v`
-   - **Pytest test suite**: `run-tests --path . --runner pytest -- tests/ -v`
-   - **Direct module execution in venv**: `run-tests --path . -m <module> <args...>` (e.g. `run-tests --path . -m sphinx -W ...` or `run-tests --path . -m mypy src/`)
-   - **Ad-hoc Python check**: `run-tests --path . -c "import pkg; print(pkg.__all__)"`
-   - **OS-Agnostic Invariant**: NEVER hardcode OS-locked binary paths (`.\.venv\Scripts\python.exe` or `.venv/bin/python`). Always use `run-tests` to maintain cross-platform portability.
-2. **Token-Optimized Static Quality Gate (`typecheck`)**:
-   - Run `python "<skill_dir>/scripts/contract_snapshot.py" typecheck --path <slice_dir>` on newly extracted submodules.
-   - **Zero-Token Overhead**: Automatically probes for `ruff` or `mypy` in the detected virtualenv. If neither is installed, it cleanly skips with a 1-line note and exit code 0 (zero error noise, zero token waste). If issues exist, output is strictly capped at top 5 errors to prevent context window explosion.
-   - **Universal Static Environment Guard Invariant**: Never use dynamic fall-through chains (`try...except ImportError`, `try { require(...) } catch`) for platform, OS, runtime-version, or architecture differences (e.g. Windows COM vs macOS/Linux, browser DOM vs Node SSR, mobile vs desktop). Dynamic fallback chains cause static type checkers (Pyrefly, Pyright, Mypy, TypeScript, Dart Analyzer) to evaluate all branches and flag spurious signature mismatches.
-     - Python: Use static guards `if sys.platform == "win32":` / `elif sys.platform == "darwin":` or `if sys.version_info >= (3, 11):`. Provide explicit typed stubs or interfaces rather than leaving symbols untyped.
-     - JS/TS: Use `if (typeof window !== 'undefined')` or `if (process.platform === 'win32')`.
-     - Dart: Use `if (Platform.isWindows)` or `if (kIsWeb)`.
-   - **Zero-Drift Latent Defect & Smell Quarantine Protocol**:
-     - **Behavior Preservation Invariant ($\Delta(\text{Observable Behavior}) \equiv 0$)**: The prime directive of refactoring is restructuring code without altering behavior. The agent must **NEVER modify production business logic** during a decomposition turn, even if an upstream bug, dead branch, or signature mismatch is detected.
-     - **Single Source of Truth (SSOT) Quarantine Hook**: When a latent defect or code smell is uncovered via AST inspection or `typecheck`, record it directly into `<workspace>/.diagnostics/defect_catalog.json` (and `DEFECT_CATALOG.md`) using `contract_snapshot.py state --record-defect --file <f> --symbol <s> --rule <r> --message <m> [--track {tactical,architectural}]`.
-     - **Zero `plan.md` Drift**: `.refactor/plan.md` remains strictly dedicated to structural decomposition slices ($\Delta\text{Behavior} \equiv 0$), referencing `.diagnostics/DEFECT_CATALOG.md` with a single static link. Never burn tokens duplicating defect tables inside `plan.md`.
-     - **Completion Handoff & Dual-Track Remediation**: When the campaign completes (`state --advance` to completion), `campaign_manager.py` automatically summarizes all quarantined defects with copy-pasteable remediation commands:
-       - **Tactical Defects**: `python <diagnostics>/scripts/diagnose.py scaffold-defect --id <ID> [--branch]` for `/app-debugger` (Red-to-Green cycle).
-       - **Architectural Defects**: `python <diagnostics>/scripts/diagnose.py scaffold-defect --id <ID> --elevate` for `/frontier-architect` + `/grill-me`.
-3. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
-4. **Strict No-Staging Invariant (Leave Working Tree Unstaged)**:
-   - **NEVER run `git add` or `git rm` during a refactoring turn.**
-   - When deleting a superseded monolith file (e.g. replacing `cache.py` with `cache/__init__.py`), delete it via standard filesystem tools (`Remove-Item` or `python -c "import os; os.remove('...')"`), NOT `git rm`.
-   - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs with `git diff` and `git status`.
-   - Run `git status --short` before composing the closing suggested `git add` and `git commit` commands for the user to execute manually.
-5. **Anti-Sequential Test Thrash & Legacy Test Discovery Guard**:
-   - Do not execute 8–10 individual test files sequentially before running the full suite. Run targeted tests for the modified module first, then immediately run the full workspace test suite once.
-   - **Legacy Test Discovery Guard**: Always inspect `.refactor/plan.md` for designated test subdirectories before running discovery (e.g. `tests/unittest_tests/` or `tests/unit/`). Never run unbounded `discover tests` on repositories containing legacy scripts, vision experiments, or prototypes that invoke `plt.show()`, `cv2.imshow()`, `cv2.waitKey()`, or `input()`.
-5. **Zero Test Artifact Root Pollution**: If target tests output images (`.jpg`, `.png`), cache files, or plots, ensure test runs direct output to `scratch/` or pass `--basetemp`. Never allow test runs to deposit image or transient files in the repository root.
+Long-running verification suites or audits must never cause agent polling thrashing:
+
+1. **Sync Wait Optimization (Tier 1)**:
+   - For targeted, fast test runs ($\le 5$s), specify `WaitMsBeforeAsync: 10000` (10 seconds) on `run_command` so tests complete synchronously in the same turn. Fast commands return immediately.
+   - Run targeted sub-phase test files rather than 300+ test repository suites on intermediate slices.
+2. **The Reactive Turn-Yield Mandate (Tier 2)**:
+   - If a test suite exceeds 10s and transitions to a background task:
+     `Tool is running as a background task with task id: <task_id>`
+   - The agent MUST execute the following protocol:
+     1. **Do NOT call `manage_task(action='status')`.**
+     2. **Do NOT run sleep or wait commands** (strictly ban `time.sleep` and `Start-Sleep`).
+     3. **Output a 1-sentence handoff**:
+        `"Verification command is executing in background task <task_id>. Yielding turn for reactive notification."`
+     4. **STOP calling tools immediately and end the turn.**
+   - The platform will reactively resume execution with the complete command output upon completion.
 
 ---
 
-## Anti-Thrash Stop-Loss & "Best Working Version" Safe Bailout
+## 8. Asymmetric Defect Protocol & Passive Quarantine Safety Net
 
-1. **Performance Guard ("Do No Harm")**: Never artificially split a hot path (NumPy array mutations, video frame loops, tight DSP). Apply the **Hot/Cold Split**: keep the hot loop cohesive, extract only cold helpers.
+The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \equiv 0$) and **behavior preservation** mandate require restructuring code without altering observable runtime behavior. Refactoring agents are strictly forbidden from modifying production business logic to fix bugs during decomposition turns.
+
+1. **Zero-Token Default Pipeline**: By default, `/refactor-monolith` performs only structural line audits and contract capture. Candidate defect scanning is completely bypassed during regular decomposition turns (`continue`), consuming **0 extra tokens**.
+2. **Opt-In Candidate Defect Scan**: During planning (`contract_snapshot.py plan` or `state --init`), passing `--scan-defects` triggers an AST scan of candidate files for high-signal issues (`SYNTAX_ERROR`, `MUTABLE_DEFAULT_ARG`, `UNREACHABLE_CODE`, `UNDEFINED_NAME`). Discovered defects are saved to `.diagnostics/defect_catalog.json` and `.diagnostics/DEFECT_CATALOG.md`, and linked in `plan.md`.
+3. **Passive Quarantine Safety Net**: If an agent spots an upstream bug while untangling logic during a decomposition turn, it quarantines the defect rather than making a dangerous inline fix:
+   ```bash
+   python "<skill_dir>/scripts/contract_snapshot.py" state --record-defect \
+     --file <f> --symbol <s> --rule <r> --message "<m>"
+   ```
+   This records the defect in `.diagnostics/defect_catalog.json` with **zero modifications to `plan.md`**.
+4. **Independent Lifecycle Handoff**: Upon campaign completion, `campaign_manager.py` summarizes quarantined defects with copy-pasteable commands for `/app-debugger` (Tactical Red-to-Green cycle) or `/frontier-architect` (Architectural Elevation).
+
+---
+
+## 9. Strict No-Staging Invariant & Working Tree Discipline
+
+- **NEVER run `git add` or `git rm` during a refactoring turn.**
+- When deleting a superseded monolith file, delete it via filesystem tools (`Remove-Item` or `os.remove`), NOT `git rm`.
+- Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs via `git diff`.
+- Run `git status --short` before composing suggested `git add` and `git commit` commands for the user.
+
+---
+
+## 10. Anti-Thrash Stop-Loss & "Best Working Version" Safe Bailout
+
+1. **Performance Guard ("Do No Harm")**: Never artificially split a hot path (NumPy array mutations, frame loops, DSP). Apply the **Hot/Cold Split**: keep hot loops cohesive, extract only cold helpers.
 2. **Anti-Thrash Stop-Loss**: If a slice fails tests or contract parity twice in a row, stop editing immediately.
-3. **The "Leave at Best Working Version" Bailout**:
+3. **"Leave at Best Working Version" Bailout**:
    - If a complex split resists clean extraction without fragile hacks:
      1. Revert unstable edits immediately (`git checkout -- <files>` or remove partial submodules).
      2. Restore the last verified working version.
@@ -344,96 +255,27 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 
 ---
 
-## Pre-Run Verification & Scenario Combinations Matrix
+## 11. Pre-Run Verification & Built-In References
 
 ### Pre-Run Verification One-Liners
 ```bash
-# 1. Verify auditor and snapshot CLI readiness
 python "<skill_dir>/scripts/code_health_audit.py" --help
 python "<skill_dir>/scripts/contract_snapshot.py" --help
-
-# 2. Run self-check on skill directory itself
 python "<skill_dir>/scripts/code_health_audit.py" --path "<skill_dir>" --strict
-python -m unittest discover -s "<skill_dir>/tests" -v
+python -m unittest discover -s "<skill_dir>/tests"
 ```
 
-### Scenario Combinations Matrix
-| Scenario / Objective | Mode / Target | Key Parameters | Exact Runnable Command |
-| :--- | :--- | :--- | :--- |
-| **Directory-Level Triage** | Group line counts by subfolder | `--path <dir> --by-dir` | `python "<skill_dir>/scripts/code_health_audit.py" --path . --by-dir` |
-| **Multi-Target Audit** | Multiple files/dirs in one run | `--path <f1> <d2>` | `python "<skill_dir>/scripts/code_health_audit.py" --path src/main.py src/services/` |
-| **Split Point Preview** | View lines around split safely | `--split-preview <file>:<line>[:window]` | `python "<skill_dir>/scripts/code_health_audit.py" --split-preview src/app.py:280:10` |
-| **Section & Banner Outline** | Inspect classes/banners without inline code | `--inspect-sections <file>` | `python "<skill_dir>/scripts/code_health_audit.py" --inspect-sections src/main.py` |
-| **Record Reference Anchor & Worktree** | Git commit anchor & parallel worktree recipe | `anchor --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" anchor --path .` |
-| **Capture Baseline Contract** | Snapshot to .refactor/baseline.json | `capture --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" capture --path .` |
-| **Interactive Surface Map** | Inventory of selects, modals, globals, routes | `inspect --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" inspect --path .` |
-| **Stylesheet & Specificity Audit** | Audit @imports, banners, CRLF & !important | `inspect-css --path <file_or_dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" inspect-css --path styles/` |
-| **Init Campaign State** | Track campaign in .refactor/state.json | `state --init` | `python "<skill_dir>/scripts/contract_snapshot.py" state --init --target <dir> --plan .refactor/plan.md --phases 4` |
-| **Show Campaign Progress** | Check active phase and status | `state --show` | `python "<skill_dir>/scripts/contract_snapshot.py" state --show` |
-| **Save Phase Checkpoint** | Save sub-phase note & prevent token drain | `state --checkpoint` | `python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Slices 1-3 complete"` |
-| **Advance Campaign Phase** | Mark phase complete and advance | `state --advance` | `python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1` |
-| **Record Discovered Latent Defect** | Quarantine defect to .diagnostics/ without plan drift | `state --record-defect` | `python "<skill_dir>/scripts/contract_snapshot.py" state --record-defect --file src/app.py --symbol run --rule MUTABLE_DEFAULT_ARG --message "items=[] persists state"` |
-| **Per-Slice & Checkpoint Verification** | Diff against baseline contract | `verify --path <dir> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path <dir> --strict` |
-| **Multi-Directory Verification** | Verify contract across source and test packages | `verify --path <dir1> <dir2> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path erp tests/erp --strict` |
-| **Post-Refactor Regression Audit** | Diff live tree directly against pre-refactor Git SHA | `verify --path <dir> --git-ref <sha> --strict` | `python "<skill_dir>/scripts/contract_snapshot.py" verify --path . --git-ref HEAD~1 --strict` |
-| **Unified 3-Tier Diagnostic** | 1-call AST diff + Docker audit + live CDP UI | `diagnose --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" diagnose --path .` |
-| **Line-Ending Normalizer** | Normalize files to LF/CRLF before editing | `normalize-eol --path <dir> --to lf` | `python "<skill_dir>/scripts/contract_snapshot.py" normalize-eol --path . --to lf` |
-| **Line-Ending Agnostic Patch** | Search/replace without shell quoting issues | `patch --file <f> --find ".." --replace ".."` | `python "<skill_dir>/scripts/contract_snapshot.py" patch --file index.html --find "old" --replace "new"` |
-| **Safe HTML Script Injector** | Insert modular <script> tags safely into HTML | `inject-scripts --html <f> --scripts ..` | `python "<skill_dir>/scripts/contract_snapshot.py" inject-scripts --html index.html --before app.js --scripts /static/js/a.js` |
-| **Venv Automated Test Runner (Unittest)** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -- discover tests -p "test_*.py"` |
-| **Venv Test Runner (Pytest)** | Run pytest suite in target virtualenv | `run-tests --runner pytest -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . --runner pytest -- tests/ -v` |
-| **Venv Direct Module Execution** | Run module (sphinx, mypy, pytest) in virtualenv | `run-tests -m <module> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -m sphinx -W documentation/ _build/` |
-| **Venv Django Command Runner** | Run manage.py with auto DJANGO_SETTINGS_MODULE | `run-tests --path <dir> manage.py [args]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . manage.py check` |
-| **Venv Direct Python Verification** | Run Python one-liner in target virtualenv | `run-tests -c "<code>"` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -c "import pkg; print(pkg.__all__)"` |
-| **Token-Optimized Static Quality Gate** | Run ruff/mypy on slice (top-5 capped, auto-skip) | `typecheck --path <slice>` | `python "<skill_dir>/scripts/contract_snapshot.py" typecheck --path enhancer/udf/` |
-| **Headless CDP Layout Audit** | Tier 3 UI verification (100% automated, default) | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL` |
-| **Live Browser UI Audit** | Attach to open visible Chrome (requires Allow) | `verify-ui --url <url> --live` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live` |
-| **Container Sync & Health Check** | Tier 2 Docker container file sync check | `audit-container --container <name>` | `python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path . --container tracker --sync-check app.py` |
-| **Generate Scoped Contract Test** | Emit unittest regression suite scoped to target | `generate-smoke-test --path <dir>` | `python "<skill_dir>/scripts/contract_snapshot.py" generate-smoke-test --path <dir> --out tests/test_refactor_contract.py` |
-| **Discover Optional Tools** | Probe cdp_inspect & docker_audit | `probe-tools` | `python "<skill_dir>/scripts/contract_snapshot.py" probe-tools` |
-| **Pre-Commit Strict Gate** | Exit 1 on critical breach | `--path <dir> --strict` | `python "<skill_dir>/scripts/code_health_audit.py" --path src --strict` |
-
----
-
-## Built-In Scripts, Tests & On-Demand Reference Library
-
-- **[`scripts/code_health_audit.py`](./scripts/code_health_audit.py)**: Standalone multi-language structural auditor. Supports multi-target `--path`, `--by-dir`, `--compact`, `--split-preview`, and prunes vendor/minified assets and `.refactor`.
-- **[`scripts/file_patcher.py`](./scripts/file_patcher.py)**: Line-ending normalizer (`normalize-eol`), line-ending-agnostic safe search/replace engine (`patch`), and safe HTML script tag injector (`inject-scripts`).
-- **[`scripts/audit_reporters.py`](./scripts/audit_reporters.py)**: Formatted terminal reporters for structural audits, directory breakdowns, split point previews, and section/banner comment outlines.
-- **[`scripts/surface_scanners.py`](./scripts/surface_scanners.py)**: Zero-dependency surface scanners extracting DOM IDs, interactive selects, inline handlers, `window.*` globals, Python routes, mutable globals, and CSS custom properties.
-- **[`scripts/contract_snapshot.py`](./scripts/contract_snapshot.py)**: Baseline contract snapshotter, Git worktree anchor, unified 3-tier diagnostic coordinator, and Tier 1-3 verification engine.
-- **[`scripts/contract_cli.py`](./scripts/contract_cli.py)**: Modular CLI argument parser, subcommand routing, and execution dispatcher for all contract snapshot operations.
-- **[`scripts/contract_diff_engine.py`](./scripts/contract_diff_engine.py)**: Surface contract extraction, git tree extraction, and regression diffing engine.
-- **[`scripts/auxiliary_tool_bridge.py`](./scripts/auxiliary_tool_bridge.py)**: Virtualenv test runner, CDP browser verification bridge, container sync auditor, auto-detection engine, and Axiom 9 verification matrix.
-- **[`scripts/css_inspector.py`](./scripts/css_inspector.py)**: Deep CSS/SCSS inspector analyzing `@import` chains, banner sections, CRLF line endings, and exact `!important` occurrences.
-- **[`scripts/campaign_manager.py`](./scripts/campaign_manager.py)**: Persistent cross-turn `.refactor/state.json` campaign manager, sub-phase checkpointing, turn ceiling gate alerts, and directory provisioner.
-- **[`scripts/smoke_test_generator.py`](./scripts/smoke_test_generator.py)**: Automated regression-locking unittest generator enforcing DOM and CSS contract invariants.
-- **[`scripts/language_analyzers.py`](./scripts/language_analyzers.py)**: Multi-language AST, brace, and stylesheet parsers for Python, JS/TS, Dart, Go, Rust, and C#.
-- **[`tests/test_file_patcher.py`](./tests/test_file_patcher.py)**: Automated tests for EOL normalization, CRLF/LF tolerance in file patching, HTML script tag injection, and turn ceiling banners.
-- **[`tests/test_code_health_audit.py`](./tests/test_code_health_audit.py)**: Automated regression test suite for structural parsing, multi-target audit, and `.refactor` pruning.
-- **[`tests/test_contract_snapshot.py`](./tests/test_contract_snapshot.py)**: Automated regression tests for DOM ID parity, equality operator exclusions, scoped smoke tests, and regression detection.
-- **[`tests/test_contract_cli.py`](./tests/test_contract_cli.py)**: CLI command router and integration tests for anchor, capture, inspect, and verify.
-- **[`tests/test_campaign_lifecycle.py`](./tests/test_campaign_lifecycle.py)**: Lifecycle tests for campaign initialization, phase advancement, and state checkpointing.
-- **[`tests/test_coverage_edge_cases.py`](./tests/test_coverage_edge_cases.py)**: Edge case and boundary tests across diagnostic bridges, file patchers, and surface scanners.
-- **[`tests/test_smoke_test_generator.py`](./tests/test_smoke_test_generator.py)**: Automated regression tests for root path expression resolution, quote/spacing tolerance, empty HTML scopes, and inline script function exports.
+### Reference Library
+- **[`references/cli-reference.md`](./references/cli-reference.md)**: Exhaustive flag reference, template injection recipes, and the complete 36-row Scenario Combinations Matrix.
 - **[`references/decomposition-patterns.md`](./references/decomposition-patterns.md)**: Web routers, God classes, Bidirectional Proxy Pattern for monkeypatched globals, and circular dependency rules.
 - **[`references/language-playbooks.md`](./references/language-playbooks.md)**: Vanilla JS invariants, ITCSS stylesheet decomposition, Go/Rust/Dart/C# playbooks, and safe rollback recipes.
 
 ---
 
-## In-Flight Tool Elevation Protocol (How Agents Safely Improve Skills Mid-Flight)
+## 12. In-Flight Tool Elevation Protocol
 
-When executing a refactoring campaign, an executing agent may discover a bug or missing capability in a built-in skill script (e.g. `smoke_test_generator.py`, `surface_scanners.py`, or `contract_diff_engine.py`):
-
-1. **Improve Reusable Skill Tools (Never Write Throwaway Scratch Scripts)**:
-   - Enhancing the reusable script in `<skill_dir>/scripts/` preserves lasting value across all future refactoring campaigns, preventing fragile ad-hoc workarounds.
-2. **Respect Repository Boundaries**:
-   - The skill directory is outside the workspace repository. Never run git commands (`git grep`, `git diff`) from workspace cwd targeting `<skill_dir>` (fails with `fatal: ... is outside repository`). Use standard file tools (`read_file`, `edit_file`) or explicit Python AST inspections.
-3. **Reproduce via Isolated Skill Test in `tests/`**:
-   - Add a test case reproducing the edge case in `<skill_dir>/tests/` before or alongside script edits.
-4. **Mandatory Skill Zero-Regression Gate**:
-   - Before returning to the target project refactor, execute the skill test suite:
-     ```bash
-     python -m unittest discover -s "<skill_dir>/tests"
-     ```
-   - Verify all tests pass with zero failures. Only resume the target workspace refactor once the improved skill tool is verified green.
+When an executing agent discovers a bug or missing capability in a skill script:
+1. **Improve Reusable Skill Tools**: Enhance `<skill_dir>/scripts/` directly rather than writing disposable scratch scripts.
+2. **Respect Repository Boundaries**: Never run git commands targeting `<skill_dir>` from the workspace repo. Use standard file tools (`edit_file`, `read_file`).
+3. **Reproduce via Isolated Skill Test**: Add a reproducing test in `<skill_dir>/tests/`.
+4. **Zero-Regression Gate**: Verify all skill tests pass (`python -m unittest discover -s "<skill_dir>/tests"`) before resuming project refactoring.

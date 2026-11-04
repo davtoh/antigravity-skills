@@ -75,7 +75,14 @@ def _format_phase_icon(is_completed: bool, is_active: bool) -> str:
     except Exception:
         return "[x]" if is_completed else ("[>]" if is_active else "[ ]")
 
-def _init_campaign_state(target: Path, state_file: Path, plan: str, phases: int, phase_title: str) -> int:
+def _init_campaign_state(
+    target: Path,
+    state_file: Path,
+    plan: str,
+    phases: int,
+    phase_title: str,
+    scan_defects: bool = False,
+) -> int:
     """Initialize a brand-new .refactor/state.json campaign."""
     rdir = state_file.parent
     plan_p = plan or str(rdir / "plan.md")
@@ -100,6 +107,8 @@ def _init_campaign_state(target: Path, state_file: Path, plan: str, phases: int,
     state_file.write_text(json.dumps(init_state, indent=2), encoding="utf-8")
     print(f"Initialized refactoring campaign state -> {state_file}")
     print(f"  Active Phase: 1 of {phases} | Target: {target.name} | Plan: {plan_p}")
+    if scan_defects:
+        _run_candidate_defect_scan(target, plan_p)
     return 0
 
 def _advance_campaign_state(target: Path, state_file: Path, state: dict[str, Any], phase: int | None, status: str, sha: str) -> int:
@@ -167,6 +176,81 @@ def _summarize_campaign_defects(target: Path) -> None:
     except Exception:
         pass
 
+def _save_defect_catalog(root: Path, defects: list[dict[str, Any]]) -> tuple[Path, Path]:
+    """Persist defect catalog JSON and human-readable DEFECT_CATALOG.md."""
+    try:
+        from candidate_defect_scanner import save_defect_catalog
+    except ImportError:
+        from .candidate_defect_scanner import save_defect_catalog
+    return save_defect_catalog(root, defects, mod_catalog=_get_defect_catalog())
+
+def _run_candidate_defect_scan(target: Path, plan_p: str) -> None:
+    """Scan candidate source files for latent defects, writing .diagnostics/ and linking in plan.md."""
+    try:
+        from candidate_defect_scanner import run_candidate_defect_scan
+    except ImportError:
+        from .candidate_defect_scanner import run_candidate_defect_scan
+    run_candidate_defect_scan(target, plan_p, get_repo_root(target), mod_catalog=_get_defect_catalog())
+
+def _parse_defect_payload(
+    defect_data: dict[str, Any] | str, rule_id: str, file: str, line: int, message: str, target: Path
+) -> dict[str, Any]:
+    """Parse defect payload from JSON string, colon string, or dict."""
+    if isinstance(defect_data, str) and defect_data.strip():
+        if defect_data.strip().startswith("{"):
+            try:
+                return json.loads(defect_data)
+            except Exception:
+                return {}
+        if ":" in defect_data:
+            parts = defect_data.split(":", 3)
+            return {
+                "rule_id": parts[0] if len(parts) > 0 and parts[0] else (rule_id or "GENERIC_DEFECT"),
+                "file": parts[1] if len(parts) > 1 and parts[1] else (file or str(target)),
+                "line": int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else line,
+                "message": parts[3] if len(parts) > 3 else (message or "Defect discovered during refactoring."),
+            }
+        return {
+            "rule_id": rule_id or "GENERIC_DEFECT",
+            "file": file or str(target),
+            "line": line,
+            "message": defect_data if defect_data != "GENERIC_DEFECT" else (message or "Defect discovered during refactoring."),
+        }
+    return dict(defect_data) if isinstance(defect_data, dict) else {}
+
+def _build_final_defect_entry(
+    entry: dict[str, Any],
+    defect_count: int,
+    rule_id: str,
+    file: str,
+    line: int,
+    symbol: str,
+    message: str,
+    suggested_fix: str,
+    severity: str,
+    track: str,
+    target: Path,
+) -> tuple[str, dict[str, Any]]:
+    """Build standardized defect record dictionary and deduplication fingerprint."""
+    r_id = entry.get("rule_id") or rule_id or "GENERIC_DEFECT"
+    f_path = str(entry.get("file") or file or target).replace("\\", "/")
+    l_no = int(entry.get("line") or line or 1)
+    sym = entry.get("symbol") or symbol or f_path
+    msg = entry.get("message") or message or "Defect discovered during refactoring."
+    d_id = entry.get("id") or f"DEFECT-{defect_count + 1:03d}"
+    prefix = r_id.split("_")[0][:7].upper()
+    h = hashlib.sha256(f"{r_id}:{sym}:{l_no}".encode("utf-8")).hexdigest()[:6]
+    fp = entry.get("fingerprint") or f"DEF-{prefix}-{h}"
+
+    final_entry = {
+        "id": d_id, "fingerprint": fp, "rule_id": r_id, "category": entry.get("category", "BAD_LOGIC"),
+        "severity": entry.get("severity") or severity or "MEDIUM", "track": entry.get("track") or track or "tactical",
+        "file": f_path, "line": l_no, "symbol": sym, "message": msg,
+        "suggested_fix": entry.get("suggested_fix") or suggested_fix or "Review and remediate under test verification.",
+        "status": entry.get("status", "quarantined"),
+    }
+    return fp, final_entry
+
 def record_campaign_defect(
     target: Path,
     defect_data: dict[str, Any] | str,
@@ -179,79 +263,25 @@ def record_campaign_defect(
     severity: str = "MEDIUM",
     track: str = "tactical",
 ) -> tuple[Path, dict[str, Any]]:
-    """Record a discovered latent defect directly into <workspace>/.diagnostics/defect_catalog.json.
-
-    Zero changes to plan.md are made, adhering to the Refactoring Invariant.
-    """
+    """Record a discovered latent defect directly into <workspace>/.diagnostics/defect_catalog.json."""
     root = get_repo_root(target)
     mod = _get_defect_catalog()
-    if mod:
-        cat = mod.load_catalog(root)
-        defects = cat.get("defects", [])
-    else:
-        diag_dir = root / ".diagnostics"
-        diag_dir.mkdir(parents=True, exist_ok=True)
-        cat_file = diag_dir / "defect_catalog.json"
-        cat = json.loads(cat_file.read_text(encoding="utf-8")) if cat_file.is_file() else {"defects": []}
-        defects = cat.get("defects", [])
-
-    if isinstance(defect_data, str) and defect_data.strip():
-        if defect_data.strip().startswith("{"):
-            try:
-                entry = json.loads(defect_data)
-            except Exception:
-                entry = {}
-        else:
-            parts = defect_data.split(":", 3)
-            entry = {
-                "rule_id": parts[0] if len(parts) > 0 else (rule_id or "GENERIC_DEFECT"),
-                "file": parts[1] if len(parts) > 1 else (file or str(target)),
-                "line": int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else line,
-                "message": parts[3] if len(parts) > 3 else (message or "Defect discovered during refactoring."),
-            }
-    elif isinstance(defect_data, dict):
-        entry = dict(defect_data)
-    else:
-        entry = {}
-
-    r_id = entry.get("rule_id") or rule_id or "GENERIC_DEFECT"
-    f_path = str(entry.get("file") or file or target).replace("\\", "/")
-    l_no = int(entry.get("line") or line or 1)
-    sym = entry.get("symbol") or symbol or f_path
-    msg = entry.get("message") or message or "Defect discovered during refactoring."
-    fix = entry.get("suggested_fix") or suggested_fix or "Review and remediate under test verification."
-    sev = entry.get("severity") or severity or "MEDIUM"
-    trk = entry.get("track") or track or "tactical"
-
-    d_id = entry.get("id") or f"DEFECT-{len(defects) + 1:03d}"
-    prefix = r_id.split("_")[0][:7].upper()
-    h = hashlib.sha256(f"{r_id}:{sym}:{l_no}".encode("utf-8")).hexdigest()[:6]
-    fp = entry.get("fingerprint") or f"DEF-{prefix}-{h}"
-
-    final_entry = {
-        "id": d_id, "fingerprint": fp, "rule_id": r_id, "category": entry.get("category", "BAD_LOGIC"),
-        "severity": sev, "track": trk, "file": f_path, "line": l_no, "symbol": sym,
-        "message": msg, "suggested_fix": fix, "status": entry.get("status", "quarantined"),
-    }
-
-    replaced = False
+    cat_file = root / ".diagnostics" / "defect_catalog.json"
+    cat = mod.load_catalog(root) if mod else (json.loads(cat_file.read_text(encoding="utf-8")) if cat_file.is_file() else {"defects": []})
+    defects = cat.get("defects", [])
+    entry = _parse_defect_payload(defect_data, rule_id, file, line, message, target)
+    fp, final_entry = _build_final_defect_entry(
+        entry, len(defects), rule_id, file, line, symbol, message, suggested_fix, severity, track, target
+    )
     for i, d in enumerate(defects):
         if d.get("fingerprint") == fp:
-            final_entry["id"] = d.get("id", d_id)
+            final_entry["id"] = d.get("id", final_entry["id"])
             defects[i] = final_entry
-            replaced = True
             break
-    if not replaced:
+    else:
         defects.append(final_entry)
 
-    if mod:
-        json_path, _ = mod.save_catalog(root, defects)
-    else:
-        diag_dir = root / ".diagnostics"
-        diag_dir.mkdir(parents=True, exist_ok=True)
-        json_path = diag_dir / "defect_catalog.json"
-        json_path.write_text(json.dumps({"schema_version": "1.0", "workspace": str(root), "defects": defects}, indent=2), encoding="utf-8")
-
+    json_path, _ = _save_defect_catalog(root, defects)
     print(f"[Campaign Hook] Recorded quarantined defect {final_entry['id']} ({final_entry['track']}) in .diagnostics/defect_catalog.json (zero changes to plan.md)")
     return json_path, final_entry
 
@@ -291,7 +321,14 @@ def _add_state_cli_args(p_st: Any) -> None:
     p_st.add_argument("--status", default="", help="Status string (e.g. completed, in_progress, pending).")
     p_st.add_argument("--sha", default="", help="Commit SHA to record.")
     p_st.add_argument("--json", action="store_true", help="Output state as JSON.")
-    p_st.add_argument("--record-defect", default="", help="Record discovered defect into .diagnostics/defect_catalog.json (zero changes to plan.md)")
+    p_st.add_argument("--record-defect", nargs="?", const="GENERIC_DEFECT", default="", help="Record discovered defect into .diagnostics/defect_catalog.json (zero changes to plan.md)")
+    p_st.add_argument("--file", default="", help="Source file for discovered defect.")
+    p_st.add_argument("--symbol", default="", help="Symbol name for discovered defect.")
+    p_st.add_argument("--rule", default="", help="Rule ID for discovered defect (e.g. MUTABLE_DEFAULT_ARG).")
+    p_st.add_argument("--message", default="", help="Description of discovered defect.")
+    p_st.add_argument("--line", type=int, default=1, help="Line number for discovered defect.")
+    p_st.add_argument("--track", choices=["tactical", "architectural"], default="tactical", help="Remediation track.")
+    p_st.add_argument("--scan-defects", action="store_true", help="Opt-in scan candidate files for latent defects during plan initialization.")
 
 def print_turn_ceiling_alert(note: str = "") -> None:
     """Print high-visibility turn ceiling gate instructions to prevent cumulative token burn."""
@@ -334,12 +371,8 @@ def _dispatch_state_action(
     sha: str,
     note: str,
     as_json: bool,
-    record_defect: str = "",
 ) -> int:
     """Dispatch campaign state mutations or display."""
-    if record_defect:
-        record_campaign_defect(target, record_defect)
-        return 0
     p_val = int(phase) if phase and str(phase).isdigit() else None
     if action == "checkpoint":
         return _save_checkpoint(state_file, state, note, sha, target)
@@ -351,6 +384,20 @@ def _dispatch_state_action(
         print(json.dumps(state, indent=2))
         return 0
     return _print_campaign_summary(state)
+
+def _load_campaign_state(state_file: Path, action: str) -> dict[str, Any] | int:
+    """Validate and read campaign state file."""
+    if not state_file.exists():
+        if action in ("show", "status", ""):
+            print(f"No active campaign state found at {state_file}. Run `contract_snapshot.py state --init` to start a campaign.")
+            return 0
+        print(f"No active campaign state found at {state_file}. Run `contract_snapshot.py state --init` first.", file=sys.stderr)
+        return 1
+    try:
+        return json.loads(state_file.read_text(encoding="utf-8"))
+    except Exception as err:
+        print(f"Error reading {state_file}: {err}", file=sys.stderr)
+        return 1
 
 def cmd_state(
     target: Path,
@@ -364,32 +411,27 @@ def cmd_state(
     note: str = "",
     as_json: bool = False,
     record_defect: str = "",
+    rule: str = "",
+    file: str = "",
+    line: int = 1,
+    symbol: str = "",
+    message: str = "",
+    track: str = "tactical",
+    scan_defects: bool = False,
 ) -> int:
     """Initialize, inspect, or advance persistent refactoring campaign state."""
     rdir = get_refactor_dir(target)
     state_file = rdir / "state.json"
-    if record_defect:
-        record_campaign_defect(target, record_defect)
+    if record_defect or rule:
+        desc = record_defect if record_defect != "GENERIC_DEFECT" else (message or "Defect discovered during refactoring.")
+        record_campaign_defect(target, desc, rule_id=rule, file=file, line=line, symbol=symbol, message=message, track=track)
         return 0
     if action == "init":
-        return _init_campaign_state(target, state_file, plan, phases, phase_title)
-
-    if not state_file.exists():
-        if action in ("show", "status", ""):
-            print(f"No active campaign state found at {state_file}. Run `contract_snapshot.py state --init` to start a campaign.")
-            return 0
-        print(f"No active campaign state found at {state_file}. Run `contract_snapshot.py state --init` first.", file=sys.stderr)
-        return 1
-
-    try:
-        state = json.loads(state_file.read_text(encoding="utf-8"))
-    except Exception as err:
-        print(f"Error reading {state_file}: {err}", file=sys.stderr)
-        return 1
-
-    return _dispatch_state_action(
-        target, state_file, state, action, phase, phase_title, status, sha, note, as_json, record_defect
-    )
+        return _init_campaign_state(target, state_file, plan, phases, phase_title, scan_defects=scan_defects)
+    loaded = _load_campaign_state(state_file, action)
+    if not isinstance(loaded, dict):
+        return loaded
+    return _dispatch_state_action(target, state_file, loaded, action, phase, phase_title, status, sha, note, as_json)
 
 def _parse_phase_sort_key(key: str) -> float:
     try:

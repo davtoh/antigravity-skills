@@ -77,6 +77,14 @@ def _register_contract_subparsers(sub: Any) -> None:
     p_st = sub.add_parser("state", help="Manage in-repo .refactor campaign state across conversation turns.")
     _add_state_cli_args(p_st)
 
+    p_pln = sub.add_parser("plan", help="Initialize campaign plan, state, and optional candidate defect scan.")
+    _add_common_path_args(p_pln)
+    p_pln.add_argument("--target", default="", help="Refactoring target directory.")
+    p_pln.add_argument("--plan", default="", help="Path to refactoring plan markdown.")
+    p_pln.add_argument("--phases", type=int, default=4, help="Total phases in campaign.")
+    p_pln.add_argument("--phase-title", default="", help="Title for the active phase.")
+    p_pln.add_argument("--scan-defects", action="store_true", help="Opt-in candidate defect scan during plan initialization.")
+
 def _register_tool_subparsers(sub: Any) -> None:
     """Register tool discovery, test execution, CSS, and container audit parsers."""
     p_prb = sub.add_parser("probe-tools", help="Discover optional auxiliary tools.")
@@ -135,6 +143,11 @@ def _register_diagnostic_and_patch_subparsers(sub: Any) -> None:
     p_inj.add_argument("--html", required=True, help="Target HTML file.")
     p_inj.add_argument("--scripts", nargs="+", required=True, help="Script paths/URLs to inject.")
     p_inj.add_argument("--before", default="", help="Existing script name to inject before.")
+    p_inj.add_argument(
+        "--format",
+        default='<script src="{src}"></script>',
+        help="Tag format string with '{src}' placeholder (e.g. '<script src=\"{%% static \'{src}\' %%}\"></script>')",
+    )
 
 def build_cli_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
@@ -156,7 +169,12 @@ def _dispatch_patch_or_script_cmd(subcmd: str, args: argparse.Namespace) -> int:
         print(msg)
         return 0 if ok else 1
     if subcmd == "inject-scripts":
-        ok, msg = inject_html_scripts(Path(args.html), args.scripts, getattr(args, "before", ""))
+        ok, msg = inject_html_scripts(
+            Path(args.html),
+            args.scripts,
+            getattr(args, "before", ""),
+            tag_format=getattr(args, "format", '<script src="{src}"></script>'),
+        )
         print(msg)
         return 0 if ok else 1
     return 0
@@ -204,6 +222,12 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
         return cmd_verify(target_param, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
     if subcmd == "generate-smoke-test":
         return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
+    if subcmd == "plan":
+        sub_target = Path(args.target).resolve() if getattr(args, "target", "") else target
+        return cmd_state(
+            sub_target, action="init", plan=getattr(args, "plan", ""), phases=getattr(args, "phases", 4),
+            phase_title=getattr(args, "phase_title", ""), scan_defects=getattr(args, "scan_defects", False),
+        )
     if subcmd == "state":
         return cmd_state(
             target, action=args.action, plan=getattr(args, "plan", ""), phases=getattr(args, "phases", 4),
@@ -211,6 +235,13 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
             status=getattr(args, "status", ""), sha=getattr(args, "sha", ""), note=getattr(args, "note", ""),
             as_json=getattr(args, "json", False),
             record_defect=getattr(args, "record_defect", ""),
+            rule=getattr(args, "rule", ""),
+            file=getattr(args, "file", ""),
+            line=getattr(args, "line", 1),
+            symbol=getattr(args, "symbol", ""),
+            message=getattr(args, "message", ""),
+            track=getattr(args, "track", "tactical"),
+            scan_defects=getattr(args, "scan_defects", False),
         )
     return _dispatch_auxiliary_cmd(subcmd, target, args)
 

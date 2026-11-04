@@ -119,7 +119,11 @@ def _filter_new_scripts(text: str, script_srcs: list[str]) -> list[str]:
         s_clean = s.strip()
         if not s_clean:
             continue
-        pattern = re.compile(rf'src=["\'][^"\']*{re.escape(Path(s_clean).name)}["\']', re.IGNORECASE)
+        base_name = Path(s_clean).name
+        pattern = re.compile(
+            rf'<script\b[^>]*{re.escape(base_name)}|src=["\'][^"\']*{re.escape(base_name)}["\']',
+            re.IGNORECASE,
+        )
         if not pattern.search(text):
             scripts_to_add.append(s_clean)
     return scripts_to_add
@@ -129,7 +133,7 @@ def _find_html_insertion_point(lines: list[str], before_script: str) -> tuple[in
     if before_script:
         b_name = Path(before_script).name
         for i, line in enumerate(lines):
-            if re.search(rf'src=["\'][^"\']*{re.escape(b_name)}["\']', line, re.IGNORECASE):
+            if re.search(rf'<script\b[^>]*{re.escape(b_name)}|src=["\'][^"\']*{re.escape(b_name)}["\']', line, re.IGNORECASE):
                 match = re.match(r"^(\s*)", line)
                 return i, match.group(1) if match else "  "
 
@@ -141,8 +145,13 @@ def _find_html_insertion_point(lines: list[str], before_script: str) -> tuple[in
 
     return len(lines), "  "
 
-def inject_html_scripts(html_path: Path, script_srcs: list[str], before_script: str = "") -> tuple[bool, str]:
-    """Inject <script src="..."> tags into an HTML file with correct indentation and EOL."""
+def inject_html_scripts(
+    html_path: Path,
+    script_srcs: list[str],
+    before_script: str = "",
+    tag_format: str = '<script src="{src}"></script>',
+) -> tuple[bool, str]:
+    """Inject <script> tags into an HTML/template file with correct indentation and EOL."""
     if not html_path.is_file():
         return False, f"HTML file not found: {html_path}"
 
@@ -156,7 +165,7 @@ def inject_html_scripts(html_path: Path, script_srcs: list[str], before_script: 
 
     lines = text.splitlines()
     insert_idx, indent = _find_html_insertion_point(lines, before_script)
-    new_tags = [f'{indent}<script src="{s}"></script>' for s in scripts_to_add]
+    new_tags = [f"{indent}{tag_format.replace('{src}', s)}" for s in scripts_to_add]
     lines[insert_idx:insert_idx] = new_tags
 
     updated_text = file_eol.join(lines) + (file_eol if raw.endswith(b"\n") or raw.endswith(b"\r") else "")

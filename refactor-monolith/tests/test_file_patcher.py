@@ -120,6 +120,33 @@ class TestFilePatcher(unittest.TestCase):
             self.assertEqual(text.count("already_there.js"), 1)
             self.assertIn("new_script.js", text)
 
+    def test_inject_html_scripts_with_custom_template_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            html = Path(tmp) / "template.html"
+            html.write_bytes(
+                b"{% extends 'base.html' %}\r\n"
+                b"{% block scripts %}\r\n"
+                b"  <script src=\"{% static 'app.js' %}\"></script>\r\n"
+                b"{% endblock %}\r\n"
+            )
+            scripts = ["components/nav.js", "components/player.js"]
+            django_fmt = '<script src="{% static \'{src}\' %}"></script>'
+            ok, msg = inject_html_scripts(
+                html, scripts, before_script="app.js", tag_format=django_fmt
+            )
+            self.assertTrue(ok)
+            raw = html.read_bytes()
+            self.assertIn(b"\r\n", raw)  # CRLF preserved
+            text = raw.decode("utf-8")
+            self.assertIn("  <script src=\"{% static 'components/nav.js' %}\"></script>", text)
+            self.assertIn("  <script src=\"{% static 'components/player.js' %}\"></script>", text)
+            # Check duplicate skip with template format
+            ok2, msg2 = inject_html_scripts(
+                html, ["components/nav.js"], before_script="app.js", tag_format=django_fmt
+            )
+            self.assertTrue(ok2)
+            self.assertEqual(html.read_text(encoding="utf-8").count("components/nav.js"), 1)
+
     def test_contract_cli_patch_and_inject(self):
         with tempfile.TemporaryDirectory() as tmp:
             f = Path(tmp) / "page.html"
@@ -129,6 +156,16 @@ class TestFilePatcher(unittest.TestCase):
             code_inj = main(["inject-scripts", "--html", str(f), "--scripts", "sub1.js", "sub2.js", "--before", "main.js"])
             self.assertEqual(code_inj, 0)
             self.assertIn("sub1.js", f.read_text(encoding="utf-8"))
+
+            # Test inject-scripts CLI with custom --format
+            f_django = Path(tmp) / "django.html"
+            f_django.write_text('<html><body><script src="{% static \'main.js\' %}"></script></body></html>\n', encoding="utf-8")
+            code_django = main([
+                "inject-scripts", "--html", str(f_django), "--scripts", "vendor/chart.js",
+                "--before", "main.js", "--format", '<script src="{% static \'{src}\' %}"></script>'
+            ])
+            self.assertEqual(code_django, 0)
+            self.assertIn('<script src="{% static \'vendor/chart.js\' %}"></script>', f_django.read_text(encoding="utf-8"))
 
             # Test patch CLI
             code_ptc = main(["patch", "--file", str(f), "--find", "sub1.js", "--replace", "sub1_renamed.js"])
