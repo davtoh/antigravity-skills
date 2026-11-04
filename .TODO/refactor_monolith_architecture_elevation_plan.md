@@ -17,62 +17,63 @@ This document establishes the definitive architectural specification to resolve 
 
 ```mermaid
 flowchart TD
-    subgraph PlanPhase["1. Phase 0: Initial Plan Creation (One-Time)"]
-        Audit["code_health_audit.py\n(Candidate Triage)"] --> Scan["candidate_defect_scanner.py\n(AST High-Signal Scan on Candidates ONLY)"]
-        Scan --> DefectCat[".diagnostics/defect_catalog.json\n& DEFECT_CATALOG.md"]
-        Audit --> Anchor["baseline.json\n(Golden Contract Snapshot)"]
-        Anchor --> PlanMD[".refactor/plan.md\n(Clean Slices + Link to DEFECT_CATALOG.md)"]
+    subgraph PlanPhase["1. Phase 0: Initial Plan Creation (Lean by Default)"]
+        Audit["code_health_audit.py\n(Candidate Triage & Line Budgets)"] --> Anchor["baseline.json\n(Golden Contract Snapshot)"]
+        Anchor --> PlanMD[".refactor/plan.md\n(Structural Decomposition Slices)"]
+        
+        Audit -.->|"Opt-In / User Triggered\n(--scan-defects)"| Scan["Optional: candidate_defect_scanner.py\n(AST High-Signal Scan on Candidates)"]
+        Scan -.-> DefectCat[".diagnostics/defect_catalog.json\n& DEFECT_CATALOG.md"]
     end
 
     subgraph ExecPhase["2. Execution Turns: /refactor-monolith continue"]
-        Continue["/refactor-monolith continue"] --> Slice["Decompose Sub-Phase Slices"]
+        Continue["/refactor-monolith continue"] --> Slice["Decompose Sub-Phase Slices\n(Zero Defect Scanning = 0 Extra Tokens)"]
         Slice --> Verify["contract_snapshot.py verify --strict\n(Regression Diff Engine)"]
         Slice --> Tests["contract_snapshot.py run-tests\n(Targeted Test Suite)"]
         Verify -->|Broken Symbol / Syntax| Regress["BLOCKING REGRESSION:\nAgent Must Fix Immediately\n(NEVER Quarantined)"]
         Verify -->|Zero Discrepancies| Advance["Advance State & Suggest Git Commit"]
+        Slice -.->|"Rare / Passive Discovery:\nObvious Upstream Bug Spotted"| QuarantineHook["Emergency Hook Only:\nstate --record-defect\n(Quarantines to .diagnostics/ without plan drift)"]
     end
 ```
 
 ---
 
-### Improvement 1: Option C (The Asymmetric Two-Tier Defect Protocol)
+### Improvement 1: Opt-In Defect Protocol & Passive Quarantine (Zero-Token Overhead by Default)
 
-#### Architectural Intent
-Establish a strict separation between **Preexisting Latent Defects** (quarantined in `.diagnostics/`) and **Refactoring Regressions** (blocking errors that must be fixed immediately). Avoid noise, duplicate reporting, and token burn by strictly scoping automated scans to the initial planning phase.
+#### Architectural Intent & First-Principles Rationale
+The primary invariant of refactoring is **Zero Behavioral Change ($\Delta\text{Behavior} \equiv 0$)**. 
+
+A refactoring agent is **strictly forbidden from fixing business logic defects** during a decomposition turn. Therefore:
+1. **Mandatory defect scanning in Phase 0 is an anti-pattern**: Forcing a full defect scan during plan creation burns tokens, adds unnecessary steps, and produces a defect catalog that the refactoring agent is prohibited from touching anyway.
+2. **Defect Auditing belongs before or after refactoring**: Defect detection and remediation are dedicated workflows owned by `/system-diagnostics` (`diagnose.py audit`) and `/app-debugger` (Red-to-Green cycle).
+3. **Refactoring keeps a zero-token default**: By default, `/refactor-monolith` performs **only** structural health audits (`code_health_audit.py`) and golden contract capture (`baseline.json`). 
+4. **Candidate Defect Scanning is Opt-In**: The automated scanner is only invoked if the user explicitly requests it or passes `--scan-defects`.
+5. **Passive Quarantine is an Emergency Safety Net, Not a Workflow Step**: The `--record-defect` hook exists solely so that if an agent accidentally stumbles upon an obvious upstream bug while untangling convoluted logic, it can quarantine the bug to `.diagnostics/` rather than attempting a dangerous inline fix.
 
 #### Architectural Caveats & Traps to Avoid
 > [!CAUTION]
-> 1. **Do NOT run automated defect scanning on every refactoring step**: Running a defect scan on each sub-phase causes token thrash, re-flags the same legacy issues turn after turn, and introduces the fatal risk of the agent treating its *own refactoring bugs* as "quarantined defects" rather than fixing them.
-> 2. **Do NOT scan the entire repository**: Running linters across 100k lines of untouched legacy code creates an "avalanche of lint noise" that pollutes the catalog and distracts the agent. Scans MUST be strictly restricted to the candidate monolith files targeted in `plan.md`.
-> 3. **Zero Plan Drift Invariant**: Never duplicate defect tables inside `.refactor/plan.md`. All latent defects reside in `.diagnostics/defect_catalog.json` and `.diagnostics/DEFECT_CATALOG.md`. `plan.md` maintains a single static reference link.
+> 1. **Do NOT run automated defect scanning by default**: Doing so burns tokens on code that will not be modified for bugs. Keep the default refactoring pipeline 100% focused on modularity and line budgets.
+> 2. **Do NOT scan on refactoring execution steps (`continue`)**: Scanning during slices risks having agents quarantine their own refactoring regressions instead of fixing them immediately.
+> 3. **Defect Fixing is Out-of-Scope**: If defects are discovered (either via opt-in scan or passive quarantine), they are remediated in a separate conversation using `/app-debugger` after refactoring is completed.
 
 #### Concrete Implementation Specification
 
-1. **Lightweight Candidate Defect Scanner (`scripts/language_analyzers.py`)**:
-   Implement `scan_candidate_defects(candidate_paths: list[Path]) -> list[DefectEntry]` using standard library `ast` (with optional `pyflakes` fallback):
-   - **Target Defect Types (High-Signal Only)**:
-     - `MUTABLE_DEFAULT_ARG`: Function definitions with mutable defaults (`def f(x=[], y={})`).
-     - `UNDEFINED_NAME`: Variable or symbol used without definition or import.
-     - `UNREACHABLE_CODE`: Statements placed directly after terminal `return`, `raise`, or `break`.
-     - `SYNTAX_ERROR`: Code that fails `ast.parse`.
-   - **Exclusions**: Never flag stylistic issues (line length, PEP 8, missing docstrings, variable naming).
+1. **Optional Candidate Defect Scanner (`scripts/language_analyzers.py`)**:
+   Implement `scan_candidate_defects(candidate_paths: list[Path]) -> list[DefectEntry]` using standard library `ast`:
+   - High-signal checks only: `MUTABLE_DEFAULT_ARG`, `UNDEFINED_NAME`, `UNREACHABLE_CODE`, `SYNTAX_ERROR`.
+   - Never flag stylistic lints.
 
-2. **Integration into Phase 0 (`campaign_manager.py:init_campaign`)**:
-   - During `contract_snapshot.py plan` or `state --init`, after `code_health_audit.py` identifies candidates exceeding 350 lines:
-     ```python
-     if candidates:
-         defects = scan_candidate_defects(candidates)
-         if defects:
-             record_campaign_defects(workspace_root, defects)
-     ```
-   - Automatically initializes `.diagnostics/defect_catalog.json` and renders `.diagnostics/DEFECT_CATALOG.md`.
+2. **Opt-In CLI Trigger (`campaign_manager.py` / `contract_cli.py`)**:
+   - Add flag `--scan-defects` to `contract_snapshot.py plan` and `state --init`.
+   - **Default behavior**: When `--scan-defects` is omitted, the defect scan is skipped completely (0 extra tokens, 0 extra steps).
+   - **When `--scan-defects` is provided**: Scans candidate files, writes `.diagnostics/defect_catalog.json`, and links `DEFECT_CATALOG.md` in `plan.md`.
 
-3. **Strict Execution Quality Gate (Mode B / `continue`)**:
-   - During execution turns, **zero automated defect discovery is executed**.
-   - The agent relies exclusively on:
-     - `contract_diff_engine.py verify --strict` (AST/DOM contract parity).
-     - `contract_snapshot.py run-tests` (Functional test suite).
-   - If an error occurs, the agent treats it as an immediate regression introduced by the refactoring, requiring rollback or fix.
+3. **Passive Quarantine Safety Net (Always Active, 0 Overhead)**:
+   - If an agent spots an upstream bug during decomposition:
+     `python contract_snapshot.py state --record-defect --file <f> --symbol <s> --rule <r> --message <m>`
+   - This lazily initializes `.diagnostics/` only when a real defect is discovered. If no defects are found, `.diagnostics/` is never created.
+
+4. **Independent Lifecycle Handoff**:
+   - Before or after refactoring, the user can run `/system-diagnostics audit` or `/app-debugger` to inspect and fix defects independently. Refactoring remains pure structural reorganization.
    - The `--record-defect` flag remains in `campaign_manager.py` only as a manual, human-directed escape hatch for undeniable logic bugs discovered while reading code.
 
 ---
