@@ -283,21 +283,35 @@ Tier 3: Live Browser Verification & Remote Debugging Protocol (If UI Touched)
 
 > [!IMPORTANT]
 > **Reactive Wakeup, Anti-Polling & Anti-Sleep Mandate**:
-> When running long-running verification suites or builds via `run_command`, always set `WaitMsBeforeAsync: 10000` (10s). If the command continues as a background task, **NEVER call `manage_task(Action='status')` or `schedule` timers**, and **NEVER run `python -c "import time; time.sleep(...)"` or PowerShell `Start-Sleep`**. Polling and timer loops burn 20+ turns and tens of thousands of tokens.
-> - Either proceed with independent static work (reading code, preparing submodules, updating plan drafts).
-> - Or **immediately end your turn by calling no more tools**—the runtime will reactively wake you up the instant the background task finishes.
+> When running long-running verification suites or builds via `run_command`, always set `WaitMsBeforeAsync: 10000` (10s).
+> - **Zero Delay Invariant**: `WaitMsBeforeAsync: 10000` is a **timeout ceiling**, NOT a sleep. Fast commands returning in 1–2 seconds return **immediately** without waiting. The 10s ceiling prevents fast or medium tests (pytest, django checks, doc builds) from unnecessarily dropping into background tasks.
+> - **The Async Task Handoff Rule**: If a command takes longer than 10s and transitions to a background task (`task-id`):
+>   1. If you have independent static work to perform (reading code, creating next submodule skeletons), you may proceed.
+>   2. If all code edits for the phase/turn are complete and you are awaiting test results: **STOP CALLING TOOLS IMMEDIATELY**.
+>   3. Output a 1-sentence handoff: *"Launched verification suite in background task `<task-id>`. Yielding turn for reactive notification."* and end your turn.
+>   4. **Strict Ban on Polling**: Calling `manage_task(Action='status')` in loops or setting timers to poll background tasks is strictly forbidden. The system runtime will reactively re-invoke you the moment the background task finishes.
+>   5. **Anti-Sleep Mandate**: NEVER run `python -c "import time; time.sleep(...)"` or PowerShell `Start-Sleep`.
 
 ### Virtual Environment Test Runner, Unstaged Working Tree & Zero Root Pollution
 
 1. **Virtualenv Test Runner (`run-tests`)**: Use `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path <target_dir> ...` to automatically run tests with the target workspace's detected virtualenv Python (`.venv`, `venv`, `env`).
    - Automatically injects headless environments (`MPLBACKEND=Agg`, `QT_QPA_PLATFORM=offscreen`, `PYTHONUNBUFFERED=1`, `CI=true`) and enforces a safety timeout (`--timeout 180`, default 180s) to kill hanging GUI or stdin processes.
+   - **Django Auto-Configuration**: Automatically detects `DJANGO_SETTINGS_MODULE` from `manage.py` if present and injects it into the environment. Also supports direct script execution via `run-tests --path . manage.py check` or `run-tests --path . manage.py test`.
    - **Unittest discovery with pattern/flags**: `run-tests --path . -- discover tests -p "test_*.py" -v`
    - **Pytest test suite**: `run-tests --path . --runner pytest -- tests/ -v`
    - **Direct module execution in venv**: `run-tests --path . -m <module> <args...>` (e.g. `run-tests --path . -m sphinx -W ...` or `run-tests --path . -m mypy src/`)
    - **Ad-hoc Python check**: `run-tests --path . -c "import pkg; print(pkg.__all__)"`
    - **OS-Agnostic Invariant**: NEVER hardcode OS-locked binary paths (`.\.venv\Scripts\python.exe` or `.venv/bin/python`). Always use `run-tests` to maintain cross-platform portability.
-2. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
-3. **Strict No-Staging Invariant (Leave Working Tree Unstaged)**:
+2. **Token-Optimized Static Quality Gate (`typecheck`)**:
+   - Run `python "<skill_dir>/scripts/contract_snapshot.py" typecheck --path <slice_dir>` on newly extracted submodules.
+   - **Zero-Token Overhead**: Automatically probes for `ruff` or `mypy` in the detected virtualenv. If neither is installed, it cleanly skips with a 1-line note and exit code 0 (zero error noise, zero token waste). If issues exist, output is strictly capped at top 5 errors to prevent context window explosion.
+   - **Universal Static Environment Guard Invariant**: Never use dynamic fall-through chains (`try...except ImportError`, `try { require(...) } catch`) for platform, OS, runtime-version, or architecture differences (e.g. Windows COM vs macOS/Linux, browser DOM vs Node SSR, mobile vs desktop). Dynamic fallback chains cause static type checkers (Pyrefly, Pyright, Mypy, TypeScript, Dart Analyzer) to evaluate all branches and flag spurious signature mismatches.
+     - Python: Use static guards `if sys.platform == "win32":` / `elif sys.platform == "darwin":` or `if sys.version_info >= (3, 11):`. Provide explicit typed stubs or interfaces rather than leaving symbols untyped.
+     - JS/TS: Use `if (typeof window !== 'undefined')` or `if (process.platform === 'win32')`.
+     - Dart: Use `if (Platform.isWindows)` or `if (kIsWeb)`.
+   - **Latent Defect & Smell Protocol**: If an existing bug or signature mismatch (e.g. missing required parameter in an upstream library) is discovered during decomposition, document it under `[Latent Defects & Code Smells Discovered]`, add a targeted test, and fix it under test verification rather than ignoring it or performing silent untracked rewrites.
+3. **Audit Batching Discipline**: Limit `code_health_audit.py` to at most twice per turn: once at phase start to inspect file outlines, and once after all slices are extracted to confirm line and method budgets. Never repeatedly poll untouched files.
+4. **Strict No-Staging Invariant (Leave Working Tree Unstaged)**:
    - **NEVER run `git add` or `git rm` during a refactoring turn.**
    - When deleting a superseded monolith file (e.g. replacing `cache.py` with `cache/__init__.py`), delete it via standard filesystem tools (`Remove-Item` or `python -c "import os; os.remove('...')"`), NOT `git rm`.
    - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs with `git diff` and `git status`.
@@ -359,7 +373,9 @@ python -m unittest discover -s "<skill_dir>/tests" -v
 | **Venv Automated Test Runner (Unittest)** | Run workspace unit tests in target virtualenv | `run-tests --path <dir> -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -- discover tests -p "test_*.py"` |
 | **Venv Test Runner (Pytest)** | Run pytest suite in target virtualenv | `run-tests --runner pytest -- [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . --runner pytest -- tests/ -v` |
 | **Venv Direct Module Execution** | Run module (sphinx, mypy, pytest) in virtualenv | `run-tests -m <module> [args...]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -m sphinx -W documentation/ _build/` |
+| **Venv Django Command Runner** | Run manage.py with auto DJANGO_SETTINGS_MODULE | `run-tests --path <dir> manage.py [args]` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . manage.py check` |
 | **Venv Direct Python Verification** | Run Python one-liner in target virtualenv | `run-tests -c "<code>"` | `python "<skill_dir>/scripts/contract_snapshot.py" run-tests --path . -c "import pkg; print(pkg.__all__)"` |
+| **Token-Optimized Static Quality Gate** | Run ruff/mypy on slice (top-5 capped, auto-skip) | `typecheck --path <slice>` | `python "<skill_dir>/scripts/contract_snapshot.py" typecheck --path enhancer/udf/` |
 | **Headless CDP Layout Audit** | Tier 3 UI verification (100% automated, default) | `verify-ui --url <url>` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL` |
 | **Live Browser UI Audit** | Attach to open visible Chrome (requires Allow) | `verify-ui --url <url> --live` | `python "<skill_dir>/scripts/contract_snapshot.py" verify-ui --url $APP_URL --live` |
 | **Container Sync & Health Check** | Tier 2 Docker container file sync check | `audit-container --container <name>` | `python "<skill_dir>/scripts/contract_snapshot.py" audit-container --path . --container tracker --sync-check app.py` |

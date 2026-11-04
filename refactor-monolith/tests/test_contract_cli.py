@@ -339,5 +339,57 @@ class TestCampaignAndReporterTools(unittest.TestCase):
         self.assertEqual(merged.css_important_count, 5)
         self.assertEqual(merged.python_globals, ["Admin", "User"])
 
+    def test_run_tests_auto_detects_django_settings_and_injects_env(self):
+        from unittest.mock import patch, MagicMock
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            with tempfile.TemporaryDirectory() as tmp:
+                manage_py = Path(tmp) / "manage.py"
+                manage_py.write_text(
+                    "import os\nif __name__ == '__main__':\n"
+                    "    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'my_enterprise.settings')\n",
+                    encoding="utf-8",
+                )
+                code = main(["run-tests", "--path", tmp, "manage.py", "check"])
+                self.assertEqual(code, 0)
+                cmd = mock_run.call_args[0][0]
+                self.assertIn("manage.py", cmd)
+                self.assertIn("check", cmd)
+                env = mock_run.call_args[1].get("env", {})
+                self.assertEqual(env.get("DJANGO_SETTINGS_MODULE"), "my_enterprise.settings")
+
+    def test_typecheck_cli_skipped_gracefully_when_no_checker(self):
+        from unittest.mock import patch, MagicMock
+        with patch("subprocess.run") as mock_run:
+            # Simulate ruff/mypy not installed (--version returns code 1)
+            mock_run.return_value = MagicMock(returncode=1)
+            with tempfile.TemporaryDirectory() as tmp:
+                code = main(["typecheck", "--path", tmp])
+                self.assertEqual(code, 0)
+
+    def test_typecheck_cli_ruff_pass_and_failure_truncation(self):
+        from unittest.mock import patch, MagicMock
+        with patch("subprocess.run") as mock_run:
+            # 1. ruff --version succeeds
+            # 2. ruff check succeeds
+            mock_run.side_effect = [
+                MagicMock(returncode=0),
+                MagicMock(returncode=0, stdout="All clean\n"),
+            ]
+            with tempfile.TemporaryDirectory() as tmp:
+                code = main(["typecheck", "--path", tmp])
+                self.assertEqual(code, 0)
+
+        with patch("subprocess.run") as mock_run:
+            # 1. ruff --version succeeds
+            # 2. ruff check fails with 8 errors (should truncate to 5)
+            mock_run.side_effect = [
+                MagicMock(returncode=0),
+                MagicMock(returncode=1, stdout="\n".join(f"file.py:{i}: error: E{i}" for i in range(8))),
+            ]
+            with tempfile.TemporaryDirectory() as tmp:
+                code = main(["typecheck", "--path", tmp])
+                self.assertEqual(code, 1)
+
 if __name__ == "__main__":
     unittest.main()

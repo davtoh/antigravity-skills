@@ -9,6 +9,7 @@ verification statuses are never overstated or conflated.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -82,12 +83,28 @@ def _is_pytest_preferred(target: Path, runner: str, clean_args: list[str]) -> bo
         return any((target / m).is_file() for m in markers) or any("pytest" in a.lower() for a in clean_args)
     return False
 
+def _detect_django_settings(target: Path) -> str | None:
+    """Extract DJANGO_SETTINGS_MODULE from manage.py if present."""
+    root = get_repo_root(target)
+    for candidate in [target / "manage.py", root / "manage.py"]:
+        if candidate.is_file():
+            try:
+                content = candidate.read_text(encoding="utf-8", errors="ignore")
+                m = re.search(r"['\"]DJANGO_SETTINGS_MODULE['\"]\s*,\s*['\"]([^'\"]+)['\"]", content)
+                if m:
+                    return m.group(1)
+            except Exception:
+                pass
+    return None
+
 def _build_test_runner_command(target: Path, py_bin: str, extra_args: list[str], runner: str) -> list[str]:
     """Assemble execution command line for test suite or inline Python."""
     clean = [a for a in extra_args if a != "--"]
     if clean and clean[0] in ("-c", "--command"):
         return [py_bin, "-c", *clean[1:]]
     if clean and clean[0] == "-m":
+        return [py_bin, *clean]
+    if clean and (clean[0].endswith(".py") or clean[0].endswith("manage.py")):
         return [py_bin, *clean]
     if _is_pytest_preferred(target, runner, clean):
         args = [a for a in clean if a.lower() not in ("pytest", "discover")] or ["tests/"]
@@ -105,6 +122,9 @@ def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto", tim
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     env.setdefault("PYTHONUNBUFFERED", "1")
     env.setdefault("CI", "true")
+    django_settings = _detect_django_settings(target)
+    if django_settings and "DJANGO_SETTINGS_MODULE" not in env:
+        env["DJANGO_SETTINGS_MODULE"] = django_settings
     print(f"=== Test Runner (Interpreter: {py_bin}, Timeout: {timeout}s) ===\nExecuting: {' '.join(cmd)}\n")
     try:
         proc = subprocess.run(cmd, cwd=target, env=env, timeout=timeout, check=False)
@@ -120,6 +140,54 @@ def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto", tim
     except Exception as err:
         print(f"Error launching test runner: {err}", file=sys.stderr)
         return 1
+
+def cmd_typecheck(target: Path, paths: list[str] | None = None) -> int:
+    """Run token-optimized static type & lint inspection on specific paths using target virtualenv.
+
+    Prefers ruff (ultra-fast, low token output), then mypy.
+    If none are available, cleanly skips with zero errors and minimal output.
+    Output is strictly truncated to top 5 issues to prevent context window explosion.
+    """
+    tools = discover_optional_tools(target)
+    py_bin = tools.get("virtualenv_python") or sys.executable
+    target_paths = [p for p in (paths or []) if p != "."] or [str(target)]
+
+    # 1. Check for ruff in virtualenv
+    try:
+        ruff_check = subprocess.run([py_bin, "-m", "ruff", "--version"], cwd=target, capture_output=True, text=True, check=False)
+        if ruff_check.returncode == 0:
+            cmd = [py_bin, "-m", "ruff", "check", "--select", "E,F,W", *target_paths]
+            proc = subprocess.run(cmd, cwd=target, capture_output=True, text=True, check=False)
+            if proc.returncode == 0:
+                print(f"[Static Quality Gate] PASS: ruff found 0 issues in {', '.join(target_paths)}.")
+                return 0
+            lines = [l for l in proc.stdout.splitlines() if l.strip()]
+            print(f"[Static Quality Gate] ruff flagged {len(lines)} issue(s) (showing top 5):")
+            for l in lines[:5]:
+                print(f"  {l}")
+            return proc.returncode if proc.returncode != 0 else 1
+    except Exception:
+        pass
+
+    # 2. Check for mypy in virtualenv
+    try:
+        mypy_check = subprocess.run([py_bin, "-m", "mypy", "--version"], cwd=target, capture_output=True, text=True, check=False)
+        if mypy_check.returncode == 0:
+            cmd = [py_bin, "-m", "mypy", "--no-error-summary", "--ignore-missing-imports", *target_paths]
+            proc = subprocess.run(cmd, cwd=target, capture_output=True, text=True, check=False)
+            if proc.returncode == 0:
+                print(f"[Static Quality Gate] PASS: mypy found 0 type errors in {', '.join(target_paths)}.")
+                return 0
+            lines = [l for l in proc.stdout.splitlines() if "error:" in l]
+            print(f"[Static Quality Gate] mypy flagged {len(lines)} error(s) (showing top 5):")
+            for l in lines[:5]:
+                print(f"  {l}")
+            return proc.returncode if proc.returncode != 0 else 1
+    except Exception:
+        pass
+
+    print(f"[Static Quality Gate] SKIPPED: No static checker (ruff/mypy) installed in {py_bin}. Proceeding cleanly.")
+    return 0
 
 def _parse_cdp_output(output: str) -> int:
     """Analyze CDP inspector output for JS exceptions and bounding box overflows."""

@@ -32,6 +32,7 @@ from auxiliary_tool_bridge import (  # noqa: E402
     cmd_audit_container,
     cmd_diagnose,
     cmd_run_tests,
+    cmd_typecheck,
     cmd_verify_ui,
     discover_optional_tools,
 )
@@ -85,6 +86,9 @@ def _register_tool_subparsers(sub: Any) -> None:
     p_css.add_argument("--path", default=".", help="Target CSS file or directory.")
     p_css.add_argument("--all", action="store_true", help="Display all section banners without truncation.")
     p_css.add_argument("--strict", action="store_true", help="Exit 1 if any !important found.")
+
+    p_typ = sub.add_parser("typecheck", help="Run token-optimized static type & lint inspection (ruff/mypy) on target paths.")
+    p_typ.add_argument("--path", nargs="+", default=["."], help="Target files or directories to inspect.")
 
     p_tst = sub.add_parser("run-tests", help="Run test suite using auto-detected virtualenv interpreter.")
     p_tst.add_argument("--path", default=".", help="Target repository directory.")
@@ -161,6 +165,11 @@ def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace)
     """Handle testing, inspection, and live verification commands."""
     if subcmd == "inspect-css":
         return cmd_inspect_css(target, getattr(args, "all", False), getattr(args, "strict", False))
+    if subcmd == "typecheck":
+        paths = getattr(args, "path", [])
+        if isinstance(paths, str):
+            paths = [paths]
+        return cmd_typecheck(target, paths)
     if subcmd == "run-tests":
         test_args = list(getattr(args, "test_args", []))
         if getattr(args, "command", None):
