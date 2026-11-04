@@ -17,6 +17,17 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    from defect_catalog import (
+        check_git_dirty, checkout_micro_branch, load_catalog,
+        reconcile_defect, save_catalog, scaffold_defect, scaffold_tactical_test,
+    )
+except ImportError:
+    from .defect_catalog import (
+        check_git_dirty, checkout_micro_branch, load_catalog,
+        reconcile_defect, save_catalog, scaffold_defect, scaffold_tactical_test,
+    )
+
 IGNORED_DIRS = frozenset({
     ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
     "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
@@ -77,22 +88,26 @@ class PythonAstScanner(ast.NodeVisitor):
         self.func_sigs: dict[str, dict[str, Any]] = {}
         self.async_funcs: set[str] = set()
 
+    def _add(self, rule: str, cat: str, sev: str, track: str, line: int, sym: str, msg: str, fix: str, fp: str = "") -> None:
+        code_fp = fp or str(line)
+        self.findings.append(DefectFinding(
+            id="", fingerprint=compute_fingerprint(rule, sym, code_fp), rule_id=rule,
+            category=cat, severity=sev, track=track, file=self.rel_path, line=line,
+            symbol=sym, message=msg, suggested_fix=fix
+        ))
+
     def scan(self, tree: ast.AST) -> list[DefectFinding]:
-        # Pass 1: Index function signatures, arities, and async declarations
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if isinstance(node, ast.AsyncFunctionDef):
                     self.async_funcs.add(node.name)
                 req_pos = len(node.args.args) - len(node.args.defaults)
-                kwonly_req = [
-                    a.arg for a, d in zip(node.args.kwonlyargs, node.args.kw_defaults) if d is None
-                ]
+                kwonly = [a.arg for a, d in zip(node.args.kwonlyargs, node.args.kw_defaults) if d is None]
                 self.func_sigs[node.name] = {
                     "min": req_pos,
                     "max": len(node.args.args) if node.args.vararg is None else 999,
-                    "kwonly": kwonly_req,
+                    "kwonly": kwonly,
                 }
-        # Pass 2: Inspect AST nodes for latent defects
         self.visit(tree)
         return self.findings
 
@@ -105,105 +120,84 @@ class PythonAstScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _check_func_def(self, node: Any) -> None:
-        # Check mutable defaults
         for d, p in zip(reversed(node.args.defaults), reversed(node.args.args)):
             if isinstance(d, (ast.List, ast.Dict, ast.Set)):
                 t_name = "[]" if isinstance(d, ast.List) else ("{}" if isinstance(d, ast.Dict) else "set()")
-                fp = compute_fingerprint("MUTABLE_DEFAULT_ARG", f"{node.name}.{p.arg}", t_name)
-                self.findings.append(DefectFinding(
-                    id="", fingerprint=fp, rule_id="MUTABLE_DEFAULT_ARG",
-                    category="BAD_LOGIC", severity="HIGH", track="tactical",
-                    file=self.rel_path, line=node.lineno, symbol=node.name,
-                    message=f"Mutable default argument '{p.arg}={t_name}' persists mutated state across calls.",
-                    suggested_fix=f"Replace '{p.arg}={t_name}' with '{p.arg}=None' and initialize inside '{node.name}()'."
-                ))
-        # Check unreachable code
+                self._add(
+                    "MUTABLE_DEFAULT_ARG", "BAD_LOGIC", "HIGH", "tactical", node.lineno, node.name,
+                    f"Mutable default argument '{p.arg}={t_name}' persists mutated state across calls.",
+                    f"Replace '{p.arg}={t_name}' with '{p.arg}=None' and initialize inside '{node.name}()'.",
+                    f"{node.name}.{p.arg}:{t_name}"
+                )
         for i, stmt in enumerate(node.body[:-1]):
             if isinstance(stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
                 dead = node.body[i + 1]
-                fp = compute_fingerprint("UNREACHABLE_CODE", node.name, f"{dead.lineno}")
-                self.findings.append(DefectFinding(
-                    id="", fingerprint=fp, rule_id="UNREACHABLE_CODE",
-                    category="BAD_LOGIC", severity="MEDIUM", track="tactical",
-                    file=self.rel_path, line=dead.lineno, symbol=node.name,
-                    message=f"Statement at line {dead.lineno} is unreachable after '{type(stmt).__name__.lower()}'.",
-                    suggested_fix=f"Remove unreachable statement at line {dead.lineno} or guard prior branch."
-                ))
+                self._add(
+                    "UNREACHABLE_CODE", "BAD_LOGIC", "MEDIUM", "tactical", dead.lineno, node.name,
+                    f"Statement at line {dead.lineno} is unreachable after '{type(stmt).__name__.lower()}'.",
+                    f"Remove unreachable statement at line {dead.lineno} or guard prior branch.",
+                    f"{dead.lineno}"
+                )
                 break
 
     def visit_Expr(self, node: ast.Expr) -> None:
-        """Detect unhandled async coroutines (calls without await)."""
         if isinstance(node.value, ast.Call):
             call_name = self._resolve_call_name(node.value)
             if call_name in self.async_funcs:
-                fp = compute_fingerprint("UNHANDLED_ASYNC_COROUTINE", call_name, f"expr:{call_name}")
-                self.findings.append(DefectFinding(
-                    id="", fingerprint=fp, rule_id="UNHANDLED_ASYNC_COROUTINE",
-                    category="BAD_LOGIC", severity="HIGH", track="architectural",
-                    file=self.rel_path, line=node.lineno, symbol=call_name,
-                    message=f"Call to async coroutine '{call_name}' is not awaited or scheduled as a task.",
-                    suggested_fix=f"Prepend 'await {call_name}(...)' or schedule via 'asyncio.create_task({call_name}(...))'."
-                ))
+                self._add(
+                    "UNHANDLED_ASYNC_COROUTINE", "BAD_LOGIC", "HIGH", "architectural", node.lineno, call_name,
+                    f"Call to async coroutine '{call_name}' is not awaited or scheduled as a task.",
+                    f"Prepend 'await {call_name}(...)' or schedule via 'asyncio.create_task({call_name}(...))'.",
+                    f"expr:{call_name}"
+                )
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Detect call arg count mismatches, missing required kwargs, and unsafe eval/exec."""
         call_name = self._resolve_call_name(node)
         if call_name in ("eval", "exec"):
-            fp = compute_fingerprint("UNSAFE_EVAL_EXEC", call_name, f"{node.lineno}")
-            self.findings.append(DefectFinding(
-                id="", fingerprint=fp, rule_id="UNSAFE_EVAL_EXEC",
-                category="VULNERABILITY", severity="HIGH", track="architectural",
-                file=self.rel_path, line=node.lineno, symbol=call_name,
-                message=f"Call to dynamic '{call_name}()' introduces code injection hazards.",
-                suggested_fix="Use safe parsing (ast.literal_eval() / json.loads()) or structured dispatch per Rule 2."
-            ))
+            self._add(
+                "UNSAFE_EVAL_EXEC", "VULNERABILITY", "HIGH", "architectural", node.lineno, call_name,
+                f"Call to dynamic '{call_name}()' introduces code injection hazards.",
+                "Use safe parsing (ast.literal_eval() / json.loads()) or structured dispatch per Rule 2.",
+                f"{node.lineno}"
+            )
         elif call_name in self.func_sigs:
             sig = self.func_sigs[call_name]
             num_args = len(node.args)
             if num_args < sig["min"] or num_args > sig["max"]:
-                fp = compute_fingerprint("CALL_ARG_COUNT_MISMATCH", call_name, f"{num_args}:{sig['min']}")
-                self.findings.append(DefectFinding(
-                    id="", fingerprint=fp, rule_id="CALL_ARG_COUNT_MISMATCH",
-                    category="CALLABLE_MISMATCH", severity="HIGH", track="tactical",
-                    file=self.rel_path, line=node.lineno, symbol=call_name,
-                    message=f"Call '{call_name}()' expects {sig['min']}-{sig['max']} arg(s), but {num_args} given.",
-                    suggested_fix=f"Update call to '{call_name}()' at line {node.lineno} to supply required arguments."
-                ))
+                self._add(
+                    "CALL_ARG_COUNT_MISMATCH", "CALLABLE_MISMATCH", "HIGH", "tactical", node.lineno, call_name,
+                    f"Call '{call_name}()' expects {sig['min']}-{sig['max']} arg(s), but {num_args} given.",
+                    f"Update call to '{call_name}()' at line {node.lineno} to supply required arguments.",
+                    f"{num_args}:{sig['min']}"
+                )
             kw_names = {kw.arg for kw in node.keywords if kw.arg}
             for req_kw in sig["kwonly"]:
                 if req_kw not in kw_names:
-                    fp = compute_fingerprint("MISSING_REQUIRED_KWARG", f"{call_name}.{req_kw}", f"{node.lineno}")
-                    self.findings.append(DefectFinding(
-                        id="", fingerprint=fp, rule_id="MISSING_REQUIRED_KWARG",
-                        category="CALLABLE_MISMATCH", severity="HIGH", track="tactical",
-                        file=self.rel_path, line=node.lineno, symbol=call_name,
-                        message=f"Call '{call_name}()' is missing required keyword argument '{req_kw}'.",
-                        suggested_fix=f"Pass required parameter '{req_kw}=...' in call to '{call_name}()' at line {node.lineno}."
-                    ))
+                    self._add(
+                        "MISSING_REQUIRED_KWARG", "CALLABLE_MISMATCH", "HIGH", "tactical", node.lineno, call_name,
+                        f"Call '{call_name}()' is missing required keyword argument '{req_kw}'.",
+                        f"Pass required parameter '{req_kw}=...' in call to '{call_name}()' at line {node.lineno}.",
+                        f"{call_name}.{req_kw}:{node.lineno}"
+                    )
         self.generic_visit(node)
 
     def visit_Try(self, node: ast.Try) -> None:
-        """Detect silent bare excepts and overbroad catches."""
         for h in node.handlers:
             if h.type is None:
-                fp = compute_fingerprint("SILENT_BARE_EXCEPT", self.rel_path, f"{h.lineno}")
-                self.findings.append(DefectFinding(
-                    id="", fingerprint=fp, rule_id="SILENT_BARE_EXCEPT",
-                    category="EXCEPTION_SMELL", severity="MEDIUM", track="tactical",
-                    file=self.rel_path, line=h.lineno, symbol=f"{self.rel_path}:{h.lineno}",
-                    message="Silent bare 'except:' clause suppresses unexpected errors and interrupts.",
-                    suggested_fix="Catch specific exception types (e.g. 'except (ValueError, KeyError):') and log failures."
-                ))
+                self._add(
+                    "SILENT_BARE_EXCEPT", "EXCEPTION_SMELL", "MEDIUM", "tactical", h.lineno, f"{self.rel_path}:{h.lineno}",
+                    "Silent bare 'except:' clause suppresses unexpected errors and interrupts.",
+                    "Catch specific exception types (e.g. 'except (ValueError, KeyError):') and log failures.",
+                    f"{h.lineno}"
+                )
             elif isinstance(h.type, ast.Name) and h.type.id == "BaseException":
-                fp = compute_fingerprint("OVERBROAD_SHADOW_CATCH", self.rel_path, f"{h.lineno}")
-                self.findings.append(DefectFinding(
-                    id="", fingerprint=fp, rule_id="OVERBROAD_SHADOW_CATCH",
-                    category="EXCEPTION_SMELL", severity="HIGH", track="architectural",
-                    file=self.rel_path, line=h.lineno, symbol=f"{self.rel_path}:{h.lineno}",
-                    message="Catching 'BaseException' intercepts SystemExit and KeyboardInterrupt.",
-                    suggested_fix="Catch 'Exception' instead of 'BaseException', or re-raise with 'raise ... from err'."
-                ))
+                self._add(
+                    "OVERBROAD_SHADOW_CATCH", "EXCEPTION_SMELL", "HIGH", "architectural", h.lineno, f"{self.rel_path}:{h.lineno}",
+                    "Catching 'BaseException' intercepts SystemExit and KeyboardInterrupt.",
+                    "Catch 'Exception' instead of 'BaseException', or re-raise with 'raise ... from err'.",
+                    f"{h.lineno}"
+                )
         self.generic_visit(node)
 
     def _resolve_call_name(self, node: ast.Call) -> str:
@@ -340,3 +334,12 @@ def scan_path(target: Path, deep: bool = False) -> list[DefectFinding]:
         defect.id = f"DEFECT-{idx:03d}"
 
     return findings
+
+
+def scan_and_save(target: Path, workspace: Optional[Path] = None, deep: bool = False) -> tuple[list[DefectFinding], Path, Path]:
+    """Scan target for defects and persist results to .diagnostics/ SSOT catalog."""
+    findings = scan_path(target, deep=deep)
+    ws = workspace or (target if target.is_dir() else target.parent)
+    json_path, md_path = save_catalog(ws, findings)
+    return findings, json_path, md_path
+
