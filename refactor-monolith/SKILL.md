@@ -62,7 +62,8 @@ python "<skill_dir>/scripts/contract_snapshot.py" state --advance --phase 1
 # 2. Golden contract baseline & verification
 python "<skill_dir>/scripts/contract_snapshot.py" anchor --path <target_dir>
 python "<skill_dir>/scripts/contract_snapshot.py" capture --path <target_dir>
-python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict
+python "<skill_dir>/scripts/contract_snapshot.py" format --files <slice_file1> <slice_file2>
+python "<skill_dir>/scripts/contract_snapshot.py" verify --path <target_dir> --strict [--format]
 
 # 3. Virtualenv-isolated automated tests (headless guards, CI=true)
 # Passes test runner flags (-k, -v, -p) transparently without CLI parser errors:

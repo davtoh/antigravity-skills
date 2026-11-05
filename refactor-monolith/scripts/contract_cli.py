@@ -66,6 +66,7 @@ def _register_contract_subparsers(sub: Any) -> None:
     p_ver = sub.add_parser("verify", help="Diff contracts and check regressions.")
     _add_common_path_args(p_ver)
     p_ver.add_argument("--strict", action="store_true", help="Exit 1 on critical discrepancy.")
+    p_ver.add_argument("--format", action="store_true", help="Opportunistically run local formatters on slice files before verifying.")
     p_ver.add_argument("--ui", action="store_true", help="Run live CDP browser layout verification.")
     p_ver.add_argument("--docker", action="store_true", help="Run container sync audit.")
     p_ver.add_argument("--url", default="", help="Application URL for live UI verification.")
@@ -149,6 +150,10 @@ def _register_diagnostic_and_patch_subparsers(sub: Any) -> None:
         help="Tag format string with '{src}' placeholder (e.g. '<script src=\"{%% static \'{src}\' %%}\"></script>')",
     )
 
+    p_fmt = sub.add_parser("format", help="Opportunistically format slice files with local Ruff/Black/Prettier/gofmt.")
+    _add_common_path_args(p_fmt)
+    p_fmt.add_argument("--files", nargs="+", default=[], help="Specific slice files to format.")
+
 def build_cli_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
     p = argparse.ArgumentParser(description="Cross-platform codebase contract snapshot and regression auditor.")
@@ -205,9 +210,22 @@ def _dispatch_auxiliary_cmd(subcmd: str, target: Path, args: argparse.Namespace)
         return cmd_diagnose(target, getattr(args, "url", ""), getattr(args, "container", ""), getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "strict", False))
     return _dispatch_patch_or_script_cmd(subcmd, args)
 
+def _dispatch_verify_cmd(target: Path, args: argparse.Namespace) -> int:
+    """Execute contract verification, optionally auto-formatting target files first."""
+    from contract_snapshot import cmd_verify
+    raw_paths = args.path if isinstance(args.path, list) else [args.path]
+    targets = [Path(p).resolve() for p in raw_paths]
+    if getattr(args, "format", False):
+        from code_formatter_engine import format_slice_files
+        slice_files = [t for t in targets if t.is_file()]
+        if slice_files:
+            format_slice_files(target, slice_files)
+    target_param = targets if len(targets) > 1 else targets[0]
+    return cmd_verify(target_param, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
+
 def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
     """Dispatch parsed subcommand to corresponding implementation function."""
-    from contract_snapshot import cmd_anchor, cmd_capture, cmd_inspect, cmd_verify
+    from contract_snapshot import cmd_anchor, cmd_capture, cmd_inspect
 
     if subcmd == "anchor":
         return cmd_anchor(target, getattr(args, "worktree_dir", ""))
@@ -215,11 +233,12 @@ def dispatch_cli(subcmd: str, target: Path, args: argparse.Namespace) -> int:
         return cmd_capture(target, getattr(args, "out", ""), getattr(args, "git_ref", ""))
     if subcmd == "inspect":
         return cmd_inspect(target, getattr(args, "git_ref", ""), getattr(args, "before", ""), getattr(args, "show_routes", False))
+    if subcmd == "format":
+        from code_formatter_engine import format_slice_files
+        raw_files = getattr(args, "files", [])
+        return format_slice_files(target, raw_files)
     if subcmd == "verify":
-        raw_paths = args.path if isinstance(args.path, list) else [args.path]
-        targets = [Path(p).resolve() for p in raw_paths]
-        target_param = targets if len(targets) > 1 else targets[0]
-        return cmd_verify(target_param, getattr(args, "before", ""), getattr(args, "git_ref", ""), args.strict, getattr(args, "ui", False), getattr(args, "docker", False), getattr(args, "url", ""))
+        return _dispatch_verify_cmd(target, args)
     if subcmd == "generate-smoke-test":
         return cmd_generate_smoke_test(target, getattr(args, "out", ""), getattr(args, "before", ""), getattr(args, "git_ref", ""))
     if subcmd == "plan":
