@@ -123,7 +123,13 @@ def _print_verification_results(before: CodebaseContract, after: CodebaseContrac
 
 
 def _check_missing_smoke_test(target: Path) -> None:
-    """Warn if no frontend contract smoke test exists."""
+    """Warn if no frontend contract smoke test exists for interactive web/frontend targets."""
+    has_frontend = any(
+        f.suffix.lower() in {".html", ".htm", ".js", ".ts", ".jsx", ".tsx"}
+        for f in iter_repo_files(target)
+    )
+    if not has_frontend:
+        return
     repo_root = get_repo_root(target)
     test_candidates: list[Path] = []
     for search_dir in [target, target / "tests", target.parent / "tests", repo_root / "tests"]:

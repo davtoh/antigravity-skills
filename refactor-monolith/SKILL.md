@@ -231,8 +231,13 @@ The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \
    ```
    This records the defect in `.diagnostics/defect_catalog.json` with **zero modifications to `plan.md`**.
 4. **Independent Lifecycle Handoff**: Upon campaign completion, `campaign_manager.py` summarizes quarantined defects with copy-pasteable commands for `/app-debugger` (Tactical Red-to-Green cycle) or `/frontier-architect` (Architectural Elevation).
-5. **Phase-Isolation & Latent Test Defect Quarantining**:
-   - **Targeted Slicing**: Intermediate verification commands during a decomposition phase must target the test suite of the active slice (e.g. `run-tests --path . -- discover tests -p "test_<module>*.py"`), NOT unrelated whole-repo suites.
+5. **Phase-Isolation & Targeted Verification Rules**:
+   - **Targeted Slicing (Tests)**: Intermediate test execution during a decomposition phase must target the active slice's test suite:
+     - Check if tests exist before guessing patterns (e.g. `run-tests --path . -- discover tests -p "test_<slice>*.py"`).
+     - If no matching test file exists, inspect `tests/` before assuming regression.
+   - **Targeted Slicing (Contract Verification)**: **Always** run `contract_snapshot.py verify --path <target_slice> --strict` during sub-phase iterations (e.g. `--path static/scss` or `--path intelligent_tracker/cli`).
+     - **DO NOT** run repo-wide `verify --path .` during intermediate slices, as it exposes the agent to pre-existing, dormant discrepancies in unrelated subsystems (e.g., legacy HTML/JS DOM mismatches during SCSS refactoring). Reserve repo-wide verification strictly for final campaign closeout.
+   - **Environment Defect Quarantining**: If testing a GUI or hardware-dependent module in a headless or partial environment (e.g., missing `PyQt`, `cv2`, `pyqtgraph`), do NOT keep failing test files. Record the environment gap with `contract_snapshot.py state --record-defect --file <path> --category ENVIRONMENT` and proceed.
    - **Out-of-Phase Failures**: If a whole-repo test suite is executed and a failure occurs in an un-refactored file scheduled for a future phase (e.g. `dashboard/stream_manager.py` during Phase 5):
      - The agent **MUST NOT** expand turn scope to refactor or fix the unrelated file inline.
      - Verify against the pre-refactor baseline. If pre-existing, record the failure as a quarantined defect (`state --record-defect`) and proceed with the active phase.

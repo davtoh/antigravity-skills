@@ -236,28 +236,27 @@ def scope_baseline_to_target(before: CodebaseContract, target: Path, repo_root: 
         r for r in before.python_routes
         if not rel_prefix or str(r.get("file", "")).replace("\\", "/").startswith(rel_prefix)
     ]
-    has_frontend = any(
-        f.suffix.lower() in {".html", ".js", ".ts", ".jsx", ".tsx", ".css", ".scss"}
-        for f in iter_repo_files(t_res)
+    target_files = iter_repo_files(t_res)
+    has_dom = any(
+        f.suffix.lower() in {".html", ".htm", ".js", ".ts", ".jsx", ".tsx"}
+        for f in target_files
     )
-    if not has_frontend:
-        return CodebaseContract(
-            commit_sha=before.commit_sha,
-            python_routes=scoped_routes,
-            python_globals=before.python_globals,
-        )
+    has_css = any(
+        f.suffix.lower() in {".css", ".scss", ".sass"}
+        for f in target_files
+    )
     return CodebaseContract(
         commit_sha=before.commit_sha,
-        html_ids=before.html_ids,
-        select_ids=before.select_ids,
-        inline_handlers=before.inline_handlers,
-        script_order=before.script_order,
-        js_queried_ids=before.js_queried_ids,
-        js_global_exports=before.js_global_exports,
+        html_ids=before.html_ids if has_dom else [],
+        select_ids=before.select_ids if has_dom else [],
+        inline_handlers=before.inline_handlers if has_dom else [],
+        script_order=before.script_order if has_dom else [],
+        js_queried_ids=before.js_queried_ids if has_dom else [],
+        js_global_exports=before.js_global_exports if has_dom else [],
         python_routes=scoped_routes,
         python_globals=before.python_globals,
-        css_important_count=before.css_important_count,
-        css_custom_properties=before.css_custom_properties,
+        css_important_count=before.css_important_count if has_css else 0,
+        css_custom_properties=before.css_custom_properties if has_css else [],
     )
 
 

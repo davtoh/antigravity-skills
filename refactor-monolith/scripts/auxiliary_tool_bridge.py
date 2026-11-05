@@ -112,6 +112,23 @@ def _build_test_runner_command(target: Path, py_bin: str, extra_args: list[str],
     args = [a for a in clean if a.lower() != "unittest"] or ["discover", "tests"]
     return [py_bin, "-m", "unittest", *args]
 
+def _report_zero_tests_advisory(target: Path) -> None:
+    """Print helpful diagnostic when discovery matches zero test cases."""
+    print(
+        "\n[DISCOVERY ADVISORY] Test runner exited because 0 tests matched the specified pattern.\n"
+        "This is an empty pattern match, NOT an assertion failure or regression.",
+        file=sys.stderr,
+    )
+    test_dir = target / "tests" if (target / "tests").is_dir() else target
+    existing_tests = [
+        p.relative_to(target).as_posix()
+        for p in test_dir.rglob("test_*.py")
+        if not any(part in {".git", ".venv", "node_modules", ".refactor"} for part in p.parts)
+    ][:8]
+    if existing_tests:
+        print(f"  Available test files: {', '.join(existing_tests)}", file=sys.stderr)
+    print("  To run all tests: contract_snapshot.py run-tests --path . -- discover tests\n", file=sys.stderr)
+
 def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto", timeout: int = 180) -> int:
     """Execute test suite using virtualenv python if detected, with headless env and safety timeout."""
     tools = discover_optional_tools(target)
@@ -127,7 +144,29 @@ def cmd_run_tests(target: Path, extra_args: list[str], runner: str = "auto", tim
         env["DJANGO_SETTINGS_MODULE"] = django_settings
     print(f"=== Test Runner (Interpreter: {py_bin}, Timeout: {timeout}s) ===\nExecuting: {' '.join(cmd)}\n")
     try:
-        proc = subprocess.run(cmd, cwd=target, env=env, timeout=timeout, check=False)
+        proc = subprocess.run(
+            cmd,
+            cwd=target,
+            env=env,
+            timeout=timeout,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        stdout_str = proc.stdout if isinstance(getattr(proc, "stdout", None), str) else ""
+        stderr_str = proc.stderr if isinstance(getattr(proc, "stderr", None), str) else ""
+        if stdout_str:
+            sys.stdout.write(stdout_str)
+            sys.stdout.flush()
+        if stderr_str:
+            sys.stderr.write(stderr_str)
+            sys.stderr.flush()
+        if proc.returncode != 0:
+            combined = stdout_str + "\n" + stderr_str
+            if "NO TESTS RAN" in combined or "Ran 0 tests in" in combined:
+                _report_zero_tests_advisory(target)
         return proc.returncode
     except subprocess.TimeoutExpired:
         print(
