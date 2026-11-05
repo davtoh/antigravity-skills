@@ -277,3 +277,59 @@ def analyze_generic_fallback(source_text: str) -> list[RawSymbol]:
         end_line = (decls[i + 1][0] - 1) if i + 1 < len(decls) else len(lines)
         symbols.append(RawSymbol("func", name, name, start_line, end_line, max(1, end_line - start_line + 1)))
     return symbols
+
+def _scan_py_line(stripped: str, in_block: bool, marker: str) -> tuple[int, bool, str]:
+    """Inspect a Python line against docstrings and comments."""
+    if in_block:
+        if marker in stripped:
+            after = stripped.split(marker, 1)[1].strip()
+            return (1 if after and not after.startswith("#") else 0, False, "")
+        return (0, True, marker)
+    if stripped.startswith('"""') or stripped.startswith("'''"):
+        m = stripped[:3]
+        rest = stripped[3:]
+        if m in rest:
+            after = rest.split(m, 1)[1].strip()
+            return (1 if after and not after.startswith("#") else 0, False, "")
+        return (0, True, m)
+    return (0 if stripped.startswith("#") else 1, False, "")
+
+def _scan_brace_line(stripped: str, in_block: bool) -> tuple[int, bool]:
+    """Inspect a C-style brace or CSS line against comments."""
+    if in_block:
+        if "*/" in stripped:
+            after = stripped.split("*/", 1)[1].strip()
+            has_code = bool(after and not after.startswith("//") and not after.startswith("/*"))
+            return (1 if has_code else 0, False)
+        return (0, True)
+    if stripped.startswith("/*"):
+        if "*/" in stripped:
+            after = stripped.split("*/", 1)[1].strip()
+            has_code = bool(after and not after.startswith("//") and not after.startswith("/*"))
+            return (1 if has_code else 0, False)
+        return (0, True)
+    return (0 if stripped.startswith("//") else 1, False)
+
+def compute_sloc(source_text: str, suffix: str) -> int:
+    """Calculate Source Lines of Code (SLOC), ignoring blank lines and pure comment lines."""
+    if not source_text:
+        return 0
+    ext = suffix.lower()
+    sloc = 0
+    in_block = False
+    block_marker = ""
+
+    for line in source_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if ext == ".py":
+            delta, in_block, block_marker = _scan_py_line(stripped, in_block, block_marker)
+            sloc += delta
+        elif ext in BRACE_EXTENSIONS or ext in STYLE_EXTENSIONS:
+            delta, in_block = _scan_brace_line(stripped, in_block)
+            sloc += delta
+        else:
+            if not stripped.startswith(("#", "//", "/*", "*", "--", ";")):
+                sloc += 1
+    return sloc

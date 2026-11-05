@@ -44,6 +44,7 @@ from language_analyzers import (  # noqa: E402
     analyze_brace_language,
     analyze_generic_fallback,
     analyze_stylesheet,
+    compute_sloc,
     is_vendor_or_generated,
 )
 from audit_reporters import inspect_sections, preview_split, print_text_summary  # noqa: E402
@@ -176,12 +177,15 @@ def audit_file(file_path: Path, base_dir: Path, thresholds: AuditThresholds) -> 
         text = ""
     line_count = len(text.splitlines())
     rel_path = file_path.name if file_path == base_dir else file_path.relative_to(base_dir).as_posix()
-    line_status = classify_count(line_count, thresholds.warn_file_lines, thresholds.max_file_lines)
+    sloc_count = compute_sloc(text, file_path.suffix.lower())
+    line_status = classify_count(sloc_count, thresholds.warn_file_lines, thresholds.max_file_lines)
+    if line_status == "OK" and line_count > thresholds.max_file_lines:
+        line_status = "WARNING"
     classes, funcs, mode = _dispatch_language_analysis(file_path.suffix.lower(), text, thresholds)
     has_crit = line_status == "CRITICAL" or any(c.status == "CRITICAL" for c in classes) or any(f.status == "CRITICAL" for f in funcs)
     has_warn = line_status == "WARNING" or any(c.status == "WARNING" for c in classes) or any(f.status == "WARNING" for f in funcs)
     status = "CRITICAL" if has_crit else ("WARNING" if has_warn else "OK")
-    return FileReport(rel_path, line_count, status, classes, funcs, mode)
+    return FileReport(rel_path, line_count, status, classes, funcs, mode, sloc_count)
 
 def has_hard_breach(reports: Iterable[FileReport]) -> bool:
     """Return True if any file, class, or function has status 'CRITICAL'."""

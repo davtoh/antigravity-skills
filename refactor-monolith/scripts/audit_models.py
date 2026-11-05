@@ -42,3 +42,4 @@ class FileReport:
     classes: list[ClassMetric] = field(default_factory=list)
     oversized_functions: list[FunctionMetric] = field(default_factory=list)
     parser_mode: str = "ast"
+    sloc: int = 0

@@ -45,9 +45,10 @@ def print_text_summary(
     if by_dir:
         print_by_dir_summary(reports, thresholds)
         return
-    print(f"{'Status':<10} {'Lines':>7}  {'Parser':<10} {'Path'}\n" + "-" * 78)
+    print(f"{'Status':<10} {'Lines (SLOC)':>14}  {'Parser':<10} {'Path'}\n" + "-" * 78)
     for rep in ranked[:top_n]:
-        print(f"{rep.status:<10} {rep.lines:>7}  {rep.parser_mode:<10} {rep.rel_path}")
+        lines_repr = f"{rep.lines} ({rep.sloc})" if rep.sloc and rep.sloc != rep.lines else str(rep.lines)
+        print(f"{rep.status:<10} {lines_repr:>14}  {rep.parser_mode:<10} {rep.rel_path}")
         if not compact:
             _print_file_details(rep, show_methods)
 

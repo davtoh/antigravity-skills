@@ -109,6 +109,12 @@ def _build_test_runner_command(target: Path, py_bin: str, extra_args: list[str],
     if _is_pytest_preferred(target, runner, clean):
         args = [a for a in clean if a.lower() not in ("pytest", "discover")] or ["tests/"]
         return [py_bin, "-m", "pytest", *args]
+    discovery_flags = {"-p", "-s", "-t", "--pattern", "--start-directory", "--top-level-directory"}
+    if any(a in discovery_flags for a in clean) and (not clean or clean[0].lower() != "discover"):
+        if (target / "tests").is_dir() and "-s" not in clean and "--start-directory" not in clean:
+            clean = ["discover", "tests", *clean]
+        else:
+            clean = ["discover", *clean]
     args = [a for a in clean if a.lower() != "unittest"] or ["discover", "tests"]
     return [py_bin, "-m", "unittest", *args]
 

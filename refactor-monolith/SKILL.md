@@ -14,10 +14,16 @@ The **Refactor Monolith** skill provides a deterministic, 100% self-contained wo
 
 | Code Element | Healthy Target | Soft Warning (Refactor Trigger) | Hard Ceiling (Mandatory Split) | Remediation Strategy |
 | :--- | :--- | :--- | :--- | :--- |
-| **Source File** | 150 – 300 lines | **350 lines** | **500 lines** | Extract domain submodules (`routers/`, `services/`, `repositories/`, `components/`). |
+| **Source File** | 150 – 300 SLOC | **350 SLOC** | **500 SLOC** | Extract domain submodules (`routers/`, `services/`, `repositories/`, `components/`). |
 | **Class / Struct / Group** | 50 – 180 lines | **10 methods** (or 200 lines) | **12 methods** (or 300 lines) | Decompose into focused collaborator classes, domain services, or cohesive mixins. |
 | **Function / Method / Rule** | 10 – 25 lines | **30 lines** | **40 lines** | Extract pure helper functions; replace deep nesting with guard clauses or strategy tables. |
 | **Route / Controller** | 5 – 15 lines | **15 lines** | **25 lines** | Keep handlers thin: parse request, call a domain service, and return the response. |
+
+> [!NOTE]
+> **Heuristic Interpretation of Budgets**:
+> - **SLOC-First Measurement**: Budgets are measured against **Source Lines of Code (SLOC)**, discounting blank lines, docstrings, and comments to avoid penalizing well-documented code.
+> - **Soft Warning (350 SLOC)**: Acts as a **heuristic trigger** to inspect if cohesive domain submodules can be extracted. If a file is ~350–450 lines, highly cohesive, and has no clean Single Responsibility split, **leave it intact** and accept the soft warning.
+> - **Hard Ceiling (500 SLOC)**: Requires architectural decomposition into domain submodules. It NEVER permits cosmetic compression or code-golfing.
 
 ---
 
@@ -102,20 +108,25 @@ flowchart TD
 - **Action**: Outline cohesion clusters, extract submodules sequentially, verify per slice, finish in current turn.
 
 ### Mode B1: Initialize Project Campaign (`PROJECT_CAMPAIGN`)
-- **The 2-Monolith / 25-Tool-Call Turn Ceiling Gate**:
-  - **Never execute all phases or $> 2$ monoliths in a single turn.** Running mega-turns (100+ steps) saturates context and causes silent regressions.
-  - If a phase contains $> 2$ monolith files, split into sub-batches (e.g. Sub-Phase 1.1 Slices 1–2).
-  - When verified or approaching 20–25 tool calls, save checkpoint:
-    ```bash
-    python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
-    ```
-    Present a clean commit command and **STOP**. Advise running `/refactor-monolith continue` in a fresh chat.
+- **Effort-Weighted Phase Sizing & The 25-Tool-Call Turn Ceiling Gate**:
+  - **Effort-Based Sizing**: Size campaign phases by cumulative restructuring effort rather than a rigid file count:
+    - Target $\sim 600 - 1,000$ lines of code actively slated for restructuring per phase/turn (or 1 major monolith $\ge 600$L, or 2–3 minor over-budget files $\le 400$L that share domain cohesion).
+    - If candidate files in a phase exceed this cumulative volume, partition into atomic sub-phases (e.g. Sub-Phase 1.1, Sub-Phase 1.2).
+  - **Domain & Runtime Affinity Isolation**:
+    - Group files sharing the same runtime, test tooling, and mental model into the same phase.
+    - Never mix disparate operational boundaries in the same turn (e.g. backend test suite de-crufting should NOT be bundled with browser DOM controllers).
+  - **Turn Ceiling Gate**:
+    - When verified or approaching 20–25 tool calls, save checkpoint:
+      ```bash
+      python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
+      ```
+      Present a clean commit command and **STOP**. Advise running `/refactor-monolith continue` in a fresh chat.
   - Clicking 'Proceed' on the implementation plan authorizes **Phase 1 (or Sub-Phase 1.1) only**. Subsequent phases are *Deferred to Next Turn*.
   - Write `.refactor/plan.md` as the single canonical plan on disk. When presenting in chat, mirror the exact same content without divergence.
 
 ### Mode B2: Auto-Resume Campaign (`CAMPAIGN_RESUME`)
 - **Trigger**: User runs `/refactor-monolith continue` or starts a fresh chat with active `state.json`.
-- **Action**: Read `state.json` and `plan.md`, report resumption, extract $\le 2$ monolith files, run Step 5 verification, save checkpoint, advance state, and stop.
+- **Action**: Read `state.json` and `plan.md`, report resumption, extract the active phase within the $\sim 600-1,000$ line effort budget, run Step 5 verification, save checkpoint, advance state, and stop.
 
 ### Mode C: Post-Refactor Regression Recovery (`REGRESSION_RECOVERY`)
 - **Action**: Run 1-command unified diagnostic:
@@ -232,15 +243,18 @@ The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \
    This records the defect in `.diagnostics/defect_catalog.json` with **zero modifications to `plan.md`**.
 4. **Independent Lifecycle Handoff**: Upon campaign completion, `campaign_manager.py` summarizes quarantined defects with copy-pasteable commands for `/app-debugger` (Tactical Red-to-Green cycle) or `/frontier-architect` (Architectural Elevation).
 5. **Phase-Isolation & Targeted Verification Rules**:
+   - **Hermetic Environment Invariant**: **NEVER** run bare `python -m unittest` or `pytest` against the host/system Python. **ALWAYS** execute tests via `python <skill_path>/scripts/contract_snapshot.py run-tests --path . -- <args>`, ensuring virtualenv binaries, `QT_QPA_PLATFORM=offscreen`, and `MPLBACKEND=Agg` are injected automatically.
    - **Targeted Slicing (Tests)**: Intermediate test execution during a decomposition phase must target the active slice's test suite:
      - Check if tests exist before guessing patterns (e.g. `run-tests --path . -- discover tests -p "test_<slice>*.py"`).
      - If no matching test file exists, inspect `tests/` before assuming regression.
    - **Targeted Slicing (Contract Verification)**: **Always** run `contract_snapshot.py verify --path <target_slice> --strict` during sub-phase iterations (e.g. `--path static/scss` or `--path intelligent_tracker/cli`).
      - **DO NOT** run repo-wide `verify --path .` during intermediate slices, as it exposes the agent to pre-existing, dormant discrepancies in unrelated subsystems (e.g., legacy HTML/JS DOM mismatches during SCSS refactoring). Reserve repo-wide verification strictly for final campaign closeout.
+   - **Targeted Slicing (EOL Normalization)**: Run `normalize-eol` strictly targeting the active slice (e.g. `contract_snapshot.py normalize-eol --path <active_slice> --to lf`). **NEVER** run global `normalize-eol` across the entire repository root during intermediate slices, as this dirties untouched files with CRLF/LF changes in `git status`.
    - **Environment Defect Quarantining**: If testing a GUI or hardware-dependent module in a headless or partial environment (e.g., missing `PyQt`, `cv2`, `pyqtgraph`), do NOT keep failing test files. Record the environment gap with `contract_snapshot.py state --record-defect --file <path> --category ENVIRONMENT` and proceed.
    - **Out-of-Phase Failures**: If a whole-repo test suite is executed and a failure occurs in an un-refactored file scheduled for a future phase (e.g. `dashboard/stream_manager.py` during Phase 5):
      - The agent **MUST NOT** expand turn scope to refactor or fix the unrelated file inline.
      - Verify against the pre-refactor baseline. If pre-existing, record the failure as a quarantined defect (`state --record-defect`) and proceed with the active phase.
+   - **Safe Deprecated Script Facades**: When relocating legacy, thesis, or experimental monoliths to a `deprecated/` subfolder, do NOT use eager `from .deprecated.module import *` if the legacy module executes side-effects (e.g. file reads, hardware/display initialization) or imports legacy packages (e.g. `past`, `future`) at top-level. Wrap imports in `try...except ImportError` or lazy attribute lookups to isolate legacy execution traps from active test discovery.
 
 ---
 
@@ -249,6 +263,7 @@ The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \
 - **NEVER run `git add` or `git rm` during a refactoring turn.**
 - When deleting a superseded monolith file, delete it via filesystem tools (`Remove-Item` or `os.remove`), NOT `git rm`.
 - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs via `git diff`.
+- **Strict Ban on Destructive Git Cleanup**: NEVER run `git checkout --`, `git reset`, or `git clean` to hide EOL differences or clean up `git status`. If files show line-ending modifications, leave them unstaged or let the user review them. Destructive commands risk discarding user work or uncommitted changes.
 - Run `git status --short` before composing suggested `git add` and `git commit` commands for the user.
 
 ---
@@ -262,6 +277,10 @@ The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \
      1. Revert unstable edits immediately (`git checkout -- <files>` or remove partial submodules).
      2. Restore the last verified working version.
      3. Explain the structural invariant to the user and recommend keeping the file at its best working version.
+4. **The Structural vs. Cosmetic Refactoring Invariant (Anti-Code-Golfing)**:
+   - Refactoring is strictly architectural: decomposing responsibilities, decoupling dependencies, and creating cohesive submodules ($\Delta \text{Behavior} \equiv 0$).
+   - Never squash lines, strip comments/blank lines, combine variable declarations, or compress statement formatting to artificially beat line budgets.
+   - Line budgets measure logical modularity (SLOC), not typographical compaction. Cosmetic compaction reduces readability, degrades DevTools stepping, complicates git diffs, and violates lint standards. If a file cannot be naturally decomposed into a domain submodule, accept the soft warning or leave it at its best working version. (For language-specific rules, see [`references/language-playbooks.md`](./references/language-playbooks.md)).
 
 ---
 

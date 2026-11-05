@@ -61,6 +61,13 @@ When splitting plain browser scripts (`app.js`, `studio.js`) loaded directly via
    Never load a master bootstrapper or modal controller before the feature module that registers its API.
 4. **Automated Parity Verification**: Run `contract_snapshot.py verify --before .refactor_baseline.json` after extracting every JS file to assert zero missing IDs and zero dropped `window.*` exports.
 
+### Anti-Line-Golfing & Readability Rules (JS/TS)
+When refactoring JavaScript or TypeScript files to meet modularity budgets:
+1. **Declaration Isolation**: Never combine distinct variable declarations (`let a = 1, b = 2, c = 3;`). Maintain one variable declaration per line (enforcing ESLint [`one-var: ["error", "never"]`](https://eslint.org/docs/latest/rules/one-var)).
+2. **Template & JSX Readability**: Never collapse multi-line template literals, HTML template blocks, or JSX structures into 200+ character single lines. Maintain structured vertical indentation.
+3. **Control Flow & Blocks**: Do not collapse `if (...) doSomething(); else doOther();` or multi-line event listeners onto single lines to shave line counts.
+4. **Blank Lines & Visual Chunking**: Preserve blank lines between functions, methods, and distinct control blocks for human readability.
+
 ---
 
 ## 3. Stylesheets: CSS & SCSS (`.css`, `.scss`, `.less`)

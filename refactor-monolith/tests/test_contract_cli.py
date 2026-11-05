@@ -127,6 +127,10 @@ class TestContractCliCommands(unittest.TestCase):
             code_sep = main(["run-tests", "--path", tmp, "--", "discover", "tests", "-v"])
             self.assertEqual(code_sep, 0)
 
+            # 3b. Run with omitted discover subcommand and raw -p pattern flag
+            code_omitted_discover = main(["run-tests", "--path", tmp, "--", "-p", "test_*.py"])
+            self.assertEqual(code_omitted_discover, 0)
+
             # 4. Direct inline python command via -c
             code_cmd = main(["run-tests", "--path", tmp, "-c", "import sys; sys.exit(0)"])
             self.assertEqual(code_cmd, 0)

@@ -28,8 +28,61 @@ from scripts.language_analyzers import (
     analyze_brace_language,
     analyze_generic_fallback,
     analyze_stylesheet,
+    compute_sloc,
     is_vendor_or_generated,
 )
+
+class TestComputeSloc(unittest.TestCase):
+    """Test Source Lines of Code (SLOC) calculation across languages and edge cases."""
+
+    def test_python_sloc_ignores_comments_and_docstrings(self) -> None:
+        py_code = (
+            '"""\n'
+            'Module docstring\n'
+            '"""\n'
+            '# Full line comment\n'
+            'x = 1\n'
+            '\n'
+            'def foo():\n'
+            '    """Function docstring."""\n'
+            '    return x\n'
+        )
+        self.assertEqual(compute_sloc(py_code, ".py"), 3)
+
+    def test_javascript_sloc_ignores_line_and_block_comments(self) -> None:
+        js_code = (
+            '// Single line comment\n'
+            '/* Multi\n'
+            '   line */\n'
+            'let a = 1;\n'
+            '\n'
+            'let b = 2; // inline comment\n'
+            '/* one line */ let c = 3;\n'
+        )
+        self.assertEqual(compute_sloc(js_code, ".js"), 3)
+
+    def test_stylesheet_sloc_ignores_comments_and_empty_lines(self) -> None:
+        css_code = (
+            '/* Header banner */\n'
+            '\n'
+            '.card {\n'
+            '  color: red;\n'
+            '}\n'
+            '// scss comment\n'
+        )
+        self.assertEqual(compute_sloc(css_code, ".css"), 3)
+
+    def test_audit_file_reports_sloc_and_avoids_false_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f = Path(tmpdir) / "documented.py"
+            # 300 lines of code + 100 lines of comments = 400 raw lines (would trigger WARNING on raw LOC)
+            # But SLOC is 300 (<= 350), so status should remain OK
+            lines = [f"x_{i} = {i}" for i in range(300)] + [f"# comment {i}" for i in range(100)]
+            f.write_text("\n".join(lines), encoding="utf-8")
+            rep = audit_file(f, Path(tmpdir), AuditThresholds(warn_file_lines=350, max_file_lines=500))
+            self.assertEqual(rep.lines, 400)
+            self.assertEqual(rep.sloc, 300)
+            self.assertEqual(rep.status, "OK")
 
 class TestClassifyCount(unittest.TestCase):
     """Test classification logic against soft and hard budget limits."""
