@@ -101,6 +101,10 @@ Never edit code on speculation. Always establish a reproducible failing baseline
 
 Before touching code, synthesize findings into a structured matrix that maps every observed symptom to its verified root cause:
 
+> [!IMPORTANT]
+> **Filesystem & Target Path Verification**:
+> Before entering Target File & Line into the matrix, empirically verify that the target path physically exists as a file (os.path.isfile / Test-Path). Never guess filenames or mistake package directories for source files.
+
 | # | Observed Symptom | Failing Evidence / Traceback | Root Cause Analysis | Target File & Line | Verification Check |
 |---|---|---|---|---|---|
 | 1 | Player overflows viewport | Bounding width 1600px > 1200px | Missing defensive layout containment (`min-width: 0`) | `static/css/player.css:42` | `run_diagnose.py ui --audit-layout` |
