@@ -120,8 +120,10 @@ flowchart TD
     - When verified or approaching 20–25 tool calls, save checkpoint:
       ```bash
       python "<skill_dir>/scripts/contract_snapshot.py" state --checkpoint --note "Completed Slices X-Y"
+      # Record milestone in CHANGELOG.md and emit commit command (Single-Generation Echo Protocol):
+      python skills/system-diagnostics/scripts/diagnose.py changelog add --title "Completed Slices X-Y" --type refactor --summary "<Summary>" --verify "<Command>"
       ```
-      Present a clean commit command and **STOP**. Advise running `/refactor-monolith continue` in a fresh chat.
+      Directly reuse the emitted `git commit` snippet and **STOP**. Advise running `/refactor-monolith continue` in a fresh chat.
   - Clicking 'Proceed' on the implementation plan authorizes **Phase 1 (or Sub-Phase 1.1) only**. Subsequent phases are *Deferred to Next Turn*.
   - Write `.refactor/plan.md` as the single canonical plan on disk. When presenting in chat, mirror the exact same content without divergence.
 
@@ -265,7 +267,7 @@ The fundamental **Refactoring Invariant** ($\Delta(\text{Observable Behavior}) \
 - When deleting a superseded monolith file, delete it via filesystem tools (`Remove-Item` or `os.remove`), NOT `git rm`.
 - Leave all created, modified, and deleted files unstaged in the working tree so the user can inspect diffs via `git diff`.
 - **Strict Ban on Destructive Git Cleanup**: NEVER run `git checkout --`, `git reset`, or `git clean` to hide EOL differences or clean up `git status`. If files show line-ending modifications, leave them unstaged or let the user review them. Destructive commands risk discarding user work or uncommitted changes.
-- Run `git status --short` before composing suggested `git add` and `git commit` commands for the user.
+- Run `git status --short` before recording the milestone, and re-use the commit snippet emitted by `diagnose.py changelog add` rather than regenerating redundant commit prose in chat.
 
 ---
 

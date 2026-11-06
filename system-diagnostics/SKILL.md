@@ -48,6 +48,11 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
    - Dispatches **Dual-Track Remediation**:
      - **Track A (Tactical)**: Generates self-contained Red-to-Green tests in `tests/quarantine/test_<id>.py` with optional micro-branching (`--branch`) guarded by git dirty-tree safety checks.
      - **Track B (Architectural)**: Emits structured Architectural Elevation Briefs for `/frontier-architect` + `/grill-me` when defects reveal structural design flaws.
+9. **Unified Changelog & Auto-Archiving Engine (`diagnose.py changelog`)**:
+   - Manages bounded, zero-read-token changelogs (`CHANGELOG.md`) capped at $\le 150$ lines with entry-boundary safety (min 3 entries kept).
+   - Declaratively sanitizes local paths, `file:///` URIs, `.venv` references, and localhost ports via `SANITIZATION_RULES`.
+   - Auto-migrates legacy `MIGRATION_LOG.md` files, merges distinct entries without data loss, and auto-shards historical entries into `.changelogs/changelog_YYYY_H1.md` / `H2.md` with explicit AI-guard banners.
+   - Implements the Single-Generation Echo Protocol (`--commit-hint`) to emit copy-pasteable `git commit` commands directly from CLI arguments, cutting milestone completion token overhead in half.
 
 ---
 
@@ -56,7 +61,7 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
 Before executing diagnostic commands on a project, verify the diagnostics test suite:
 
 ```bash
-# Run the comprehensive diagnostic test suite (93 unit & integration tests, < 3.5s)
+# Run the comprehensive diagnostic test suite (105 unit & integration tests, < 3.5s)
 python -m unittest discover -s skills/system-diagnostics/tests -p "test_*.py"
 ```
 
@@ -92,6 +97,11 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Unlock Tactical Defect (Test Synthesis)** | Quarantined defect | Generates Red repro in tests/quarantine/ | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
 | **Unlock Tactical Defect + Micro-Branch** | Quarantined defect | Clean git checkout + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
 | **Elevate Structural Defect to Architecture**| Quarantined defect | Emits brief for /frontier-architect | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-002 --elevate` |
+| **Record Milestone & Emit Commit Snippet** | Any repo (auto-migrates legacy log) | `--title --type --summary --verify` | `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "Worker Split" --type refactor --summary "SRP decomposition" --verify "pytest (45 passed)"` |
+| **Auto-Migrate Oversized MIGRATION_LOG.md** | Legacy repo migration | `--path --max-lines 150` | `python skills/system-diagnostics/scripts/diagnose.py changelog migrate --path . --max-lines 150` |
+| **Custom Source/Target Log Names** | Custom file override | `--source-log --target-log` | `python skills/system-diagnostics/scripts/diagnose.py changelog migrate --source-log HISTORY.md --target-log CHANGELOG.md` |
+| **Check Changelog & Archive Health** | Status inspection | `--path` | `python skills/system-diagnostics/scripts/diagnose.py changelog status --path .` |
+| **Read Recent 3 Milestones (On Demand)** | Bounded context lookup | `--recent 3` | `python skills/system-diagnostics/scripts/diagnose.py changelog show --recent 3` |
 
 ---
 
@@ -219,9 +229,11 @@ skills/system-diagnostics/
 │   ├── audit_layout.js               # Injected DOM bounding box auditor
 │   ├── docker_audit.py               # Docker stats, top, and MD5 sync auditor
 │   ├── surface_scanners.py           # AST surface parser for HTML/JS/Python/CSS
+│   ├── changelog_manager.py          # Unified changelog, sanitization & auto-archiving engine
 │   └── css_inspector.py              # CSS layout, overflow, and specificity checks
 └── tests/
     ├── test_diagnose.py              # Automated unit tests for CLI & discovery
+    ├── test_changelog_manager.py     # Automated unit tests for changelog & auto-archiving
     ├── test_static_auditor.py        # Automated unit tests for static & smell audit
     ├── test_shadow_prober.py         # Automated unit tests for AST rules & sandbox
     ├── test_defect_catalog.py        # Automated unit tests for catalog & git safety

@@ -117,6 +117,7 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - **Environment Parity**: Never verify solely against synthetic mocks when a live database or hardware device is configured. Test against real configuration states (e.g. existing database embedding dimensions).
    - **Resource Lifecycle Check**: Explicitly verify cleanup (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
    - **Interactive User Gate**: When confidence is partial, physical hardware is involved, or an operation is sensitive/destructive, provide a 1-line verification recipe and prompt the user to confirm live execution before closing the milestone.
+   - **Milestone Recording (Single-Generation Echo Protocol)**: When closing a verified bug fix milestone, record it via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
 3. **Report Axiom 9 Honest Verification**:
    - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
 

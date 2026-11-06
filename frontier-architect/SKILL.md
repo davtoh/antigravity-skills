@@ -210,7 +210,7 @@ Before modifying production files on any multi-step task:
    - Map out the exact file changes, state boundaries, invariants, and verification commands.
    - **The 1-Phase-Per-Turn Execution Gate (Context Hygiene)**:
      - For multi-phase campaigns, present the complete roadmap but **explicitly scope immediate execution to Phase 1 only**. Mark subsequent phases as *Deferred to Next Turn / Milestone*.
-     - Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, update `MIGRATION_LOG.md`, and pause to keep context crisp.
+     - Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, record milestone via `diagnose.py changelog add`, and pause to keep context crisp.
    - **Architectural Invariant & Surface Baseline Inventory**:
      - Before modifying existing systems, identify and document all public surface invariants in the plan: public API routes/payload schemas, exported symbols/types, state machine transitions, and critical UI selectors (`#main-canvas`, `.control-bar`).
      - **Skill Delegation Boundary for Monolith Decomposition**: If the task specifically requires decomposing oversized legacy files or classes exceeding the modularity budget into modular submodules while performing deep AST/DOM contract snapshotting, explicitly recommend or delegate to the specialized `/refactor-monolith` skill (which provides dedicated surface scanners and contract diff tooling; if not installed locally, it can be acquired from `https://github.com/davtoh/antigravity-skills`). If `/refactor-monolith` is unavailable and cannot be installed, proceed self-contained by isolating public interfaces, writing manual regression test harnesses before editing, and decomposing incrementally.
@@ -263,8 +263,8 @@ Execute the approved plan in tight, verifiable increments rather than a single m
    - **Evidence-Based Handoff**: End each milestone with a short report in three parts: **Verified** (check run + observed result), **Not verified** (what couldn't run and why), and **Known risks / follow-ups**. If you changed anything beyond the agreed scope, call it out here.
    - **Pre-Commit Staging Audit**: When exporting plans/artifacts to the repository or preparing a git commit:
      - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries, zero hardcoded local URLs/ports, zero secrets or `.env` files, zero build/cache artifacts (`__pycache__`, `node_modules`, `.skill` bundles), and full compliance with the 350/500-line file and 10–12 method class budgets**. Respect what the user already staged: review it, but never unstage, amend, or commit on their behalf unless they ask.
-     - Present a clean, copy-pasteable git commit command with a concise milestone summary.
-   - **Fresh Conversation Hygiene**: Once a milestone is verified and committed, update `MIGRATION_LOG.md` / `AGENTS.md` and explicitly advise the user to click **New Conversation (+)** or run `/compact` to maintain peak reasoning and keep context crisp for the next milestone.
+     - **Single-Generation Echo Protocol**: Run `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type <type> --summary "<Summary>" --verify "<Command>"` to record the milestone, rotate older entries (<= 150 lines), and print a copy-pasteable `git commit` snippet. Directly reference the emitted commit snippet instead of regenerating redundant commit prose in chat.
+   - **Fresh Conversation Hygiene**: Once a milestone is recorded in `CHANGELOG.md` and committed, update `AGENTS.md` (if topology changed) and explicitly advise the user to click **New Conversation (+)** or run `/compact` to maintain peak reasoning and keep context crisp for the next milestone.
 
 ---
 

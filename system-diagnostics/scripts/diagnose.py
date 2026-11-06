@@ -25,6 +25,7 @@ import surface_scanners
 import probe_runner
 import static_auditor
 import shadow_prober
+import changelog_manager
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -431,6 +432,9 @@ def build_parser() -> argparse.ArgumentParser:
     # 8. Polyglot defect scan and JIT scaffolder
     shadow_prober.register_parsers(sub)
 
+    # 9. Unified changelog & auto-archiving engine
+    changelog_manager.register_parser(sub)
+
     return parser
 
 def main() -> int:
@@ -450,6 +454,7 @@ def main() -> int:
         "audit": cmd_audit,
         "scan": cmd_scan,
         "scaffold-defect": cmd_scaffold_defect,
+        "changelog": changelog_manager.cmd_changelog,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:
