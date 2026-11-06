@@ -43,6 +43,7 @@ def _find_py_files(target: Path) -> list[Path]:
     return [
         p for p in target.rglob("*.py")
         if not any(part in IGNORED_DIRS for part in p.parts)
+        and p.name != "setup.py"
     ]
 
 
@@ -86,7 +87,10 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
                         if param.default is inspect.Parameter.empty
                         and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
                     ]
-                    if not req_params:
+                    name_lower = name.lower()
+                    has_lifecycle_attr = any(hasattr(obj, attr) for attr in ("stop", "close", "start", "run", "shutdown"))
+                    is_lifecycle_name = any(token in name_lower for token in ("pool", "manager", "source", "capture", "thread", "worker", "loop", "server", "stream", "watcher", "app", "lifecycle"))
+                    if not req_params and not has_lifecycle_attr and not is_lifecycle_name:
                         try:
                             obj()
                         except TypeError as te:

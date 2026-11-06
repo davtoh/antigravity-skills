@@ -130,7 +130,7 @@ def parse_changelog(content: str) -> tuple[str, list[ChangelogEntry]]:
 def _write_archive_shard(archive_dir: Path, year: int, half: str, entries: list[ChangelogEntry]) -> Path:
     shard = archive_dir / f"changelog_{year}_{half}.md"
     existing = shard.read_text(encoding="utf-8") if shard.exists() else ""
-    body = "\n".join(e.raw_text.strip() for e in entries) + "\n"
+    body = "\n\n".join(e.raw_text.strip() for e in entries) + "\n"
     if not existing:
         shard.write_text(f"{AI_GUARD_BANNER}# Historical Changelog Archive ({year} {half})\n\n{body}", encoding="utf-8")
     else:
@@ -165,7 +165,7 @@ def rotate_entries(
             groups.setdefault((oe.year, oe.half), []).append(oe)
         for (y, h), grp in groups.items():
             shards_written.append(_write_archive_shard(archive_dir, y, h, grp))
-    return prologue + "\n".join(e.compact().strip() for e in active) + "\n", shards_written
+    return prologue + "\n\n".join(e.compact().strip() for e in active) + "\n", shards_written
 
 def _get_git_modified_files(root: Path) -> tuple[list[str], bool]:
     try:

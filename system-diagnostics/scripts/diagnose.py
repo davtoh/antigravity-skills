@@ -26,6 +26,8 @@ import probe_runner
 import static_auditor
 import shadow_prober
 import changelog_manager
+import trace_recorder
+import runtime_runner
 from defect_catalog import IGNORED_WORKSPACE_DIRS
 
 # Configure UTF-8 stdout/stderr across all platforms
@@ -443,6 +445,12 @@ def build_parser() -> argparse.ArgumentParser:
     # 9. Unified changelog & auto-archiving engine
     changelog_manager.register_parser(sub)
 
+    # 10. Runtime trace and crash recorder
+    trace_recorder.register_parser(sub)
+
+    # 11. Zero-code auto-trace runner
+    runtime_runner.register_parser(sub)
+
     return parser
 
 def main() -> int:
@@ -465,6 +473,8 @@ def main() -> int:
         "resolve-defect": cmd_resolve_defect,
         "dismiss-defect": cmd_dismiss_defect,
         "changelog": changelog_manager.cmd_changelog,
+        "traces": trace_recorder.cmd_traces,
+        "run": runtime_runner.cmd_run,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

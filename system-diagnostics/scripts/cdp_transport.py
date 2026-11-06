@@ -22,7 +22,7 @@ class StdlibWSClient:
         self._closed = False
 
     @classmethod
-    async def connect(cls, url: str, timeout: float = 10.0) -> StdlibWSClient:
+    async def connect(cls, url: str, timeout: float = 10.0) -> "StdlibWSClient":
         parsed = urlparse(url)
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or (443 if parsed.scheme == "wss" else 80)
@@ -143,7 +143,7 @@ class StdlibWSClient:
                 self.writer.close()
                 await self.writer.wait_closed()
 
-    async def __aenter__(self) -> StdlibWSClient:
+    async def __aenter__(self) -> "StdlibWSClient":
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
