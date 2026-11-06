@@ -22,12 +22,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-IGNORED_DIRS = frozenset({
-    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    "dist", "build", "_build", "out", "target", ".idea", ".vscode",
-    "scratch", "coverage", "htmlcov", "migrations", ".refactor",
-})
+try:
+    from defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
+except ImportError:
+    from .defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
 
 PLATFORM_MODULE_HINTS = frozenset({
     "win32api", "win32con", "win32gui", "win32process", "_winreg", "winreg",

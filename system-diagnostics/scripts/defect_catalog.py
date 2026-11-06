@@ -31,12 +31,13 @@ CATALOG_MD_FILENAME = "DEFECT_CATALOG.md"
 GITIGNORE_FILENAME = ".gitignore"
 QUARANTINE_DIR = Path("tests") / "quarantine"
 ACTIVE_STATUSES = frozenset({"quarantined", "scaffolded", "elevated"})
-IGNORED_RECONCILE_DIRS = frozenset({
+IGNORED_WORKSPACE_DIRS: frozenset[str] = frozenset({
     ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__",
     ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist", "build", "_build",
     "out", "target", ".idea", ".vscode", "scratch", "coverage", "htmlcov",
     "migrations", ".refactor", ".diagnostics",
 })
+IGNORED_RECONCILE_DIRS = IGNORED_WORKSPACE_DIRS
 
 
 def ensure_diagnostics_dir(workspace: Path) -> Path:

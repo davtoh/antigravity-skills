@@ -18,18 +18,19 @@ from typing import Any, Optional
 
 try:
     from defect_catalog import (
-        ACTIVE_STATUSES, check_git_dirty, checkout_micro_branch, cmd_scaffold_defect,
-        cmd_status_transition, load_catalog, reconcile_defect, save_catalog,
-        scaffold_defect, scaffold_tactical_test, update_defect_status,
+        ACTIVE_STATUSES, IGNORED_WORKSPACE_DIRS as IGNORED_DIRS, check_git_dirty,
+        checkout_micro_branch, cmd_scaffold_defect, cmd_status_transition, load_catalog,
+        reconcile_defect, save_catalog, scaffold_defect, scaffold_tactical_test,
+        update_defect_status,
     )
 except ImportError:
     from .defect_catalog import (
-        ACTIVE_STATUSES, check_git_dirty, checkout_micro_branch, cmd_scaffold_defect,
-        cmd_status_transition, load_catalog, reconcile_defect, save_catalog,
-        scaffold_defect, scaffold_tactical_test, update_defect_status,
+        ACTIVE_STATUSES, IGNORED_WORKSPACE_DIRS as IGNORED_DIRS, check_git_dirty,
+        checkout_micro_branch, cmd_scaffold_defect, cmd_status_transition, load_catalog,
+        reconcile_defect, save_catalog, scaffold_defect, scaffold_tactical_test,
+        update_defect_status,
     )
 
-IGNORED_DIRS = frozenset({".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist", "build", "_build", "out", "target", ".idea", ".vscode", "scratch", "coverage", "htmlcov", "migrations", ".refactor", ".diagnostics"})
 SECRET_REGEX = re.compile(r"""(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password)\s*[:=]\s*['"][a-zA-Z0-9_\-\.]{16,}['"]""")
 DUMMY_SECRET_WORDS = frozenset({"test", "fake", "dummy", "example", "placeholder", "xxx", "sample"})
 SKIP_ARITY_DECORATORS = frozenset({"property", "setter", "deleter", "overload", "abstractmethod"})

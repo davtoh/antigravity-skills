@@ -26,6 +26,7 @@ import probe_runner
 import static_auditor
 import shadow_prober
 import changelog_manager
+from defect_catalog import IGNORED_WORKSPACE_DIRS
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -138,10 +139,9 @@ def cmd_container(args: argparse.Namespace) -> int:
 
 def _walk_source_files(root: Path) -> dict[str, list[Path]]:
     """Collect source files for surface scanning, filtering ignore directories."""
-    ignored = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", "dist", "build", ".refactor"}
     files: dict[str, list[Path]] = {"html": [], "js": [], "py": [], "css": []}
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in ignored and not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames if d not in IGNORED_WORKSPACE_DIRS and not d.startswith(".")]
         for fn in filenames:
             ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
             p = Path(dirpath) / fn
