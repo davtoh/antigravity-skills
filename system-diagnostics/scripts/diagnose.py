@@ -246,6 +246,14 @@ def cmd_scaffold_defect(args: argparse.Namespace) -> int:
     """Execute JIT defect scaffolding for remediation."""
     return shadow_prober.cmd_scaffold_defect(args)
 
+def cmd_resolve_defect(args: argparse.Namespace) -> int:
+    """Mark one or more catalog defects as resolved."""
+    return shadow_prober.cmd_status_transition(args, "resolved")
+
+def cmd_dismiss_defect(args: argparse.Namespace) -> int:
+    """Mark one or more catalog defects as dismissed."""
+    return shadow_prober.cmd_status_transition(args, "dismissed")
+
 def cmd_all(args: argparse.Namespace) -> int:
     """Execute unified 3-tier diagnostic audit in 1 command."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
@@ -454,6 +462,8 @@ def main() -> int:
         "audit": cmd_audit,
         "scan": cmd_scan,
         "scaffold-defect": cmd_scaffold_defect,
+        "resolve-defect": cmd_resolve_defect,
+        "dismiss-defect": cmd_dismiss_defect,
         "changelog": changelog_manager.cmd_changelog,
     }
     handler = dispatch.get(args.subcommand)

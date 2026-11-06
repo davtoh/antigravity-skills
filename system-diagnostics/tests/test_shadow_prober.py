@@ -145,6 +145,60 @@ class TestShadowProber(unittest.TestCase):
             self.assertEqual(results[0].id, "DEFECT-001")
             self.assertEqual(results[1].id, "DEFECT-002")
 
+    def test_instance_and_class_method_self_cls_bound_zero_false_positives(self):
+        code = (
+            "class CameraPool:\n"
+            "    def load_cameras(self):\n"
+            "        pass\n"
+            "    def remove_camera(self, cam_id):\n"
+            "        pass\n"
+            "    @classmethod\n"
+            "    def from_config(cls, cfg):\n"
+            "        return cls()\n"
+            "    @staticmethod\n"
+            "    def compute_hash(a, b):\n"
+            "        return a + b\n"
+            "    @property\n"
+            "    def primary(self):\n"
+            "        return None\n"
+            "    def run(self):\n"
+            "        self.load_cameras()\n"
+            "        self.remove_camera('cam_1')\n"
+            "        self.from_config({})\n"
+            "        self.compute_hash(1, 2)\n"
+            "        self.remove_camera()\n"  # Genuine missing arg on self method
+            "        self.compute_hash(1)\n"  # Genuine missing arg on staticmethod
+        )
+        tree = ast.parse(code)
+        findings = PythonAstScanner("pool.py", code).scan(tree)
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(findings[0].symbol, "remove_camera")
+        self.assertEqual(findings[1].symbol, "compute_hash")
+
+    def test_positional_or_keyword_and_starred_unpacking(self):
+        code = (
+            "def configure(host, port, timeout=5.0):\n"
+            "    pass\n"
+            "def caller(args, kwargs):\n"
+            "    configure('localhost', port=8080)\n"
+            "    configure(host='localhost', port=8080)\n"
+            "    configure(*args)\n"
+            "    configure(**kwargs)\n"
+        )
+        tree = ast.parse(code)
+        findings = PythonAstScanner("cfg.py", code).scan(tree)
+        self.assertEqual(len(findings), 0)
+
+    def test_arbitrary_receiver_does_not_collide_with_module_async_or_arity(self):
+        code = (
+            "async def add_camera(req):\n"
+            "    pool = get_pool()\n"
+            "    pool.add_camera(req.id, req.name, req.source)\n"
+        )
+        tree = ast.parse(code)
+        findings = PythonAstScanner("routers/cameras.py", code).scan(tree)
+        self.assertEqual(len(findings), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

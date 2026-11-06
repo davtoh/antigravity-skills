@@ -97,6 +97,9 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Unlock Tactical Defect (Test Synthesis)** | Quarantined defect | Generates Red repro in tests/quarantine/ | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
 | **Unlock Tactical Defect + Micro-Branch** | Quarantined defect | Clean git checkout + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
 | **Elevate Structural Defect to Architecture**| Quarantined defect | Emits brief for /frontier-architect | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-002 --elevate` |
+| **Mark Defect Resolved in Catalog** | Verified fix | Updates status & resolution audit note | `python skills/system-diagnostics/scripts/diagnose.py resolve-defect --id DEFECT-001 --note "Fixed"` |
+| **Dismiss False Positive or Risk** | Non-actionable item | Excludes from active count & strict gate | `python skills/system-diagnostics/scripts/diagnose.py dismiss-defect --id DEFECT-002 --reason "False positive"` |
+| **Rescan & Prune Closed/Vanished Items** | Catalog cleanup | Drops closed/obsolete entries on scan | `python skills/system-diagnostics/scripts/diagnose.py scan --deep --prune` |
 | **Record Milestone & Emit Commit Snippet** | Any repo (auto-migrates legacy log) | `--title --type --summary --verify` | `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "Worker Split" --type refactor --summary "SRP decomposition" --verify "pytest (45 passed)"` |
 | **Auto-Migrate Oversized MIGRATION_LOG.md** | Legacy repo migration | `--path --max-lines 150` | `python skills/system-diagnostics/scripts/diagnose.py changelog migrate --path . --max-lines 150` |
 | **Custom Source/Target Log Names** | Custom file override | `--source-log --target-log` | `python skills/system-diagnostics/scripts/diagnose.py changelog migrate --source-log HISTORY.md --target-log CHANGELOG.md` |
@@ -183,9 +186,18 @@ python skills/system-diagnostics/scripts/diagnose.py scan [OPTIONS]
 ```
 - `--path <PATH>`: Target file or directory to scan across Python, JS/TS, CSS, and Dart (default: current directory).
 - `--deep` / `--all`: Scans extended rules (CSS `!important` specificity overruns, unbounded container growth, blocking loops).
+- `--prune`: Purges closed (`resolved`/`dismissed`) or vanished defects from the catalog during scan reconciliation.
 - `--json`: Outputs machine-readable catalog JSON to stdout.
-- `--strict`: Exits with return code 1 if any defects are detected (ideal for CI pipelines).
-- *Automatic Catalog Sync*: Automatically saves findings into `<workspace>/.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`.
+- `--strict`: Exits with return code 1 if any active (`quarantined`/`scaffolded`/`elevated`) defects are detected.
+- *Automatic Stateful Catalog Sync*: Reconciles findings by `fingerprint` in `<workspace>/.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`, automatically transitioning fixed defects to `resolved` and preserving `dismissed` items so solved issues are never repeated.
+
+### Subcommand: `resolve-defect` & `dismiss-defect`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py resolve-defect --id <ID_FP_OR_RULE> [--note "<TEXT>"]
+python skills/system-diagnostics/scripts/diagnose.py dismiss-defect --id <ID_FP_OR_RULE> [--reason "<TEXT>"]
+```
+- `--id <ID_FP_OR_RULE>`: Comma-separated defect IDs (`DEFECT-001`), fingerprints (`DEF-SILENT-3917ae`), or rule ID (`SILENT_BARE_EXCEPT`).
+- `--note` / `--reason`: Audit note persisted in the `Resolved & Dismissed History` table.
 
 ### Subcommand: `scaffold-defect`
 ```bash

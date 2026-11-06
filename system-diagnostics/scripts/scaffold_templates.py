@@ -9,52 +9,118 @@ import re
 from typing import Any
 
 QUARANTINE_REL_PATH = "tests/quarantine"
+CLOSED_STATUSES = frozenset({"resolved", "dismissed"})
+
+
+def _format_defect_row(d: dict[str, Any], include_resolution: bool = False) -> str:
+    """Format a single defect dictionary into a Markdown table row."""
+    d_id = d.get("id", "")
+    fp = d.get("fingerprint", "")
+    sev = d.get("severity", "MEDIUM")
+    trk = d.get("track", "tactical")
+    sym = f"`{d.get('symbol', '')}`" if d.get("symbol") else "-"
+    loc = f"`{d.get('file', '')}:{d.get('line', '')}`"
+    rule = d.get("rule_id", "")
+    status = d.get("status", "quarantined")
+    if include_resolution:
+        note = (d.get("resolution") or "-").replace("|", "\\|")
+        return f"| {d_id} | `{fp}` | {sev} | {sym} | {loc} | {rule} | {status} | {note} |"
+    return f"| {d_id} | `{fp}` | {sev} | {trk} | {sym} | {loc} | {rule} | {status} |"
 
 
 def generate_catalog_markdown(catalog_data: dict[str, Any]) -> str:
     """Generate human-readable markdown representation of defect catalog."""
     summary = catalog_data.get("summary", {})
     defects = catalog_data.get("defects", [])
-    ws = catalog_data.get("workspace", "")
-    ts = catalog_data.get("updated_at", "")
+    active_list = [d for d in defects if d.get("status", "quarantined") not in CLOSED_STATUSES]
+    closed_list = [d for d in defects if d.get("status", "quarantined") in CLOSED_STATUSES]
 
     lines = [
         "# Latent Defect & Code Smell Catalog",
         "",
-        f"**Workspace:** `{ws}`  ",
-        f"**Last Updated:** `{ts}`  ",
-        f"**Total Defects:** {summary.get('total', 0)} "
+        f"**Workspace:** `{catalog_data.get('workspace', '')}`  ",
+        f"**Last Updated:** `{catalog_data.get('updated_at', '')}`  ",
+        f"**Total Defects:** {summary.get('total', len(active_list))} "
         f"(Tactical: {summary.get('by_track', {}).get('tactical', 0)}, "
-        f"Architectural: {summary.get('by_track', {}).get('architectural', 0)})",
+        f"Architectural: {summary.get('by_track', {}).get('architectural', 0)}, "
+        f"Resolved: {summary.get('resolved', 0)}, Dismissed: {summary.get('dismissed', 0)})",
         "",
-        "## Summary by Severity",
+        "## Summary by Severity (Active)",
         f"- **HIGH:** {summary.get('by_severity', {}).get('HIGH', 0)}",
         f"- **MEDIUM:** {summary.get('by_severity', {}).get('MEDIUM', 0)}",
         f"- **LOW:** {summary.get('by_severity', {}).get('LOW', 0)}",
         "",
-        "## Quarantined Defects",
+        "## Quarantined & Active Defects",
         "",
         "| ID | Fingerprint | Severity | Track | Symbol | File:Line | Rule | Status |",
         "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
+    for d in active_list:
+        lines.append(_format_defect_row(d, include_resolution=False))
 
-    for d in defects:
-        d_id = d.get("id", "")
-        fp = d.get("fingerprint", "")
-        sev = d.get("severity", "MEDIUM")
-        trk = d.get("track", "tactical")
-        sym = f"`{d.get('symbol', '')}`" if d.get("symbol") else "-"
-        loc = f"`{d.get('file', '')}:{d.get('line', '')}`"
-        rule = d.get("rule_id", "")
-        status = d.get("status", "quarantined")
-        lines.append(f"| {d_id} | `{fp}` | {sev} | {trk} | {sym} | {loc} | {rule} | {status} |")
+    if closed_list:
+        lines.extend([
+            "",
+            "## Resolved & Dismissed History",
+            "",
+            "| ID | Fingerprint | Severity | Symbol | File:Line | Rule | Status | Resolution Note |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+        ])
+        for d in closed_list:
+            lines.append(_format_defect_row(d, include_resolution=True))
 
-    lines.append("")
-    lines.append("## Remediation Workflows")
-    lines.append("- **Tactical Bugs:** Unlock test via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> --branch` -> solve in `/app-debugger`.")
-    lines.append("- **Structural Defects:** Elevate via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> --elevate` -> redesign in `/frontier-architect` + `/grill-me`.")
-    lines.append("")
+    lines.extend([
+        "",
+        "## Remediation Workflows",
+        "- **Tactical Bugs:** Unlock test via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> --branch` -> solve in `/app-debugger`.",
+        "- **Structural Defects:** Elevate via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> --elevate` -> redesign in `/frontier-architect` + `/grill-me`.",
+        "- **Mark Solved / Dismiss:** `python skills/system-diagnostics/scripts/diagnose.py resolve-defect --id <ID> --note \"Fixed\"` or `dismiss-defect --id <ID> --reason \"False positive\"`.",
+        "",
+    ])
     return "\n".join(lines) + "\n"
+
+
+def _build_rule_check_body(d_id: str, rule_id: str, sym_short: str, suggested_fix: str) -> str:
+    """Return rule-specific Python unittest assertion block for tactical quarantine tests."""
+    fix_esc = suggested_fix.replace('"', '\\"')
+    return f'''        rule = "{rule_id}"
+        is_py = TARGET_FILE.suffix.lower() == ".py"
+        if rule == "MUTABLE_DEFAULT_ARG" and is_py:
+            tree = ast.parse(self.code)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "{sym_short}":
+                    for d, p in zip(reversed(node.args.defaults), reversed(node.args.args)):
+                        if isinstance(d, (ast.List, ast.Dict, ast.Set)):
+                            self.fail(f"[{d_id}] Invariant violation: parameter '{{p.arg}}' in '{{node.name}}' has mutable default. Suggested Fix: {fix_esc}")
+        elif rule == "UNREACHABLE_CODE" and is_py:
+            tree = ast.parse(self.code)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "{sym_short}":
+                    for i, stmt in enumerate(node.body[:-1]):
+                        if isinstance(stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
+                            dead = node.body[i + 1]
+                            self.fail(f"[{d_id}] Dead statement at line {{dead.lineno}} following '{{type(stmt).__name__}}'. Suggested Fix: {fix_esc}")
+        elif rule == "SILENT_BARE_EXCEPT":
+            if is_py:
+                tree = ast.parse(self.code)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Try):
+                        for h in node.handlers:
+                            if h.type is None:
+                                self.fail(f"[{d_id}] Silent bare 'except:' clause at line {{h.lineno}}. Suggested Fix: {fix_esc}")
+            elif re.search(r"catch\\s*\\([^)]*\\)\\s*\\{{\\s*\\}}", self.code):
+                self.fail(f"[{d_id}] Empty catch block suppresses errors silently. Suggested Fix: {fix_esc}")
+        elif rule == "HARDCODED_SECRET_PATTERN":
+            sec = re.compile(r"""(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password)\\s*[:=]\\s*['"][a-zA-Z0-9_\\-\\.]{{16,}}['"]""")
+            for idx, line in enumerate(self.code.splitlines(), start=1):
+                if "# pragma: allow-defect" not in line and sec.search(line):
+                    self.fail(f"[{d_id}] Hardcoded secret pattern remains active at line {{idx}}. Suggested Fix: {fix_esc}")
+        elif rule == "CSS_IMPORTANT_OVERRUN":
+            for idx, line in enumerate(self.code.splitlines(), start=1):
+                if "!important" in line:
+                    self.fail(f"[{d_id}] '!important' found at line {{idx}}. Suggested Fix: {fix_esc}")
+        elif is_py:
+            self.assertIsNotNone(ast.parse(self.code))'''
 
 
 def build_tactical_test_code(
@@ -63,6 +129,8 @@ def build_tactical_test_code(
     """Generate self-contained Red-to-Green reproduction unittest."""
     sym_short = symbol.split(".")[-1] if symbol else "target"
     cls_name = "Test" + re.sub(r"[^a-zA-Z0-9]", "", d_id.title())
+    id_slug = d_id.lower().replace("-", "_")
+    body_code = _build_rule_check_body(d_id, rule_id, sym_short, suggested_fix)
 
     return f'''#!/usr/bin/env python3
 """Quarantine Reproduction Test for {d_id} ({rule_id}).
@@ -73,14 +141,14 @@ Suggested Fix: {suggested_fix}
 
 Workflow (/app-debugger):
   1. Verify failing test:
-     python -m unittest {QUARANTINE_REL_PATH}/test_{d_id.lower().replace("-", "_")}.py
+     python -m unittest {QUARANTINE_REL_PATH}/test_{id_slug}.py
   2. Apply suggested fix in {rel_file}
   3. Re-verify test passes Green
 """
 
 import ast
 import pathlib
-import sys
+import re
 import unittest
 
 WORKSPACE_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -94,59 +162,9 @@ class {cls_name}(unittest.TestCase):
         self.assertTrue(TARGET_FILE.is_file(), f"Target file does not exist: {{TARGET_FILE}}")
         self.code = TARGET_FILE.read_text(encoding="utf-8", errors="replace")
 
-    def test_verify_remediation_{d_id.lower().replace("-", "_")}(self):
+    def test_verify_remediation_{id_slug}(self):
         """Invariant check: fails while defect is active, passes once fixed."""
-        rule = "{rule_id}"
-        if rule == "MUTABLE_DEFAULT_ARG":
-            tree = ast.parse(self.code)
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "{sym_short}":
-                    for d, p in zip(reversed(node.args.defaults), reversed(node.args.args)):
-                        if isinstance(d, (ast.List, ast.Dict, ast.Set)):
-                            self.fail(
-                                f"[{d_id}] Invariant violation: parameter '{{p.arg}}' in '{{node.name}}' has mutable default. "
-                                f"Suggested Fix: {suggested_fix}"
-                            )
-        elif rule == "UNREACHABLE_CODE":
-            tree = ast.parse(self.code)
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "{sym_short}":
-                    for i, stmt in enumerate(node.body[:-1]):
-                        if isinstance(stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
-                            dead = node.body[i + 1]
-                            self.fail(
-                                f"[{d_id}] Dead statement at line {{dead.lineno}} following '{{type(stmt).__name__}}'. "
-                                f"Suggested Fix: {suggested_fix}"
-                            )
-        elif rule == "SILENT_BARE_EXCEPT":
-            tree = ast.parse(self.code)
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Try):
-                    for h in node.handlers:
-                        if h.type is None:
-                            self.fail(
-                                f"[{d_id}] Silent bare 'except:' clause at line {{h.lineno}}. "
-                                f"Suggested Fix: {suggested_fix}"
-                            )
-        elif rule == "HARDCODED_SECRET_PATTERN":
-            import re
-            sec = re.compile(r"""(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password)\\s*[:=]\\s*['"][a-zA-Z0-9_\\-\\.]{{16,}}['"]""")
-            for idx, line in enumerate(self.code.splitlines(), start=1):
-                if "# pragma: allow-defect" not in line and sec.search(line):
-                    self.fail(
-                        f"[{d_id}] Hardcoded secret pattern remains active at line {{idx}}. "
-                        f"Suggested Fix: {suggested_fix}"
-                    )
-        elif rule == "CSS_IMPORTANT_OVERRUN":
-            for idx, line in enumerate(self.code.splitlines(), start=1):
-                if "!important" in line:
-                    self.fail(
-                        f"[{d_id}] '!important' found at line {{idx}}. "
-                        f"Suggested Fix: {suggested_fix}"
-                    )
-        else:
-            tree = ast.parse(self.code)
-            self.assertIsNotNone(tree)
+{body_code}
 
 
 if __name__ == "__main__":
@@ -158,27 +176,20 @@ def generate_architectural_brief(defect: dict[str, Any]) -> str:
     """Generate structured Architectural Elevation Brief for /frontier-architect + /grill-me."""
     d_id = defect.get("id", "DEFECT")
     rule = defect.get("rule_id", "")
-    sym = defect.get("symbol", "-")
     loc = f"{defect.get('file', '')}:{defect.get('line', '')}"
-    sev = defect.get("severity", "HIGH")
-    cat = defect.get("category", "STRUCTURAL")
-    fp = defect.get("fingerprint", "")
-    msg = defect.get("message", "")
-    fix = defect.get("suggested_fix", "")
-
     return f"""================================================================================
 🏛️  ARCHITECTURAL ELEVATION BRIEF: {d_id} ({rule})
 ================================================================================
-Target Symbol:  {sym}
+Target Symbol:  {defect.get('symbol', '-')}
 Location:       {loc}
-Severity:       {sev} | Category: {cat}
-Fingerprint:    {fp}
+Severity:       {defect.get('severity', 'HIGH')} | Category: {defect.get('category', 'STRUCTURAL')}
+Fingerprint:    {defect.get('fingerprint', '')}
 
 Systemic Flaw Description:
-  {msg}
+  {defect.get('message', '')}
 
 Suggested Architectural Remediation:
-  {fix}
+  {defect.get('suggested_fix', '')}
 
 Architectural Friction & Risk Analysis:
   Tactical in-flight patches for this defect risk introducing Hyrum's Law cascades,
