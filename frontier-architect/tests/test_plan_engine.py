@@ -124,7 +124,7 @@ class TestPlanState(unittest.TestCase):
             self.assertEqual(get_repo_root(sub), root)
             fdir = get_frontier_dir(root)
             self.assertTrue((fdir / ".gitignore").exists())
-            self.assertIn("plans/*/artifacts/", (fdir / ".gitignore").read_text(encoding="utf-8"))
+            self.assertIn("*", (fdir / ".gitignore").read_text(encoding="utf-8"))
 
     def test_load_and_atomic_save_json(self):
         with tempfile.TemporaryDirectory() as td:

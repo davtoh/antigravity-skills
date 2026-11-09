@@ -36,7 +36,9 @@ def get_frontier_dir(root: Path) -> Path:
     gitignore = fdir / ".gitignore"
     if not gitignore.exists():
         gitignore.write_text(
-            "# Frontier Architect execution ledger & telemetry\nplans/*/artifacts/\n*.tmp\n",
+            "# Local Frontier Architect state ledger, telemetry, and artifacts\n"
+            "# Ignored by default so they never pollute git status; use `git add -f` if versioning is desired.\n"
+            "*\n",
             encoding="utf-8",
         )
     return fdir

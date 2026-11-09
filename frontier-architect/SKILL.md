@@ -112,15 +112,16 @@ Why do bug fixes fail or burn excessive tokens?
 2. When `chrome_devtools` MCP or `/browser` fails (e.g. `npx` not in `%PATH%` / `$PATH`), agents waste thousands of tokens probing Node/Chrome versions and writing repetitive CDP scripts in `scratch/`.
 
 When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**.
-- **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or when using `/app-debugger` for dedicated bug hunting), invoke the unified CLI:
+- **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or when using `/app-debugger` for dedicated bug hunting), invoke the unified CLI via its configuration path:
   ```bash
-  python skills/system-diagnostics/scripts/diagnose.py all
+  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" all
   # Or target specific subsystems:
-  python skills/system-diagnostics/scripts/diagnose.py ui --live --audit-layout
-  python skills/system-diagnostics/scripts/diagnose.py container --container <name> --sync-check <files...>
+  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --live --audit-layout
+  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" container --container <name> --sync-check <files...>
   # For domain-specific inspections (hardware, databases, network), use the dynamic probe registry:
-  python skills/system-diagnostics/scripts/diagnose.py probe run camera_hardware
+  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" probe run camera_hardware
   ```
+  *(Where `<config_dir>` is `%USERPROFILE%\.gemini\config` on Windows or `~/.gemini/config` on Linux/macOS).*
 - **Self-Contained Bundled Fallback**: When running standalone without sibling skills, execute the built-in cross-platform helpers in `<skill_dir>/scripts/` (`docker_audit.py`, `cdp_inspect.py`) as detailed below.
 
 Execute these 3 steps *before* editing production code:
@@ -242,7 +243,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
 
 1. **The Plan Continuation Engine (`/frontier-architect continue [plan_or_slug]`)**:
    - **Slash Commands**:
-     - `/frontier-architect continue [plan_or_slug]`: Resumes execution of any active or discovered markdown plan (`.plans/`, `.TODO/`, `docs/plans/`). Auto-bootstraps `.frontier/state.json` and runs `python "<skill_dir>/scripts/plan_engine.py" next` to pull active vertical slice tasks, verifiers, and critic invariants with zero LLM token waste.
+     - `/frontier-architect continue [plan_or_slug]`: Resumes execution of any active or discovered markdown plan (`.plans/`, `.TODO/`, `docs/plans/`). **MANDATORY**: Run `python "<skill_dir>/scripts/plan_engine.py" status` and `next` as the first action—never bypass the engine or manually inspect/edit `.frontier/state.json`.
      - `/frontier-architect status [plan_or_slug]`: Displays visual progress bar, active milestone, and baseline via `scripts/plan_engine.py status`.
      - `/frontier-architect lookup <query_or_sha>`: Surfaces past architectural decisions, milestones, commit SHAs, and retrospectives via `scripts/plan_engine.py lookup`.
 2. **Mandatory Pre-Flight Critic Gate (The Cognitive Checkpoint)**:
@@ -270,7 +271,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
 6. **Milestone Advance & 3-Tier Continuous Learning Loop**:
    - **Verification Baseline**: Run `python "<skill_dir>/scripts/plan_engine.py" verify` to record test pass counts.
    - **Advance Milestone**: Run `python "<skill_dir>/scripts/plan_engine.py" advance` to patch checkboxes (`- [ ]` $\rightarrow$ `- [x]`) in the markdown file and record git commit SHA.
-   - **4-Dimensional Retrospective**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --tri "<scores>" --hypotheses <n> --learn "<candidate>" --escalate "<bug>"`.
+   - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --tri "<scores>" --hypotheses <n> --learn "<candidate>" --escalate "<bug>"`. Never skip this step; it dual-writes telemetry to `.frontier/plans/<slug>/retrospectives.json` and `.frontier/state.json` so future `/frontier-architect lookup` searches succeed.
      - *Token Efficiency Grade (A–F)*: Zero-token CLI orchestration and tight context management.
      - *Hypothesis Accuracy*: Stop-loss adherence ($\le 2$ attempts).
      - *Tool Reliability Index (TRI 1–5)*: Empirical rating of tools used.
@@ -280,7 +281,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - When all milestones reach 100% completion (`- [x]`), enforce the mandatory safety gate:
      - Run complete workspace regression test suite and Scenario Combinations Matrix.
      - **Pre-Commit Staging Audit**: Verify zero `file:///` links, zero machine absolute paths, zero secrets, and full compliance with 350/500-line modularity budgets. Respect staged files without destructive commands.
-     - **Single-Generation Echo Protocol**: Run `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type <type> --summary "<Summary>" --verify "<Command>"` to update `CHANGELOG.md` and emit copy-pasteable `git commit` snippet.
+     - **Single-Generation Echo Protocol**: Update `CHANGELOG.md` directly or run `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add --title "<Title>" --type <type> --summary "<Summary>" --verify "<Command>"`. When updating ASCII dependency trees or roadmaps in markdown plans, use single-line anchor replacements or append notes to avoid Windows CRLF mismatch failures.
      - Update plan header with completion metadata and provide non-destructive review command (`git diff main...plan/<slug>`). Never auto-merge without explicit consent.
    - **Fresh Conversation Hygiene**: Advise user to click **New Conversation (+)** or run `/compact` before the next campaign.
 
