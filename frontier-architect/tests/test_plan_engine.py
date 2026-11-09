@@ -243,6 +243,10 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertIn("Task 1.1", out)
         self.assertIn("python -m unittest discover tests", out)
 
+        code, out_cont = self._run_cli(["continue", "sample_plan"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, out_cont)
+
         code, out_json = self._run_cli(["next", "sample_plan", "--json"])
         self.assertEqual(code, 0)
         self.assertIn("verifiers", json.loads(out_json))

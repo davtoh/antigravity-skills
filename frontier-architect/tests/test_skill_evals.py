@@ -142,6 +142,40 @@ def evaluate_expectation_against_text(text: str, expectation: str) -> tuple[bool
         has_co = bool(re.search(r"multi-skill co-invocation|orchestrator of intent|app-debugger", text, re.I))
         return has_co, f"Co-invocation protocol / Orchestrator of Intent: {has_co}"
 
+    # Eval 12 patterns
+    if "continue" in exp_lower and ("markdown plan" in exp_lower or "resume" in exp_lower):
+        has_cont = bool(re.search(r"frontier-architect continue|resumes execution|plan_engine\.py next", text, re.I))
+        return has_cont, f"Continue engine resume: {has_cont}"
+
+    if "dual-track" in exp_lower or ".frontier/state.json" in exp_lower:
+        has_dt = bool(re.search(r"dual-track|\.frontier/state\.json|zero.*token.*plan_engine", text, re.I))
+        return has_dt, f"Dual-track state synchronization: {has_dt}"
+
+    if "plan_engine.py advance" in exp_lower or "checklist patching" in exp_lower:
+        has_adv = bool(re.search(r"plan_engine\.py advance|patch checkboxes|advance milestone", text, re.I))
+        return has_adv, f"Milestone advance and checklist patch: {has_adv}"
+
+    if "status and lookup" in exp_lower or "progress bar" in exp_lower:
+        has_sl = bool(re.search(r"status|lookup|progress bar", text, re.I))
+        return has_sl, f"Status and lookup commands: {has_sl}"
+
+    # Eval 13 patterns
+    if "pre-flight critic gate" in exp_lower or "critic gate" in exp_lower:
+        has_cg = bool(re.search(r"pre-flight critic gate|critic gate|public surface invariants", text, re.I))
+        return has_cg, f"Pre-Flight Critic Gate: {has_cg}"
+
+    if "anti-thrash stop-loss" in exp_lower or "stop-loss" in exp_lower:
+        has_sloss = bool(re.search(r"anti-thrash stop-loss|stop-loss|two fix attempts|2 attempts", text, re.I))
+        return has_sloss, f"Anti-Thrash Stop-Loss: {has_sloss}"
+
+    if "4-dimensional retrospective" in exp_lower or "retrospective telemetry" in exp_lower:
+        has_retro = bool(re.search(r"4-dimensional retrospective|token efficiency grade|tri|retrospective", text, re.I))
+        return has_retro, f"4-Dimensional Retrospective: {has_retro}"
+
+    if "/learn" in exp_lower or "continuous learning" in exp_lower:
+        has_learn = bool(re.search(r"/learn|continuous learning", text, re.I))
+        return has_learn, f"Continuous learning feed to /learn: {has_learn}"
+
     # Generic keyword fallback
     keywords = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_kw = sum(1 for kw in keywords if kw in text.lower())

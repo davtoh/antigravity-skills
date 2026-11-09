@@ -156,6 +156,30 @@
         "Implements a clean, reversible utility complying with Modularity Budgets (<= 350 lines, <= 10-12 methods)",
         "Upholds Axiom 8 (Safety) and Axiom 9 (Honest Verification Reporting) by executing tests and reporting exact results"
       ]
+    },
+    {
+      "id": 12,
+      "prompt": "We have an existing multi-milestone architectural plan in .TODO/camera_pipeline_and_detector_configuration_plan.md where Milestone 1 is done and we just opened a fresh chat. How do you resume work on Milestone 2, pull the active tasks without burning LLM context, and advance the checklist?",
+      "expected_output": "The agent executes /frontier-architect continue, auto-bootstraps .frontier/state.json, pulls active milestone tasks and verifiers via plan_engine.py next with zero token bloat, executes the slice, and patches the markdown checklist in-place using plan_engine.py advance.",
+      "files": [],
+      "expectations": [
+        "Resumes execution of any active or discovered markdown plan using /frontier-architect continue without manual re-prompting",
+        "Synchronizes dual-track state between markdown plan and .frontier/state.json via zero-token CLI orchestration",
+        "Applies in-place checklist patching (- [ ] to - [x]) and records commit SHA via plan_engine.py advance",
+        "Surfaces progress bar, baseline verifiers, and past architectural decisions via status and lookup commands"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Before we start implementing the next vertical slice for our video analytics service, walk me through your cognitive pre-flight gate, what you do if our first two bug fix attempts fail, how you track execution telemetry, and how you feed architectural discoveries back into the team's project memory.",
+      "expected_output": "The agent audits all 4 vectors of the Mandatory Pre-Flight Critic Gate (surface invariants, defensive edge cases, modularity line budgets, scenario verifiers), enforces the Anti-Thrash Stop-Loss (<= 2 failed attempts -> /app-debugger), logs 4D retrospective telemetry via plan_engine.py retrospective, and feeds reusable patterns to /learn.",
+      "files": [],
+      "expectations": [
+        "Enforces the Mandatory Pre-Flight Critic Gate auditing public surface invariants, edge cases, modularity line budgets, and scenario verifiers",
+        "Enforces Anti-Thrash Stop-Loss after at most 2 failed fix attempts on the same symptom, escalating to /app-debugger or higher model tier",
+        "Logs 4-dimensional retrospective telemetry (Token Efficiency Grade, TRI scores, hypotheses, and architectural defense) via plan_engine.py retrospective",
+        "Proactively feeds discovered reusable patterns and architectural improvements into the /learn catalog"
+      ]
     }
   ]
 }

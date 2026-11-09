@@ -303,6 +303,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--json", action="store_true", help="Output compact JSON")
     p_next = sub.add_parser("next", parents=[plan_parent], help="Output next active milestone tasks")
     p_next.add_argument("--json", action="store_true", help="Output JSON")
+    p_cont = sub.add_parser("continue", parents=[plan_parent], help="Resume execution of active milestone")
+    p_cont.add_argument("--json", action="store_true", help="Output JSON")
     p_adv = sub.add_parser("advance", parents=[plan_parent], help="Check off tasks and advance milestone")
     p_adv.add_argument("--milestone", type=int, help="Milestone number to complete")
     p_adv.add_argument("--commit", help="Commit SHA to record")
@@ -330,8 +332,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
 
     handlers = {
         "discover": cmd_discover, "init": cmd_init, "status": cmd_status,
-        "next": cmd_next, "advance": cmd_advance, "retrospective": cmd_retrospective,
-        "lookup": cmd_lookup, "verify": cmd_verify,
+        "next": cmd_next, "continue": cmd_next, "advance": cmd_advance,
+        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify,
     }
     handler = handlers.get(cmd)
     if not handler:

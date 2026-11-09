@@ -236,52 +236,66 @@ Before modifying production files on any multi-step task:
 
 ---
 
-### Phase 6: Atomic Vertical Slicing & Closed-Loop Verification
+### Phase 6: Plan Execution, Continuation Engine & Closed-Loop Verification
 
-Execute the approved plan in tight, verifiable increments rather than a single massive code dump *(see [references/flash-opus-harness.md](./references/flash-opus-harness.md) for the full harness)*:
+Execute approved plans in tight, verifiable increments rather than monolithic dumps *(see [references/flash-opus-harness.md](./references/flash-opus-harness.md))*:
 
-1. **Sequence Slices Cleanly**:
-   - **Step 1**: Data schemas, types, and contracts → *Verify with typechecker/linter.*
-   - **Step 2**: Pure core logic / state handling → *Verify with fast unit tests.*
-   - **Step 3**: UI layout & styling → *Verify with build + browser/visual tools.*
-2. **Run Heavy Tests Asynchronously**:
-   - Kick off slow integration suites, builds, or E2E runs as background tasks (`WaitMsBeforeAsync: 500`) so workspace momentum never freezes.
-3. **Visual, DOM & Container Verification for UI/Runtime (3-Tier Verification Ladder)**:
-   - **Tier 1 (Static & Type Contract Parity)**: Run the project's native verification commands (typecheckers, linters, unit tests, and route/contract test suites like `pytest`, `npm test`, `tsc --noEmit`, `mypy`, or `cargo test`) to ensure zero syntax errors, zero broken type contracts, and full pass rate before launching servers.
-   - **Tier 2 (Container Deployment Check)**: If the app runs in Docker, ensure updated code/assets are active in the container (`docker cp` or `docker compose restart`/`up -d --build`) and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
+1. **The Plan Continuation Engine (`/frontier-architect continue [plan_or_slug]`)**:
+   - **Slash Commands**:
+     - `/frontier-architect continue [plan_or_slug]`: Resumes execution of any active or discovered markdown plan (`.plans/`, `.TODO/`, `docs/plans/`). Auto-bootstraps `.frontier/state.json` and runs `python "<skill_dir>/scripts/plan_engine.py" next` to pull active vertical slice tasks, verifiers, and critic invariants with zero LLM token waste.
+     - `/frontier-architect status [plan_or_slug]`: Displays visual progress bar, active milestone, and baseline via `scripts/plan_engine.py status`.
+     - `/frontier-architect lookup <query_or_sha>`: Surfaces past architectural decisions, milestones, commit SHAs, and retrospectives via `scripts/plan_engine.py lookup`.
+2. **Mandatory Pre-Flight Critic Gate (The Cognitive Checkpoint)**:
+   - Before writing or editing production code in any vertical slice, explicitly audit 4 vectors:
+     - **Public Surface Invariants**: Explicitly document schemas, API contracts, exported types, and DOM selector IDs.
+     - **Defensive Edge Cases**: Address boundary states, timeouts, missing inputs, network drops, and resource cleanup.
+     - **Modularity Line Budgets**: Enforce soft trigger at **350 lines**, hard split ceiling at **500 lines**, $\le 10–12$ methods/class, and $\le 40$ lines/function.
+     - **Scenario Verifiers**: Commit to exact runnable command from the plan's Scenario Combinations Matrix.
+3. **Execution Sequence & In-Flight Tool Elevation**:
+   - **Sequence Slices Cleanly**: Types/Contracts $\rightarrow$ Core Logic $\rightarrow$ State/Service $\rightarrow$ UI Layout $\rightarrow$ Styling & Polish.
+   - **In-Flight Tool Elevation Protocol**: When encountering a limitation or bug in an invoked skill tool (`<skill_dir>/scripts/`), enhance and verify the script in `<skill_dir>/tests/` before resuming application code, avoiding disposable scratch scripts and preventing regression thrash.
+   - **Tooling Hygiene**: Use `<appDataDir>/brain/<conversation-id>/scratch/` strictly for throwaway Phase 4 SPIKEs—never leave `scratch/` in project repositories. Never vendor skill scripts into `<workspace>/scripts/`.
+   - **Run Heavy Tests Asynchronously**: Kick off slow integration suites or builds as background tasks (`WaitMsBeforeAsync: 500`).
+4. **Closed-Loop Verification Ladder & Second-Check Gate**:
+   - **Tier 1 (Static & Type Contract Parity)**: Run native verification commands (typecheckers, linters, unit tests, route suites like `pytest`, `npm test`, `tsc --noEmit`, `mypy`, `cargo test`) ensuring zero syntax errors and type safety.
+   - **Tier 2 (Container Deployment Check)**: If the app runs in Docker, ensure updated assets are active and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
    - **Tier 3 (Live Browser & Bounding-Box Check)**:
      - **Pre-Flight Pause Protocol**: Check if `$APP_URL` is responding and if Chrome remote debugging requires user approval ("Allow" banner). If not ready, pause and prompt the user via `ask_question` rather than failing blind.
      - Execute `scripts/cdp_inspect.py --url $APP_URL --audit-layout --selectors "<selectors>"` to assert DOM bounding boxes, overflow flags, media/button states, and zero console errors in a single command.
      - **Axiom 9 Honest Reporting**: If live browser inspection cannot run, state plainly: *"Static Contract: VERIFIED | Live Browser: UNVERIFIED (Server offline or unattached)."* Never report static string assertions as live browser verification.
-   - **CPU & Orphan Process Clean-Room Gate**: Before ending the turn, check `scripts/docker_audit.py` output to confirm zero orphan processes or runaway background loops are spiking CPU when tabs are idle/switched.
-4. **Second-Check Verification Gate (Confidence & Lifecycle Parity)**:
-   - When closing fixes touching concurrency, background threads, environment variables, or critical resources, never declare verification based solely on static or tautological unit tests:
-     - **Active Cancellation & Timing Check**: Verify interruptibility using an active asynchronous trigger (e.g. `threading.Timer(0.04, handler.close)`), never a pre-set boolean flag that only exercises pre-flight branches.
-     - **Upstream Call-Site Grep**: When adding environment variable fallbacks or modifying method signatures, grep all callers and factory constructors across the codebase to ensure upstream defaults do not shadow or nullify new behaviors.
-     - **Lock-Boundary Audit**: Verify that `thread.join()`, socket calls, or blocking IO waits are strictly executed *outside* `with lock:` acquisition blocks.
-5. **Stop-Loss on Failed Fixes (Anti-Thrash Rule)**:
-   - If the same symptom survives two fix attempts, stop editing. A third guess on the same theory usually piles on more changes without understanding more. Revert or isolate your speculative changes, go back to Phase 1B evidence (live DOM, logs, container state), write down which hypothesis was wrong and why, and then either form a new hypothesis backed by evidence or escalate (Phase 2 model tier / `/boost`) with a summary of what you've already ruled out.
-6. **Tooling Hygiene: `scratch/` vs. Skill `scripts/` vs. Project `scripts/` vs. Workspace `.refactor/`**:
-   - **`scratch/` is Ephemeral Only**: Files in `scratch/` are NOT automatically indexed or reused by future conversations. Use `<appDataDir>/brain/<conversation-id>/scratch/` strictly for throwaway Phase 4 SPIKEs or temporary screenshots—never leave `scratch/` directories inside a project repository.
-   - **Skill `scripts/` (Zero-Vendoring Rule)**: Must remain **100% OS-agnostic (Windows, macOS, Linux)**, **100% standalone**, and **100% project-agnostic**. Run them directly from the skill directory during turns—**NEVER vendor or copy skill scripts into `<workspace>/scripts/`**.
-   - **Workspace `.refactor/` (Refactoring Campaign Standard)**: When executing multi-turn refactoring campaigns (via `/refactor-monolith`), store all persistent refactoring state, plan roadmaps, contract baselines, and temporary refactor helper scripts in `<workspace>/.refactor/` (`state.json`, `plan.md`, `baseline.json`, `scripts/`).
-   - **Project `<workspace>/scripts/`**: Reserved exclusively for permanent, production-ready utility, build, or deployment scripts of the repository. Document commands in `<workspace>/AGENTS.md` so future conversations discover and reuse them immediately.
-7. **Milestone Checkpoint, Export Sanitization & Fresh Thread Hygiene**:
-   - **Evidence-Based Handoff**: End each milestone with a short report in three parts: **Verified** (check run + observed result), **Not verified** (what couldn't run and why), and **Known risks / follow-ups**. If you changed anything beyond the agreed scope, call it out here.
-   - **Pre-Commit Staging Audit**: When exporting plans/artifacts to the repository or preparing a git commit:
-     - Audit staged files to verify **zero `file:///` links, zero machine absolute paths, zero OS-locked binaries, zero hardcoded local URLs/ports, zero secrets or `.env` files, zero build/cache artifacts (`__pycache__`, `node_modules`, `.skill` bundles), and full compliance with the 350/500-line file and 10–12 method class budgets**. Respect what the user already staged: review it, but never unstage, amend, or commit on their behalf unless they ask.
-     - **Single-Generation Echo Protocol**: Run `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type <type> --summary "<Summary>" --verify "<Command>"` to record the milestone, rotate older entries (<= 150 lines), and print a copy-pasteable `git commit` snippet. Directly reference the emitted commit snippet instead of regenerating redundant commit prose in chat.
-   - **Fresh Conversation Hygiene**: Once a milestone is recorded in `CHANGELOG.md` and committed, update `AGENTS.md` (if topology changed) and explicitly advise the user to click **New Conversation (+)** or run `/compact` to maintain peak reasoning and keep context crisp for the next milestone.
+   - **CPU & Orphan Process Clean-Room Gate**: Check `scripts/docker_audit.py` to confirm zero orphan processes or runaway loops spike CPU on idle tabs.
+   - **Second-Check Verification Gate**: Verify interruptibility with active asynchronous cancellation (e.g. `threading.Timer`), grep upstream call-sites for shadowing defaults, and audit that blocking waits/joins occur strictly outside lock blocks.
+5. **Anti-Thrash Stop-Loss ($\le 2$ Attempts)**:
+   - If the same symptom survives two fix attempts, stop editing. Revert or isolate speculative changes, go back to Phase 1B evidence (live DOM, logs, container state), document the failed hypothesis, and escalate to `/app-debugger` or higher model tier (`/boost`).
+6. **Milestone Advance & 3-Tier Continuous Learning Loop**:
+   - **Verification Baseline**: Run `python "<skill_dir>/scripts/plan_engine.py" verify` to record test pass counts.
+   - **Advance Milestone**: Run `python "<skill_dir>/scripts/plan_engine.py" advance` to patch checkboxes (`- [ ]` $\rightarrow$ `- [x]`) in the markdown file and record git commit SHA.
+   - **4-Dimensional Retrospective**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --tri "<scores>" --hypotheses <n> --learn "<candidate>" --escalate "<bug>"`.
+     - *Token Efficiency Grade (A–F)*: Zero-token CLI orchestration and tight context management.
+     - *Hypothesis Accuracy*: Stop-loss adherence ($\le 2$ attempts).
+     - *Tool Reliability Index (TRI 1–5)*: Empirical rating of tools used.
+     - *Architectural Defense*: Invariant preservation, Single Source of Truth (SSOT), and modularity adherence.
+   - **Continuous Learning Feed**: Propose discovered reusable patterns and bug remediations to `/learn`.
+7. **Final Plan Completion Sign-Off & Pre-Merge Gate (Axiom 8 Safety)**:
+   - When all milestones reach 100% completion (`- [x]`), enforce the mandatory safety gate:
+     - Run complete workspace regression test suite and Scenario Combinations Matrix.
+     - **Pre-Commit Staging Audit**: Verify zero `file:///` links, zero machine absolute paths, zero secrets, and full compliance with 350/500-line modularity budgets. Respect staged files without destructive commands.
+     - **Single-Generation Echo Protocol**: Run `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type <type> --summary "<Summary>" --verify "<Command>"` to update `CHANGELOG.md` and emit copy-pasteable `git commit` snippet.
+     - Update plan header with completion metadata and provide non-destructive review command (`git diff main...plan/<slug>`). Never auto-merge without explicit consent.
+   - **Fresh Conversation Hygiene**: Advise user to click **New Conversation (+)** or run `/compact` before the next campaign.
 
 ---
 
 ## Built-In Cross-Platform Helper Scripts & Reference Library
 
-### Pre-Built Diagnostic Scripts (`scripts/` — Windows, macOS & Linux)
-*(Note: When `system-diagnostics` is installed, `skills/system-diagnostics/scripts/diagnose.py` provides a unified entrypoint combining these diagnostic routines with surface scanning and virtualenv test auto-discovery. The bundled scripts below remain 100% self-contained for standalone execution).*
-- **[`scripts/cdp_inspect.py`](./scripts/cdp_inspect.py)**: Cross-platform, project-agnostic Chrome DevTools Protocol (CDP) inspector with 100% zero-dependency pure-Python RFC 6455 transport (`scripts/cdp_transport.py`) and modular layout evaluator (`scripts/audit_layout.js`). Auto-detects `DevToolsActivePort` (`chrome://inspect/#remote-debugging` or `edge://inspect/#remote-debugging`) across Windows, macOS, Linux, and WSL to attach to the user's live browser tab, or runs an auto-cleaned temporary `--headless` instance. Supports `--list-tabs`, `--audit-layout` (generic viewport/container overflow + `<video>`/`<img>`/`<canvas>` state), `--selectors "<css>"`, `--click "<selector>"`, `--eval "<js>"`, and `--screenshot <path>`.
-- **[`scripts/cdp_transport.py`](./scripts/cdp_transport.py)**: Zero-dependency asyncio standard library RFC 6455 WebSocket client with automatic fallback when third-party `websockets` package is not installed.
-- **[`scripts/docker_audit.py`](./scripts/docker_audit.py)**: Cross-platform, project-agnostic Docker container CPU/memory/PID auditor (`docker stats --no-stream`), `docker top` inspector, host-vs-container MD5 file sync verifier (`--container <name> --workdir /app --sync-check <files>`), and recent container traceback scanner.
+### Pre-Built Diagnostic & Plan Scripts (`scripts/` — Windows, macOS & Linux)
+*(Note: When `system-diagnostics` is installed, `skills/system-diagnostics/scripts/diagnose.py` provides a unified entrypoint. The bundled scripts below remain 100% self-contained for standalone execution).*
+- **[`scripts/plan_engine.py`](./scripts/plan_engine.py)**: Cross-platform CLI orchestrator for `/frontier-architect continue`, `status`, `next`, `advance`, `retrospective`, `lookup`, and `verify`. Maintains dual-track synchronization between human-readable markdown plans and `.frontier/state.json`.
+- **[`scripts/plan_parser.py`](./scripts/plan_parser.py)**: Markdown AST parser and in-place checkbox patcher (`- [ ]` $\rightarrow$ `- [x]`) supporting varied heading levels and formats.
+- **[`scripts/plan_state.py`](./scripts/plan_state.py)**: JSON state ledger manager, workspace manifest syncer, and commit SHA tracker.
+- **[`scripts/cdp_inspect.py`](./scripts/cdp_inspect.py)**: Cross-platform Chrome DevTools Protocol (CDP) inspector with 100% zero-dependency pure-Python RFC 6455 transport (`scripts/cdp_transport.py`) and modular layout evaluator (`scripts/audit_layout.js`). Auto-attaches to live Chrome/Edge tabs or runs temporary `--headless` instances. Supports `--audit-layout`, `--selectors`, `--click`, `--eval`, and `--screenshot`.
+- **[`scripts/cdp_transport.py`](./scripts/cdp_transport.py)**: Zero-dependency asyncio standard library RFC 6455 WebSocket client with fallback when third-party `websockets` is missing.
+- **[`scripts/docker_audit.py`](./scripts/docker_audit.py)**: Cross-platform Docker container CPU/memory/PID auditor (`docker stats`), `docker top` inspector, and host-vs-container MD5 file sync verifier (`--sync-check`).
 
 ### Reference Library (`references/`)
 Load these reference files only when needed for the active phase:
@@ -292,5 +306,5 @@ Load these reference files only when needed for the active phase:
 ### Skill Self-Testing & Benchmark Suite (`tests/`)
 Consult only when modifying, validating, or elevating the `frontier-architect` skill itself:
 - **[`tests/README.md`](./tests/README.md)**: Dual-tier testing architecture, pre-run verification one-liners, and scenario combinations matrix.
-- **Fast Deterministic Check**: Run `python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py"` to verify all 61 script unit tests and eval expectations with $\ge 96\%$ test coverage without consuming LLM tokens.
+- **Fast Deterministic Check**: Run `python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py"` to verify all 81 script unit tests and eval expectations with $\ge 96\%$ test coverage without consuming LLM tokens.
 - **Benchmark & Regression CLI**: Run `python skills/frontier-architect/tests/run_benchmark.py` to compare against historical snapshots. For generative multi-agent benchmarking, invoke `/skill-creator`.
