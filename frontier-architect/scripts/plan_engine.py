@@ -26,21 +26,10 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_parser import (
-    discover_plans,
-    parse_plan_markdown,
-    patch_milestone_checkboxes,
-    slugify,
-)
+from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_state import (
-    bootstrap_plan,
-    get_frontier_dir,
-    get_git_sha,
-    get_repo_root,
-    load_json,
-    record_milestone_advance,
-    resolve_plan_path,
-    save_json,
+    bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
+    load_json, record_milestone_advance, resolve_plan_path, save_json,
 )
 
 
@@ -111,8 +100,12 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     active_idx = ps["active_milestone_index"]
     target_m = next((m for m in parsed["milestones"] if m["index"] == active_idx), None)
 
-    if not target_m:
-        print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
+    all_done = ps["status"] == "completed" or (bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"]))
+    if all_done or not target_m:
+        if args.json:
+            print(json.dumps({"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"]}, indent=2))
+        else:
+            print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
         return 0
     if args.json:
         print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"]}, indent=2))
@@ -166,11 +159,20 @@ def _parse_tri(tri_arg: str | None) -> dict[str, int]:
         return {}
     scores = {}
     for item in tri_arg.split(","):
+        item = item.strip()
+        if not item:
+            continue
         if "=" in item:
             k, v = item.split("=", 1)
-            scores[k.strip()] = int(v.strip())
+            try:
+                scores[k.strip()] = int(v.strip())
+            except ValueError:
+                pass
         else:
-            scores["overall"] = int(item.strip())
+            try:
+                scores["overall"] = int(item.strip())
+            except ValueError:
+                pass
     return scores
 
 
@@ -295,20 +297,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("discover", help="Discover architectural plans in workspace")
     p_init = sub.add_parser("init", help="Initialize or bind active plan")
     p_init.add_argument("plan", nargs="?", help="Path or slug of plan")
-
     plan_parent = argparse.ArgumentParser(add_help=False)
     plan_parent.add_argument("plan", nargs="?", help="Optional plan target")
-
     p_status = sub.add_parser("status", parents=[plan_parent], help="Show active plan status")
     p_status.add_argument("--json", action="store_true", help="Output compact JSON")
-
     p_next = sub.add_parser("next", parents=[plan_parent], help="Output next active milestone tasks")
     p_next.add_argument("--json", action="store_true", help="Output JSON")
-
     p_adv = sub.add_parser("advance", parents=[plan_parent], help="Check off tasks and advance milestone")
     p_adv.add_argument("--milestone", type=int, help="Milestone number to complete")
     p_adv.add_argument("--commit", help="Commit SHA to record")
-
     p_retro = sub.add_parser("retrospective", parents=[plan_parent], help="Log retrospective telemetry")
     p_retro.add_argument("--milestone", type=int, help="Milestone index")
     p_retro.add_argument("--grade", default="A", help="Token Efficiency Grade (A-F)")
@@ -316,21 +313,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_retro.add_argument("--hypotheses", type=int, default=1, help="Hypotheses tested")
     p_retro.add_argument("--escalate", help="Root cause escalated to /app-debugger")
     p_retro.add_argument("--learn", help="Candidate proposal for /learn")
-
     p_look = sub.add_parser("lookup", help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
-
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
     p_ver.add_argument("--command", help="Explicit verifier command")
 
     return parser
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
-    args = parser.parse_args()
-    root = get_repo_root()
+    args = parser.parse_args(argv)
+    repo_root = root or get_repo_root()
     cmd = args.subcommand or "status"
 
     handlers = {
@@ -342,7 +337,7 @@ def main() -> int:
     if not handler:
         parser.print_help()
         return 1
-    return handler(root, args)
+    return handler(repo_root, args)
 
 
 if __name__ == "__main__":

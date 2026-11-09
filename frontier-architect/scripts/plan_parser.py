@@ -9,16 +9,28 @@ from pathlib import Path
 from typing import Any
 import re
 
-M_REGEX = re.compile(r"^(#{2,4})\s+(?:Milestone|Phase)\s+(\d+)[:\s-]*(.*)$", re.IGNORECASE)
+M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
 TASK_REGEX = re.compile(r"^(\s*[-*]\s*\[)([ xX])(\]\s*(.*))$")
 TASK_UNCHECKED_REGEX = re.compile(r"^(\s*[-*]\s*\[)[ ](\]\s*.*)$")
-VERIFIER_PREFIXES = ("python", "pytest", "npm", "cargo", "go test", "unittest")
+VERIFIER_PREFIXES = (
+    "python", "pytest", "npm", "cargo", "go test", "unittest",
+    "node", "deno", "bun", "mvn", "gradle",
+)
+
+
+def _is_section_boundary(line: str) -> bool:
+    """Check if line is a non-milestone section boundary that ends milestone tasks."""
+    if M_REGEX.match(line):
+        return False
+    if re.match(r"^#{1,3}\s+", line):
+        return not line.lower().lstrip("#").strip().startswith("scenario")
+    return False
 
 
 def slugify(text: str) -> str:
     """Convert arbitrary title into safe filesystem slug."""
     clean = re.sub(r"[^\w\s-]", "", text.lower()).strip()
-    return re.sub(r"[-\s]+", "_", clean) or "unnamed_plan"
+    return re.sub(r"[-\s]+", "_", clean).strip("_") or "unnamed_plan"
 
 
 def discover_plans(root: Path) -> list[Path]:
@@ -81,11 +93,10 @@ def parse_plan_markdown(content: str) -> dict[str, Any]:
                     "checked": t_match.group(2).lower() == "x",
                     "line_index": idx,
                 })
-            elif line.startswith("# ") or (line.startswith("## ") and not M_REGEX.match(line)):
-                if not line.lower().startswith("## scenario"):
-                    _finalize_milestone(current_m)
-                    milestones.append(current_m)
-                    current_m = None
+            elif _is_section_boundary(line):
+                _finalize_milestone(current_m)
+                milestones.append(current_m)
+                current_m = None
 
     if current_m:
         _finalize_milestone(current_m)
@@ -132,9 +143,8 @@ def patch_milestone_checkboxes(plan_path: Path, milestone_index: int) -> int:
         if m_match:
             idx = int(m_match.group(2))
             in_target = (idx == milestone_index)
-        elif in_target and (line.startswith("# ") or (line.startswith("## ") and not M_REGEX.match(line))):
-            if not line.lower().startswith("## scenario"):
-                in_target = False
+        elif in_target and _is_section_boundary(line):
+            in_target = False
 
         if in_target and TASK_UNCHECKED_REGEX.match(line):
             line = TASK_UNCHECKED_REGEX.sub(r"\g<1>x\g<2>", line)

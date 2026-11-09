@@ -21,7 +21,7 @@ flowchart TD
 1. **Tier 1: Fast Deterministic CI/CD Checks (Local & Offline)**:
    - Validates schema and structural integrity of `evals/evals.json`.
    - Asserts that all 12 evaluation scenarios and 60 assertions are satisfied by `SKILL.md`.
-   - Asserts that bundled Python scripts (`cdp_inspect.py`, `cdp_transport.py`, `docker_audit.py`) pass 61 unit tests with $\ge 96\%$ code coverage.
+   - Asserts that bundled Python scripts (`cdp_inspect.py`, `cdp_transport.py`, `docker_audit.py`, `plan_engine.py`, `plan_parser.py`, `plan_state.py`) pass 81 unit tests with $\ge 96\%$ code coverage.
    - Dynamically checks against historical snapshot (`skill-snapshot/SKILL.md`) to guarantee zero regressions.
    - **Cost**: 0 LLM tokens, executes in $\approx 2$ seconds.
 
@@ -37,7 +37,7 @@ flowchart TD
 Before opening a PR or committing changes, verify health and test coverage:
 
 ```bash
-# 1. Run all 61 automated unit and eval regression tests (100% self-contained, no external plugins needed)
+# 1. Run all 81 automated unit and eval regression tests (100% self-contained, no external plugins needed)
 python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py" -v
 
 # 2. Check full code coverage across all bundled scripts and test suites
@@ -58,6 +58,7 @@ python skills/skill-creator/scripts/quick_validate.py skills/frontier-architect
 | **CDP Inspector Tests** | Browser CDP suite | Mocked Chrome/CDP | `python -m unittest skills/frontier-architect/tests/test_cdp_inspect.py` |
 | **CDP Transport Tests** | RFC 6455 framing | Async stdlib WS | `python -m unittest skills/frontier-architect/tests/test_cdp_transport.py` |
 | **Docker Auditor Tests** | Container runtime | Sync & error audit | `python -m unittest skills/frontier-architect/tests/test_docker_audit.py` |
+| **Plan Engine & Parser Tests** | Plan CLI & State suite | Markdown & State | `python -m unittest skills/frontier-architect/tests/test_plan_engine.py` |
 | **Eval Regression Tests** | All 12 scenarios | 60 expectations | `python -m unittest skills/frontier-architect/tests/test_skill_evals.py` |
 | **Benchmark Summary CLI** | Current vs Snapshot | Live pass-rate table | `python skills/frontier-architect/tests/run_benchmark.py` |
 | **Update Workspace Artifacts** | Iteration export | `--generate-artifacts` | `python skills/frontier-architect/tests/run_benchmark.py --generate-artifacts` |

@@ -211,6 +211,10 @@ def record_milestone_advance(
         ws["active_plan"]["active_milestone_index"] = ps["active_milestone_index"]
         ws["active_plan"]["status"] = ps["status"]
         ws["active_plan"]["last_checkpoint_at"] = now_iso
+        for p in ws.get("plan_history", []):
+            if p.get("slug") == ps["slug"]:
+                p["status"] = ps["status"]
+                p["last_updated"] = now_iso
         save_json(fdir / "state.json", ws)
     return ps
 

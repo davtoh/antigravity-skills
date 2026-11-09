@@ -147,10 +147,10 @@ flowchart LR
   - `lookup`: Searches past plans and milestones by slug, keyword, or commit SHA to instantly surface architectural decisions and trade-offs for bug fixes or post-feature requests.
 
 ### Milestone 2: Unit Test Suite & Verification Matrix (Deferred to Turn 2)
-- [ ] **2.1 Plan Parser Tests**: Verify robust parsing of varied markdown styles (nested lists, bold titles, scenario tables).
-- [ ] **2.2 State Transition Tests**: Verify state initialization, advance, checkpointing, and plan archiving.
-- [ ] **2.3 Markdown Checklist In-Place Patching**: Assert that advancing a milestone cleanly updates `- [ ]` to `- [x]` in the physical markdown file without corrupting other content.
-- [ ] **2.4 Zero-Dependency & Cross-Platform Integrity**: Assert 100% compatibility across Windows (`\`), macOS, and Linux (`/`).
+- [x] **2.1 Plan Parser Tests**: Verify robust parsing of varied markdown styles (nested lists, bold titles, scenario tables).
+- [x] **2.2 State Transition Tests**: Verify state initialization, advance, checkpointing, and plan archiving.
+- [x] **2.3 Markdown Checklist In-Place Patching**: Assert that advancing a milestone cleanly updates `- [ ]` to `- [x]` in the physical markdown file without corrupting other content.
+- [x] **2.4 Zero-Dependency & Cross-Platform Integrity**: Assert 100% compatibility across Windows (`\`), macOS, and Linux (`/`).
 
 ### Milestone 3: SKILL.md Protocol Elevation & Live Plan Validation (Deferred to Turn 3)
 - [ ] **3.1 Update SKILL.md**:
