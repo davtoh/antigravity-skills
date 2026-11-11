@@ -76,7 +76,17 @@ Before diving in, protect the context window and classify the task:
    - **Bucket B (Ambiguous / Underspecified)**: The user isn't sure what they want or gives a high-level wish ("make this faster", "add AI workflow"). Go to **Phase 1A**.
    - **Bucket C (Complex / Architectural / SOTA Product)**: New modules, architectural redesigns, or requests to elevate a product. Go to **Phase 2 & Phase 3**.
    - **Bucket D (Multi-Symptom Bug, UI Regression, or Resource/CPU Bottleneck)**: Any report involving multiple UI/state bugs, follow-up regressions after a prior fix, visual overflow, stuck status indicators, or high Docker/WSL (`vmmem`) CPU usage. **NEVER treat Bucket D as Bucket A.** Go immediately to **Phase 1B**.
+   - **Bucket E (Plan Implementation Handoff)**: The user provides an existing plan file with execution intent (`implement @[plan.md]`, `/frontier-architect continue [plan]`). Jump directly to **Phase 6 (Plan Execution & Closed-Loop Verification)** to execute Milestone 1 without re-running planning or emitting another plan artifact.
 3. **Triage Edge Cases**:
+   - **Existing Plan Handoff: Execution vs. Improvement Intent**:
+     - **Execution Intent (`implement`, `continue`, `execute`, `run`)**:
+       1. **DO NOT re-run Phases 1–5**: Do not re-interview, do not run heavy workspace exploration from scratch, and do not emit a duplicate plan artifact with `RequestFeedback: true` (which prematurely halts the turn).
+       2. **Execute Active Milestone Immediately**: Run `plan_engine.py init <plan>` and `plan_engine.py next`, then jump directly to **Phase 6 (Atomic Vertical Slicing)** to implement Milestone 1.
+       3. Do not run the full workspace test suite unless targeted unit tests are missing or a milestone is completing.
+     - **Improvement Intent (`improve`, `enhance`, `refine`, `review`, `elevate`)**:
+       1. **Deepen and Detail; Never Simplify**: When explicitly asked to improve or enhance an existing plan, the mandate is to make the architecture **more detailed, rigorous, and well-thought-out**, not to flatten or strip technical nuances.
+       2. Preserve all concrete parameters, types, contracts, and sub-bullet specifications.
+       3. Enrich the plan with deeper failure recovery, edge cases, lifecycle states, precise method signatures, and modularity invariants before updating the artifact.
    - **Multi-Skill Co-Invocation Protocol (Co-working with `/app-debugger` or `/refactor-monolith`)**:
      When the user invokes `/frontier-architect` alongside `/app-debugger`:
      1. **Orchestrator of Intent**: `frontier-architect` acts as the overall system architect, establishing modularity boundaries, API contracts, 3-tier proposals, and the formal Implementation Plan Artifact.
@@ -209,6 +219,9 @@ Before modifying production files on any multi-step task:
 
 1. **Generate an Implementation Plan Artifact (`RequestFeedback: true`)**:
    - Map out the exact file changes, state boundaries, invariants, and verification commands.
+   - **Checklist Syntax Invariant**: Every actionable milestone task MUST be formatted as a Markdown checkbox:
+     `- [ ] **<file_path>**: <action description>`
+     Never use plain bullet points (`- **file.py**:`) for tasks; `plan_engine.py` parses and patches checkboxes to track milestone progress.
    - **The 1-Phase-Per-Turn Execution Gate (Context Hygiene)**:
      - For multi-phase campaigns, present the complete roadmap but **explicitly scope immediate execution to Phase 1 only**. Mark subsequent phases as *Deferred to Next Turn / Milestone*.
      - Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, record milestone via `diagnose.py changelog add`, and pause to keep context crisp.

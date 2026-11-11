@@ -71,6 +71,22 @@ class TestPlanParser(unittest.TestCase):
         self.assertIn("python -m unittest discover tests", parsed["verification_commands"])
         self.assertIn("pytest tests/", parsed["verification_commands"])
 
+    def test_parse_plan_markdown_plain_bullets(self):
+        md = (
+            "# Plain Bullets Plan\n\n### Phase 1: Core Worker\n"
+            "- **`intelligent_tracker/batch.py`**: Add progress callback\n"
+            "- **`video_transcoder.py`**: Add async transcode\n\n"
+            "### Milestone 2: Service Layer\n"
+            "- **`video_jobs.py`**: Add job manager\n"
+        )
+        parsed = parse_plan_markdown(md)
+        self.assertEqual(len(parsed["milestones"]), 2)
+        m1 = parsed["milestones"][0]
+        self.assertEqual(m1["index"], 1)
+        self.assertEqual(len(m1["tasks"]), 2)
+        self.assertFalse(m1["tasks"][0]["checked"])
+        self.assertIn("batch.py", m1["tasks"][0]["text"])
+
     def test_section_boundary_and_verifiers(self):
         self.assertTrue(_is_section_boundary("## 2. Requirements"))
         self.assertTrue(_is_section_boundary("### 4.1 Sign-Off"))
@@ -98,6 +114,21 @@ class TestChecklistPatching(unittest.TestCase):
             self.assertIn("- [x] Task 1.1", content)
             self.assertIn("- [x] Task 1.2", content)
             self.assertIn("- [ ] Task 2.1", content)
+
+    def test_patch_plain_bullet_tasks(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "plan.md"
+            p.write_text(
+                "### Phase 1: First\n- Bullet task 1\n- Bullet task 2\n\n"
+                "### Phase 2: Second\n- Bullet task 3\n",
+                encoding="utf-8",
+            )
+            count = patch_milestone_checkboxes(p, 1)
+            self.assertEqual(count, 2)
+            content = p.read_text(encoding="utf-8")
+            self.assertIn("- [x] Bullet task 1", content)
+            self.assertIn("- [x] Bullet task 2", content)
+            self.assertIn("- Bullet task 3", content)
 
     def test_patch_preserves_crlf_and_non_targets(self):
         with tempfile.TemporaryDirectory() as td:

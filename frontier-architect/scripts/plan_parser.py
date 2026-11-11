@@ -12,6 +12,7 @@ import re
 M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
 TASK_REGEX = re.compile(r"^(\s*[-*]\s*\[)([ xX])(\]\s*(.*))$")
 TASK_UNCHECKED_REGEX = re.compile(r"^(\s*[-*]\s*\[)[ ](\]\s*.*)$")
+BULLET_TASK_REGEX = re.compile(r"^(\s*[-*]\s+)(?!\[[ xX]\])(.*)$")
 VERIFIER_PREFIXES = (
     "python", "pytest", "npm", "cargo", "go test", "unittest",
     "node", "deno", "bun", "mvn", "gradle",
@@ -87,10 +88,18 @@ def parse_plan_markdown(content: str) -> dict[str, Any]:
 
         if current_m:
             t_match = TASK_REGEX.match(line)
+            b_match = BULLET_TASK_REGEX.match(line) if not t_match else None
             if t_match:
                 current_m["tasks"].append({
                     "text": t_match.group(4).strip(),
                     "checked": t_match.group(2).lower() == "x",
+                    "line_index": idx,
+                })
+            elif b_match and not line.strip().startswith(("#", "```", "---", "***")):
+                # Fallback: treat plain list items under a milestone as unchecked tasks
+                current_m["tasks"].append({
+                    "text": b_match.group(2).strip(),
+                    "checked": False,
                     "line_index": idx,
                 })
             elif _is_section_boundary(line):
@@ -146,9 +155,13 @@ def patch_milestone_checkboxes(plan_path: Path, milestone_index: int) -> int:
         elif in_target and _is_section_boundary(line):
             in_target = False
 
-        if in_target and TASK_UNCHECKED_REGEX.match(line):
-            line = TASK_UNCHECKED_REGEX.sub(r"\g<1>x\g<2>", line)
-            patched_count += 1
+        if in_target:
+            if TASK_UNCHECKED_REGEX.match(line):
+                line = TASK_UNCHECKED_REGEX.sub(r"\g<1>x\g<2>", line)
+                patched_count += 1
+            elif BULLET_TASK_REGEX.match(line) and not line.strip().startswith(("#", "```", "---", "***")):
+                line = BULLET_TASK_REGEX.sub(r"\g<1>[x] \g<2>", line)
+                patched_count += 1
         new_lines.append(line)
 
     plan_path.write_text("".join(new_lines), encoding="utf-8")
