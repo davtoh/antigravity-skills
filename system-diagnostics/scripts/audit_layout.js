@@ -6,6 +6,14 @@
   const scrollX = Math.round(window.scrollX || document.documentElement.scrollLeft || document.body.scrollLeft || 0);
   const scrollY = Math.round(window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0);
 
+  function sanitizeSrc(rawSrc) {
+    if (!rawSrc || typeof rawSrc !== 'string') return '';
+    if (rawSrc.startsWith('data:') && rawSrc.length > 64) {
+      return rawSrc.slice(0, 48) + `... [data URI truncated, length: ${rawSrc.length}]`;
+    }
+    return rawSrc;
+  }
+
   function describeEl(el) {
     const r = el.getBoundingClientRect();
     const cs = window.getComputedStyle(el);
@@ -56,7 +64,7 @@
 
     if (el.tagName === 'VIDEO') {
       info.video = {
-        src: el.currentSrc || el.src,
+        src: sanitizeSrc(el.currentSrc || el.src),
         paused: el.paused,
         ended: el.ended,
         currentTime: Number(el.currentTime.toFixed(2)),
@@ -68,7 +76,7 @@
       };
     } else if (el.tagName === 'IMG') {
       info.img = {
-        src: el.currentSrc || el.src,
+        src: sanitizeSrc(el.currentSrc || el.src),
         naturalWidth: el.naturalWidth,
         naturalHeight: el.naturalHeight,
         complete: el.complete

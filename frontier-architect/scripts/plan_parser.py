@@ -15,7 +15,7 @@ TASK_UNCHECKED_REGEX = re.compile(r"^(\s*[-*]\s*\[)[ ](\]\s*.*)$")
 BULLET_TASK_REGEX = re.compile(r"^(\s*[-*]\s+)(?!\[[ xX]\])(.*)$")
 VERIFIER_PREFIXES = (
     "python", "pytest", "npm", "cargo", "go test", "unittest",
-    "node", "deno", "bun", "mvn", "gradle",
+    "node", "deno", "bun", "mvn", "gradle", "flutter", "dotnet", ".venv",
 )
 
 
@@ -125,16 +125,39 @@ def _finalize_milestone(m: dict[str, Any]) -> None:
     m["is_complete"] = len(m["tasks"]) > 0 and all(t["checked"] for t in m["tasks"])
 
 
+def _is_valid_verifier(line: str) -> bool:
+    """Check if a stripped command string is a concrete runnable verifier."""
+    if not line or line.startswith("#") or " " not in line:
+        return False
+    if "plan_engine.py" in line or ("<" in line and ">" in line):
+        return False
+    return any(line.startswith(p) for p in VERIFIER_PREFIXES)
+
+
 def _extract_verifiers(content: str) -> list[str]:
-    """Extract runnable shell commands from markdown code blocks."""
+    """Extract runnable shell commands from fenced code blocks and Markdown tables/backticks."""
     verifiers: list[str] = []
+
+    def _add(cmd: str) -> None:
+        line = cmd.strip()
+        if _is_valid_verifier(line) and line not in verifiers:
+            verifiers.append(line)
+
+    # 1. Fenced code blocks (highest priority)
     blocks = re.findall(r"^```[^\r\n]*\r?\n(.*?)\r?\n^```", content, re.MULTILINE | re.DOTALL)
     for block in blocks:
         for raw_line in block.splitlines():
-            line = raw_line.strip()
-            if line and not line.startswith("#") and any(line.startswith(p) for p in VERIFIER_PREFIXES):
-                if line not in verifiers:
-                    verifiers.append(line)
+            _add(raw_line)
+
+    # 2. Markdown table rows (e.g., Scenario Combinations Matrix)
+    for row in re.findall(r"^\s*\|[^\r\n]+\|", content, re.MULTILINE):
+        for inline_cmd in re.findall(r"`([^`\r\n]+)`", row):
+            _add(inline_cmd)
+
+    # 3. Remaining inline backtick commands
+    for inline_cmd in re.findall(r"`([^`\r\n]+)`", content):
+        _add(inline_cmd)
+
     return verifiers
 
 

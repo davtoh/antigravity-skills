@@ -129,6 +129,18 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
+    """Build a conventional git commit suggestion for the completed milestone."""
+    milestone_title = next(
+        (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
+        f"milestone {target_idx}",
+    )
+    clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
+    clean_title = re.sub(r"[^\w\s-]", "", milestone_title).strip().lower()
+    clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"
+    return f'git commit -m "feat({clean_scope}): {clean_title}"'
+
+
 def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     """In-place patch markdown checklist, record commit SHA, and advance milestone."""
     plan_p = resolve_plan_path(root, args.plan)
@@ -143,9 +155,11 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
+    commit_hint = _build_commit_suggestion(ps, target_idx)
 
     print(f"[plan_engine] Advanced Milestone {target_idx} (checked {patched} tasks).")
     print(f"  Commit: {sha or 'N/A'} | Status: {ps['status']}")
+    print(f"  Suggested Commit: {commit_hint}")
     if ps["status"] == "completed":
         print("[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off & Pre-Merge Gate.")
     else:
@@ -153,7 +167,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         print("=" * 72)
         print(f"[plan_engine] TURN GATE: Milestone {target_idx} COMPLETE!")
         print("MANDATORY: STOP calling tools. DO NOT execute the next milestone in this turn.")
-        print("Present milestone verification to user and prompt to proceed via '/frontier-architect continue'.")
+        print("Present milestone verification and Suggested Commit to user, then prompt '/frontier-architect continue'.")
         print("=" * 72)
     return 0
 
@@ -263,9 +277,15 @@ def cmd_verify(root: Path, args: argparse.Namespace) -> int:
         parsed = parse_plan_markdown(plan_p.read_text(encoding="utf-8"))
         if parsed["verification_commands"]:
             cmd = parsed["verification_commands"][0]
+    if not cmd:
+        ws_existing = load_json(get_frontier_dir(root) / "state.json", {})
+        cmd = ws_existing.get("verification_baseline", {}).get("command")
 
     if not cmd:
-        print("[plan_engine] Error: No verification command specified or found in plan.")
+        print(
+            "[plan_engine] Error: No verification command specified or found in plan. "
+            'Pass --command "<cmd>" or include runnable commands in code blocks / Scenario Matrix tables.'
+        )
         return 1
 
     print(f"[plan_engine] Running verifier: {cmd}")
@@ -323,7 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_look = sub.add_parser("lookup", help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
-    p_ver.add_argument("--command", help="Explicit verifier command")
+    p_ver.add_argument("--command", "--cmd", dest="command", help="Explicit verifier command")
 
     return parser
 

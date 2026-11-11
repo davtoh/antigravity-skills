@@ -95,6 +95,12 @@ class TestPlanParser(unittest.TestCase):
         self.assertFalse(_is_section_boundary("- [ ] Task item"))
         self.assertEqual(_extract_verifiers("No code blocks"), [])
         self.assertEqual(_extract_verifiers("```python\n# only comments\n```"), [])
+        table_md = (
+            "| Scenario | Verification Check |\n| :--- | :--- |\n"
+            "| SC-01 | `python -m unittest tests/test_video_jobs.py` |\n"
+            "| SC-02 | `python` prose and `python scripts/plan_engine.py init <plan>` |\n"
+        )
+        self.assertEqual(_extract_verifiers(table_md), ["python -m unittest tests/test_video_jobs.py"])
 
 
 class TestChecklistPatching(unittest.TestCase):
@@ -287,6 +293,7 @@ class TestPlanEngineCLI(unittest.TestCase):
         code, out = self._run_cli(["advance", "sample_plan", "--commit", "feedbeef"])
         self.assertEqual(code, 0)
         self.assertIn("checked 1 tasks", out)
+        self.assertIn("Suggested Commit: git commit -m", out)
 
         code, out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
         self.assertEqual(code, 0)
@@ -341,6 +348,18 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 1)
         ws = load_json(get_frontier_dir(self.root) / "state.json")
         self.assertEqual(ws["verification_baseline"]["failed_tests"], 3)
+
+        # Test --cmd alias and baseline fallback on a plan without explicit verifiers
+        no_ver_plan = self.root / ".TODO" / "no_ver_plan.md"
+        no_ver_plan.write_text("# Bare Plan\n### Milestone 1: Do\n- [ ] Task\n", encoding="utf-8")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="Ran 3 tests\n\nOK\n", stderr="")
+        code, out = self._run_cli(["verify", "no_ver_plan", "--cmd", "pytest tests/custom.py"])
+        self.assertEqual(code, 0)
+        self.assertIn("Running verifier: pytest tests/custom.py", out)
+        # Subsequent verify without --cmd should reuse stored baseline command
+        code, out = self._run_cli(["verify", "no_ver_plan"])
+        self.assertEqual(code, 0)
+        self.assertIn("Running verifier: pytest tests/custom.py", out)
 
     def test_cross_platform_path_handling(self):
         rel_posix = self.plan_path.relative_to(self.root).as_posix()

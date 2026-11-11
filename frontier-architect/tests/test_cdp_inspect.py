@@ -85,6 +85,7 @@ class TestCDPInspect(unittest.TestCase):
         self.assertIn(".video-container", js)
         self.assertIn("#header", js)
         self.assertIn("window.__FRONTIER_SELECTORS__", js)
+        self.assertIn("sanitizeSrc", js)
 
     def test_evaluate_success_and_exception(self):
         async def _test():
