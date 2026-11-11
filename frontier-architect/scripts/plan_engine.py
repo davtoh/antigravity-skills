@@ -149,7 +149,12 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     if ps["status"] == "completed":
         print("[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off & Pre-Merge Gate.")
     else:
-        print(f"  Next Active Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
+        print(f"  Status: in_progress | Next Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
+        print("=" * 72)
+        print(f"[plan_engine] TURN GATE: Milestone {target_idx} COMPLETE!")
+        print("MANDATORY: STOP calling tools. DO NOT execute the next milestone in this turn.")
+        print("Present milestone verification to user and prompt to proceed via '/frontier-architect continue'.")
+        print("=" * 72)
     return 0
 
 

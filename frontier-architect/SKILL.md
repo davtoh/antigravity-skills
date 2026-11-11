@@ -23,6 +23,8 @@ It also implements the **Flash-to-Opus Cognitive Harness**—a structured reason
    - Fast models shine when they externalize working memory rather than holding implicit state across giant monolithic edits. Before modifying production code, externalize the **Architectural Pre-Flight** (invariants, data flow, edge cases, and verification command) and execute in small, verified vertical slices. *(See [references/flash-opus-harness.md](./references/flash-opus-harness.md)).*
 4. **Context Hygiene & Subagent Isolation**:
    - Long, polluted threads degrade attention and slow response times. Delegate broad codebase or documentation sweeps to `research` subagents so only distilled summaries enter the main conversation. Checkpoint state into `AGENTS.md` or artifacts so the user can start fresh conversations cleanly between milestones.
+   - **Strict 1-Milestone-Per-Turn Ceiling**: Never implement multiple plan milestones in a single turn. Advancing a milestone terminates the turn.
+   - **Zero `manage_task` Polling**: Never poll `manage_task status` in a loop. When a background task is launched, stop calling tools and let reactive wakeup resume execution.
 5. **Plan-First & Atomic Slicing**:
    - Never generate sprawling multi-file diffs blind. Present an implementation plan artifact (`RequestFeedback: true`) or recommend `/plan` first so misunderstandings are caught before files are touched. Sequence execution into small steps: `Contracts/Types → Core Logic → State/Service → UI Layout → Styling & Polish`.
 6. **Closed-Loop Empirical Verification (Never Code Blind)**:
@@ -223,8 +225,12 @@ Before modifying production files on any multi-step task:
      `- [ ] **<file_path>**: <action description>`
      Never use plain bullet points (`- **file.py**:`) for tasks; `plan_engine.py` parses and patches checkboxes to track milestone progress.
    - **The 1-Phase-Per-Turn Execution Gate (Context Hygiene)**:
-     - For multi-phase campaigns, present the complete roadmap but **explicitly scope immediate execution to Phase 1 only**. Mark subsequent phases as *Deferred to Next Turn / Milestone*.
-     - Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, record milestone via `diagnose.py changelog add`, and pause to keep context crisp.
+     - **Complete Multi-Phase Roadmap Invariant**: NEVER formulate an implementation plan containing only Phase 1 when the user's objective requires multi-stage changes (e.g., contracts + logic + state + UI + persistence). The plan artifact MUST outline the complete roadmap (Phase 1 through Phase N) with explicit deliverables and definitions of done for each phase.
+     - **Explicit Definition of Done (DoD) per Milestone**: Every milestone MUST conclude with a clear verification condition (unit tests pass, persistent storage verified on disk/DB, zero console errors, zero orphan background processes) and an interactive User Checkpoint prompt before stopping.
+     - **Scoping Immediate Execution**: Explicitly mark Phase 1 as *Active Execution Target* and Phases 2..N as *Deferred to Next Turn / Milestone*. Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, record milestone via `diagnose.py changelog add`, and pause to keep context crisp.
+   - **Workspace Plan Engine Registration**:
+     - Implementation plans MUST be saved under `<workspace>/.TODO/<slug>.md` or `<workspace>/.plans/<slug>.md` and registered via `python "<skill_dir>/scripts/plan_engine.py" init <plan_path>`.
+     - Never leave orphaned plans strictly in temporary brain directories where subsequent sessions cannot locate or resume them.
    - **Architectural Invariant & Surface Baseline Inventory**:
      - Before modifying existing systems, identify and document all public surface invariants in the plan: public API routes/payload schemas, exported symbols/types, state machine transitions, and critical UI selectors (`#main-canvas`, `.control-bar`).
      - **Skill Delegation Boundary for Monolith Decomposition**: If the task specifically requires decomposing oversized legacy files or classes exceeding the modularity budget into modular submodules while performing deep AST/DOM contract snapshotting, explicitly recommend or delegate to the specialized `/refactor-monolith` skill (which provides dedicated surface scanners and contract diff tooling; if not installed locally, it can be acquired from `https://github.com/davtoh/antigravity-skills`). If `/refactor-monolith` is unavailable and cannot be installed, proceed self-contained by isolating public interfaces, writing manual regression test harnesses before editing, and decomposing incrementally.
@@ -270,6 +276,13 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - **In-Flight Tool Elevation Protocol**: When encountering a limitation or bug in an invoked skill tool (`<skill_dir>/scripts/`), enhance and verify the script in `<skill_dir>/tests/` before resuming application code, avoiding disposable scratch scripts and preventing regression thrash.
    - **Tooling Hygiene**: Use `<appDataDir>/brain/<conversation-id>/scratch/` strictly for throwaway Phase 4 SPIKEs—never leave `scratch/` in project repositories. Never vendor skill scripts into `<workspace>/scripts/`.
    - **Run Heavy Tests Asynchronously**: Kick off slow integration suites or builds as background tasks (`WaitMsBeforeAsync: 500`).
+   - **Lightweight Test Fixtures (Zero Compute/Resource Starvation)**:
+     - Never execute full-dataset model inferences, multi-gigabyte media conversions, or exhaustive unthrottled background jobs during automated verification.
+     - Always use synthetic mini-fixtures, mocks, or sampled data slices to prevent CPU/GPU starvation and system lockups.
+   - **Mandatory Turn-End Daemon & Task Teardown**:
+     - Any background daemon, dev server, tunnel, or support process launched via `run_command` (`IsDaemon: true`) or `manage_task` solely for test/verification purposes MUST be explicitly terminated (`manage_task kill` or process cleanup) before concluding the agent turn, unless the user explicitly requested a standing persistent service.
+   - **Persistent State Invariant vs. In-Memory Shims**:
+     - When a task requires preserving user state, progress, or job reports across tabs, page reloads, or file navigation, state MUST be backed by a persistent storage mechanism (database, local storage, or server-side cache), not volatile in-memory JavaScript structures (`Map`, `Object`).
 4. **Closed-Loop Verification Ladder & Second-Check Gate**:
    - **Tier 1 (Static & Type Contract Parity)**: Run native verification commands (typecheckers, linters, unit tests, route suites like `pytest`, `npm test`, `tsc --noEmit`, `mypy`, `cargo test`) ensuring zero syntax errors and type safety.
    - **Tier 2 (Container Deployment Check)**: If the app runs in Docker, ensure updated assets are active and verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`).
@@ -290,6 +303,8 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
      - *Tool Reliability Index (TRI 1–5)*: Empirical rating of tools used.
      - *Architectural Defense*: Invariant preservation, Single Source of Truth (SSOT), and modularity adherence.
    - **Continuous Learning Feed**: Propose discovered reusable patterns and bug remediations to `/learn`.
+   - **Turn-Termination Gate & Interactive User Checkpoint (MANDATORY)**: After advancing an intermediate milestone and logging retrospective telemetry, **STOP calling tools immediately**. Do not start the next milestone in the same turn/conversation. Present milestone deliverables, verification proof, and next phase preview to the user and prompt them with an interactive checkpoint:
+     > *"Milestone [N] is verified and complete. Ready to proceed with Milestone [N+1] ([Milestone Title])? Reply to continue or invoke `/frontier-architect continue`."*
 7. **Final Plan Completion Sign-Off & Pre-Merge Gate (Axiom 8 Safety)**:
    - When all milestones reach 100% completion (`- [x]`), enforce the mandatory safety gate:
      - Run complete workspace regression test suite and Scenario Combinations Matrix.

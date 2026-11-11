@@ -39,7 +39,7 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 
 > [!IMPORTANT]
 > **Pre-Flight Tool-Call Ceiling ($\le 3-5$ calls)**:
-> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted grep, or 1 device probe). **NEVER** embark on a 50–100 tool exploration marathon, read dozens of unrelated files, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
+> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted grep, or 1 device probe). If port, process, or environment ambiguity remains after 3 tool calls, **STOP immediately and present the Pre-Flight UX Gate (`ask_question`)**. NEVER embark on a 50–100 tool exploration marathon, run repetitive ad-hoc Python socket loops, scan ports blindly, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
 
 - **Option 1 (Recommended)**: `(Recommended) Live Chrome Tab - Attach to active visible browser tab to inspect DOM layout and errors in real time`
 - **Option 2**: `Headless Background Sandbox - Run isolated Chrome in the background without disturbing desktop windows`
@@ -120,6 +120,7 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - Re-run diagnostic commands and domain probes.
    - **Environment Parity**: Never verify solely against synthetic mocks when a live database or hardware device is configured. Test against real configuration states (e.g. existing database embedding dimensions).
    - **Resource Lifecycle Check**: Explicitly verify cleanup (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
+   - **Test Job & Daemon Cleanup Invariant**: Before completing Step 4, query active background tasks (`manage_task list`) and API job ledgers (`GET /api/.../jobs`). Terminate test daemons (`manage_task kill`) and cancel any unfinished test jobs so zero orphan tasks survive into subsequent user turns.
    - **Interactive User Gate**: When confidence is partial, physical hardware is involved, or an operation is sensitive/destructive, provide a 1-line verification recipe and prompt the user to confirm live execution before closing the milestone.
    - **Milestone Recording (Single-Generation Echo Protocol)**: When closing a verified bug fix milestone, record it via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
 3. **Report Axiom 9 Honest Verification**:
