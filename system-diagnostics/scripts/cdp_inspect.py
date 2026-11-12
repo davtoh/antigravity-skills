@@ -10,7 +10,7 @@ Connection Cascade:
 
 Generic Capabilities:
   --list-tabs                  List open tabs in live browser
-  --audit-layout               Generic DOM/viewport overflow scan + <video>, <img>, <canvas> states
+  --audit-layout               Generic DOM/viewport/text overflow scan + <video>, <img>, <canvas> states
   --selectors "#app,.card"     Inspect specific CSS selectors (bounding boxes, styles, media state)
   --click "#submit-btn"        Click an element before auditing/evaluating
   --eval "document.title"      Evaluate arbitrary JS expression and print JSON result
@@ -334,7 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Frontier Architect Cross-Platform CDP Browser Inspector")
     parser.add_argument("--url", default=None, help="Target URL to match or open (defaults to $APP_URL if set)")
     parser.add_argument("--list-tabs", action="store_true", help="List open tabs in live browser")
-    parser.add_argument("--audit-layout", action="store_true", help="Run generic DOM/viewport overflow and media audit")
+    parser.add_argument("--audit-layout", action="store_true", help="Run generic DOM/viewport/text overflow and media audit")
     parser.add_argument("--selectors", default=None, help="Comma-separated CSS selectors (e.g. '#app,.player,video')")
     parser.add_argument("--eval", default=None, help="JavaScript expression to evaluate in target page")
     parser.add_argument("--eval-file", default=None, help="Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page")

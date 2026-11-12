@@ -61,7 +61,9 @@ python skills/system-diagnostics/scripts/diagnose.py package-skill all --out dis
 
 ---
 
-## 4. Windows PowerShell Multi-Line & Quoting Rules
+## 4. Windows PowerShell Hygiene & Quoting Rules
 
-- Never pass nested quotes inside `python -c "..."` in PowerShell (PowerShell strips inner `"` before Python parses argv).
-- Pipe a PowerShell single-quoted here-string (`@' ... '@ | python -`) or use `--eval-file <path>`.
+- **No `rg`:** Never assume `rg` is installed on Windows; always use `git grep -n "<pattern>"` (in Git repos) or `Select-String -Pattern "<pattern>"`.
+- **No `&&`:** PowerShell 5.1 rejects `&&`; chain commands cleanly with `; if ($LASTEXITCODE -ne 0) { throw "step failed" }`.
+- **Virtualenv First:** In Python repositories containing `.venv\`, always run `.venv\Scripts\python.exe`, never bare system `python`.
+- **Zero Fragile Quotes:** Never pass nested quotes inside `python -c "..."` or `--eval "..."` in PowerShell (PowerShell strips inner `"` before Python parses `argv`). Use `--eval-file <path>` or pipe a PowerShell single-quoted here-string (`@' ... '@ | python -`).

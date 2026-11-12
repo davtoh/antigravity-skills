@@ -8,7 +8,10 @@ page picking, layout audit generation, and headless/live browser lifecycles via 
 import argparse
 import asyncio
 import base64
+import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -339,6 +342,99 @@ class TestCDPInspect(unittest.TestCase):
             self.assertEqual(args.eval, "(() => ({ ok: 1 }))()")
         finally:
             os.remove(tf_path)
+
+    def test_audit_layout_js_contains_text_overflow_detector(self):
+        js = cdp_inspect.build_generic_audit_js([])
+        self.assertIn("button, a, .badge, .menuitem, .video-action-menu", js)
+        self.assertIn("el.scrollWidth > el.clientWidth + 2", js)
+        self.assertIn("Horizontal text overflow detected", js)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js required for JS DOM probe execution")
+    def test_audit_layout_js_flags_interactive_text_overflow_behaviorally(self):
+        audit_js = cdp_inspect.build_generic_audit_js([])
+        harness = """
+        const makeEl = (spec) => ({
+          tagName: spec.tagName || 'BUTTON',
+          id: spec.id || '',
+          className: spec.className || '',
+          textContent: spec.textContent || '',
+          scrollWidth: spec.scrollWidth || 0,
+          clientWidth: spec.clientWidth || 0,
+          scrollHeight: spec.scrollHeight || 20,
+          clientHeight: spec.clientHeight || 20,
+          scrollLeft: 0,
+          scrollTop: 0,
+          parentElement: null,
+          getBoundingClientRect: () => spec.rect || { x: 0, y: 0, left: 0, top: 0, right: 50, bottom: 24, width: 50, height: 24 },
+          _style: spec.style || {},
+        });
+        const squashedBtn = makeEl({
+          tagName: 'BUTTON',
+          className: 'btn-xs btn-reconvert-video',
+          textContent: 'Re-convert',
+          scrollWidth: 80,
+          clientWidth: 26,
+          rect: { x: 0, y: 0, left: 0, top: 0, right: 28, bottom: 24, width: 28, height: 24 },
+          style: { display: 'inline-flex', visibility: 'visible', whiteSpace: 'nowrap', overflow: 'visible', overflowX: 'visible', textOverflow: 'clip' },
+        });
+        const okBtn = makeEl({
+          tagName: 'BUTTON',
+          className: 'btn-ok',
+          textContent: 'Convert',
+          scrollWidth: 130,
+          clientWidth: 130,
+          style: { display: 'inline-flex', visibility: 'visible', whiteSpace: 'nowrap', overflow: 'visible', overflowX: 'visible', textOverflow: 'clip' },
+        });
+        const ellipsisLink = makeEl({
+          tagName: 'A',
+          className: 'ellipsis-link',
+          textContent: 'very_long_filename.mp4',
+          scrollWidth: 200,
+          clientWidth: 100,
+          style: { display: 'block', visibility: 'visible', whiteSpace: 'nowrap', overflow: 'hidden', overflowX: 'hidden', textOverflow: 'ellipsis' },
+        });
+        const hiddenMenu = makeEl({
+          tagName: 'DIV',
+          className: 'video-action-menu',
+          textContent: 'Hidden',
+          scrollWidth: 120,
+          clientWidth: 0,
+          rect: { x: 0, y: 0, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 },
+          style: { display: 'none', visibility: 'visible', whiteSpace: 'nowrap', overflow: 'visible', overflowX: 'visible' },
+        });
+        global.window = {
+          innerWidth: 1440,
+          innerHeight: 900,
+          scrollX: 0,
+          scrollY: 0,
+          location: { href: 'http://localhost:8000/' },
+          getComputedStyle: (el) => el._style,
+        };
+        global.document = {
+          title: 'Test',
+          documentElement: { scrollHeight: 900, scrollWidth: 1440, scrollLeft: 0, scrollTop: 0 },
+          body: { scrollLeft: 0, scrollTop: 0 },
+          querySelector: () => null,
+          querySelectorAll: (sel) => {
+            if (sel.includes('button, a, .badge')) return [squashedBtn, okBtn, ellipsisLink, hiddenMenu];
+            return [];
+          },
+        };
+        const result = eval(__AUDIT_JS_JSON__);
+        console.log(JSON.stringify(result.layoutOverflowWarnings));
+        """.replace("__AUDIT_JS_JSON__", json.dumps(audit_js))
+        proc = subprocess.run(
+            ["node", "-e", harness],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        warnings = json.loads(proc.stdout.strip())
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["selector"], "button.btn-xs.btn-reconvert-video")
+        self.assertEqual(warnings[0]["scrollWidth"], 80)
+        self.assertEqual(warnings[0]["clientWidth"], 26)
 
 if __name__ == "__main__":
     unittest.main()
