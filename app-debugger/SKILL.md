@@ -40,6 +40,8 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 > [!IMPORTANT]
 > **Pre-Flight Tool-Call Ceiling ($\le 3-5$ calls)**:
 > Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted grep, or 1 device probe). If port, process, or environment ambiguity remains after 3 tool calls, **STOP immediately and present the Pre-Flight UX Gate (`ask_question`)**. NEVER embark on a 50–100 tool exploration marathon, run repetitive ad-hoc Python socket loops, scan ports blindly, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
+>
+> **Post-Interview Diagnosis Budget**: Even after the user selects deep diagnosis, cap third-party library inspection (e.g., `uvicorn`, `fastapi`) at **$\le 3$ targeted probes** or delegate to a `research` subagent. Never guess HTTP endpoints (`/api/health`, `/api/system/status`)—run `surface --show-routes` or `git grep` routes first.
 
 - **Option 1 (Recommended)**: `(Recommended) Live Chrome Tab - Attach to active visible browser tab to inspect DOM layout and errors in real time`
 - **Option 2**: `Headless Background Sandbox - Run isolated Chrome in the background without disturbing desktop windows`

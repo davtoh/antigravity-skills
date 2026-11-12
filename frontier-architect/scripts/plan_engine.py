@@ -401,12 +401,16 @@ def cmd_verify(root: Path, args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Construct CLI argument parser with subcommands."""
     parser = argparse.ArgumentParser(description="Frontier Architect Plan & Continuation Engine")
+    parser.add_argument("--root", type=Path, default=None, help="Optional workspace root override")
     sub = parser.add_subparsers(dest="subcommand", help="Engine subcommands")
 
-    sub.add_parser("discover", help="Discover architectural plans in workspace")
-    p_init = sub.add_parser("init", help="Initialize or bind active plan")
+    root_parent = argparse.ArgumentParser(add_help=False)
+    root_parent.add_argument("--root", type=Path, default=argparse.SUPPRESS, help="Optional workspace root override")
+
+    sub.add_parser("discover", parents=[root_parent], help="Discover architectural plans in workspace")
+    p_init = sub.add_parser("init", parents=[root_parent], help="Initialize or bind active plan")
     p_init.add_argument("plan", nargs="?", help="Path or slug of plan")
-    plan_parent = argparse.ArgumentParser(add_help=False)
+    plan_parent = argparse.ArgumentParser(add_help=False, parents=[root_parent])
     plan_parent.add_argument("plan", nargs="?", help="Optional plan target")
     p_status = sub.add_parser("status", parents=[plan_parent], help="Show active plan status")
     p_status.add_argument("--json", action="store_true", help="Output compact JSON")
@@ -424,7 +428,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_retro.add_argument("--hypotheses", type=int, default=1, help="Hypotheses tested")
     p_retro.add_argument("--escalate", help="Root cause escalated to /app-debugger")
     p_retro.add_argument("--learn", help="Candidate proposal for /learn")
-    p_look = sub.add_parser("lookup", help="Search past plans and decisions")
+    p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
     p_ver.add_argument("--command", "--cmd", dest="command", help="Explicit verifier command")
@@ -436,7 +440,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    repo_root = root or get_repo_root()
+    arg_root = getattr(args, "root", None)
+    repo_root = root or (arg_root.resolve() if arg_root is not None else get_repo_root())
     cmd = args.subcommand or "status"
 
     handlers = {
