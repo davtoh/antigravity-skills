@@ -130,6 +130,39 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def _get_working_tree_code_changes(root: Path) -> tuple[list[str], bool]:
+    """Return modified/untracked files excluding internal plan/ledger state and whether git was probed."""
+    try:
+        res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=3.0,
+        )
+        if res.returncode != 0:
+            return [], False
+
+        tracking_prefixes = (".frontier", ".TODO", ".plans", ".refactor", ".changelogs")
+        code_files = []
+        for line in res.stdout.splitlines():
+            if len(line) > 3:
+                filepath = line[3:].strip()
+                if " -> " in filepath:
+                    filepath = filepath.split(" -> ")[-1].strip()
+                norm = filepath.replace("\\", "/")
+                if not any(
+                    norm == p or norm.startswith(f"{p}/") or f"/{p}/" in norm
+                    for p in tracking_prefixes
+                ):
+                    code_files.append(norm)
+        return code_files, True
+    except Exception:
+        return [], False
+
+
 def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
     """Build a conventional git commit suggestion for the completed milestone."""
     milestone_title = next(
@@ -156,7 +189,13 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
-    commit_hint = _build_commit_suggestion(ps, target_idx)
+
+    code_changes, is_git = _get_working_tree_code_changes(root)
+    has_code_diff = bool(code_changes) if is_git else True
+    if is_git and not code_changes:
+        commit_hint = "(None - Milestone was verification/audit only; no application code changes)"
+    else:
+        commit_hint = _build_commit_suggestion(ps, target_idx)
 
     print(f"[plan_engine] Advanced Milestone {target_idx} (checked {patched} tasks).")
     print(f"  Commit: {sha or 'N/A'} | Status: {ps['status']}")
@@ -168,7 +207,11 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         print("=" * 72)
         print(f"[plan_engine] TURN GATE: Milestone {target_idx} COMPLETE!")
         print("MANDATORY: STOP calling tools. DO NOT execute the next milestone in this turn.")
-        print("Present milestone verification and Suggested Commit to user, then prompt '/frontier-architect continue'.")
+        if has_code_diff:
+            print("Present milestone verification and Suggested Commit to user, then prompt '/frontier-architect continue'.")
+        else:
+            print("Milestone was verification/audit only (no application code files modified; skip git commit).")
+            print("Present verification results to user, then prompt '/frontier-architect continue'.")
         print("=" * 72)
     return 0
 

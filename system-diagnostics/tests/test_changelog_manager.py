@@ -102,6 +102,24 @@ class TestArchiveDiscovery(unittest.TestCase):
         resolved = resolve_archive_dir(self.root)
         self.assertEqual(resolved, docs_arch)
 
+    def test_priority_archive_changelogs_at_root(self):
+        arch = self.root / "archive" / "changelogs"
+        arch.mkdir(parents=True)
+        resolved = resolve_archive_dir(self.root)
+        self.assertEqual(resolved, arch)
+
+    def test_priority_changelogs_at_root(self):
+        clogs = self.root / "changelogs"
+        clogs.mkdir(parents=True)
+        resolved = resolve_archive_dir(self.root)
+        self.assertEqual(resolved, clogs)
+
+    def test_explicit_custom_archive_dir(self):
+        custom = self.root / "custom" / "archive_storage"
+        resolved = resolve_archive_dir(self.root, custom_archive="custom/archive_storage")
+        self.assertEqual(resolved, custom)
+        self.assertTrue(custom.is_dir())
+
     def test_priority_3_creates_dot_changelogs_with_gitignore(self):
         resolved = resolve_archive_dir(self.root)
         self.assertEqual(resolved, self.root / ".changelogs")

@@ -60,15 +60,51 @@ def sanitize_text(text: str, repo_root: Path) -> str:
             res = re.sub(pattern, repl, res)
     return res
 
-def resolve_archive_dir(root: Path) -> Path:
-    """Discover or create archive directory according to 3-tier priority."""
-    p1 = root / ".changelogs"
-    if p1.is_dir():
-        return p1
+def resolve_archive_dir(root: Path, custom_archive: str | None = None) -> Path:
+    """Discover or create archive directory according to multi-tier discovery.
+
+    1. Explicit custom_archive path if provided
+    2. Existing .changelogs directory at root
+    3. Existing archive/changelogs or changelogs directory at root
+    4. Subdirectory search: docs/archive/changelogs, docs/changelogs, etc.
+    5. Any directory containing 'changelog' under docs/ or archive/
+    6. Defaults to creating root / ".changelogs" (with .gitignore)
+    """
+    if custom_archive:
+        custom_p = Path(custom_archive)
+        target = custom_p if custom_p.is_absolute() else (root / custom_p)
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    # Tier 1: Existing .changelogs at root
+    if (root / ".changelogs").is_dir():
+        return root / ".changelogs"
+
+    # Tier 2: Existing root-level standard directories (e.g. archive/changelogs, changelogs)
+    for cand in ("archive/changelogs", "archive/changelog", "changelogs", ".changelog"):
+        if (root / cand).is_dir():
+            return root / cand
+
+    # Tier 3: Subdirectory standard paths (docs/archive/changelogs, docs/changelogs)
     for depth in (1, 2):
-        for c in root.glob("*/" * depth + "archive/changelogs"):
-            if c.is_dir():
-                return c
+        for pattern in ("*/archive/changelogs", "*/changelogs", "*/archive/changelog"):
+            for c in root.glob("*/" * (depth - 1) + pattern):
+                if c.is_dir():
+                    return c
+
+    # Tier 4: Any directory containing 'changelog' inside docs/ or archive/
+    for parent in ("docs", "archive", "doc"):
+        p_dir = root / parent
+        if p_dir.is_dir():
+            try:
+                for sub in p_dir.iterdir():
+                    if sub.is_dir() and "changelog" in sub.name.lower():
+                        return sub
+            except Exception:
+                pass
+
+    # Tier 5: Default fallback: create .changelogs at root
+    p1 = root / ".changelogs"
     p1.mkdir(parents=True, exist_ok=True)
     gi = p1 / ".gitignore"
     if not gi.exists():
@@ -209,26 +245,27 @@ def _emit_commit_hint(c_type: str, c_title: str, c_summary: str, files: list[str
         print(f"# Files ({len(files)}): {', '.join(files[:5])}" + ("..." if len(files) > 5 else ""))
     print("============================\n")
 
-def migrate_logs(root: Path, src_name: str, tgt_name: str, max_lines: int = 150) -> tuple[bool, str]:
+def migrate_logs(root: Path, src_name: str, tgt_name: str, max_lines: int = 150, archive_dir: Path | None = None) -> tuple[bool, str]:
     """Migrate legacy log to target log with identity guard and safe merge."""
+    arch_dir = archive_dir or resolve_archive_dir(root)
     src_p, tgt_p = (root / src_name).resolve(), (root / tgt_name).resolve()
     if not src_p.exists():
         if not tgt_p.exists():
             return False, f"Source log '{src_name}' does not exist."
         p, e = parse_changelog(tgt_p.read_text(encoding="utf-8"))
-        c, _ = rotate_entries(p, e, resolve_archive_dir(root), max_lines=max_lines)
+        c, _ = rotate_entries(p, e, arch_dir, max_lines=max_lines)
         tgt_p.write_text(c, encoding="utf-8")
         return True, f"Target log '{tgt_name}' rotated in-place."
 
     if src_p == tgt_p:
         p, e = parse_changelog(src_p.read_text(encoding="utf-8"))
-        c, _ = rotate_entries(p, e, resolve_archive_dir(root), max_lines=max_lines)
+        c, _ = rotate_entries(p, e, arch_dir, max_lines=max_lines)
         src_p.write_text(c, encoding="utf-8")
         return True, f"Same-path guard: rotated '{src_name}' in-place."
 
     _, src_e = parse_changelog(sanitize_text(src_p.read_text(encoding="utf-8"), root))
     p, tgt_e = parse_changelog(sanitize_text(tgt_p.read_text(encoding="utf-8"), root)) if tgt_p.exists() else ("# Changelog\n\n", [])
-    final_content, shards = rotate_entries(p, tgt_e + src_e, resolve_archive_dir(root), max_lines=max_lines)
+    final_content, shards = rotate_entries(p, tgt_e + src_e, arch_dir, max_lines=max_lines)
     tgt_p.write_text(final_content, encoding="utf-8")
     try:
         src_p.unlink()
@@ -240,9 +277,10 @@ def migrate_logs(root: Path, src_name: str, tgt_name: str, max_lines: int = 150)
 def cmd_changelog_add(args: argparse.Namespace) -> int:
     """Record a milestone, auto-rotate, and emit single-generation commit hint."""
     root = Path(args.path or ".").resolve()
+    arch_dir = resolve_archive_dir(root, getattr(args, "archive_dir", None))
     tgt_name, src_name = args.target_log or "CHANGELOG.md", args.source_log or "MIGRATION_LOG.md"
     if (root / src_name).exists() and (root / src_name).resolve() != (root / tgt_name).resolve():
-        migrate_logs(root, src_name, tgt_name, max_lines=args.max_lines)
+        migrate_logs(root, src_name, tgt_name, max_lines=args.max_lines, archive_dir=arch_dir)
 
     tgt_file = root / tgt_name
     prologue, entries = parse_changelog(tgt_file.read_text(encoding="utf-8")) if tgt_file.exists() else ("# Changelog\n\n", [])
@@ -257,19 +295,22 @@ def cmd_changelog_add(args: argparse.Namespace) -> int:
     clean_files = [sanitize_text(f, root).strip() for f in raw_files]
 
     entry = _build_entry(root, c_type, c_title, c_summary, clean_files, sanitize_text(args.verify or "", root).strip())
-    final_c, shards = rotate_entries(prologue, [entry] + entries, resolve_archive_dir(root), max_lines=args.max_lines)
+    final_c, shards = rotate_entries(prologue, [entry] + entries, arch_dir, max_lines=args.max_lines)
     tgt_file.write_text(final_c, encoding="utf-8")
 
+    rel_arch = arch_dir.relative_to(root).as_posix() if arch_dir.is_relative_to(root) else str(arch_dir)
     print(f"[changelog add] Added entry to {tgt_name} ({len(final_c.splitlines())} lines).")
     if shards:
-        print(f"[changelog add] Overflow rotated to archive: {', '.join(s.name for s in shards)}")
+        print(f"[changelog add] Overflow rotated to archive: {rel_arch}/{', '.join(s.name for s in shards)}")
+        print(f"  (Tip: Archive location can be customized via '--archive-dir <path>' or by placing archives in 'archive/changelogs' or 'docs/changelogs')")
     if getattr(args, "commit_hint", True):
         _emit_commit_hint(c_type, c_title, c_summary, clean_files, is_git=is_git)
     return 0
 
 def cmd_changelog_migrate(args: argparse.Namespace) -> int:
     root = Path(args.path or ".").resolve()
-    ok, msg = migrate_logs(root, args.source_log or "MIGRATION_LOG.md", args.target_log or "CHANGELOG.md", max_lines=args.max_lines)
+    arch_dir = resolve_archive_dir(root, getattr(args, "archive_dir", None))
+    ok, msg = migrate_logs(root, args.source_log or "MIGRATION_LOG.md", args.target_log or "CHANGELOG.md", max_lines=args.max_lines, archive_dir=arch_dir)
     print(f"[changelog migrate] {msg}")
     return 0 if ok else 1
 
@@ -292,7 +333,7 @@ def cmd_changelog_show(args: argparse.Namespace) -> int:
 def cmd_changelog_status(args: argparse.Namespace) -> int:
     root = Path(args.path or ".").resolve()
     tgt, src = root / (args.target_log or "CHANGELOG.md"), root / (args.source_log or "MIGRATION_LOG.md")
-    arch = resolve_archive_dir(root)
+    arch = resolve_archive_dir(root, getattr(args, "archive_dir", None))
     shards = list(arch.glob("changelog_*.md"))
     tl = len(tgt.read_text(encoding="utf-8").splitlines()) if tgt.exists() else 0
     sl = len(src.read_text(encoding="utf-8").splitlines()) if src.exists() else 0
@@ -310,6 +351,7 @@ def _add_common_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--path", default=None, help="Repository root path")
     parser.add_argument("--source-log", default="MIGRATION_LOG.md", help="Legacy source log filename")
     parser.add_argument("--target-log", default="CHANGELOG.md", help="Target active log filename")
+    parser.add_argument("--archive-dir", "-a", default=None, help="Custom directory for historical changelog archive shards (default: auto-discover or .changelogs)")
 
 def register_parser(sub: Any) -> None:
     """Register 'changelog' subparser and its child actions."""

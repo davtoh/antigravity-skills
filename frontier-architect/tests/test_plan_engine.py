@@ -308,6 +308,27 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out_json)["status"], "completed")
 
+    @patch("subprocess.run")
+    def test_cli_advance_git_aware_commit_hint(self, mock_subproc):
+        self._run_cli(["init", "sample_plan"])
+
+        # Case 1: Clean tree or only ledger files modified -> commit hint suppressed
+        mock_subproc.return_value = MagicMock(
+            returncode=0, stdout=" M .TODO/sample_plan.md\n?? .frontier/state.json\n", stderr=""
+        )
+        code, out = self._run_cli(["advance", "sample_plan", "--milestone", "1"])
+        self.assertEqual(code, 0)
+        self.assertIn("Suggested Commit: (None - Milestone was verification/audit only", out)
+        self.assertIn("skip git commit", out)
+
+        # Case 2: Application code files modified -> commit hint generated
+        mock_subproc.return_value = MagicMock(
+            returncode=0, stdout=" M src/services/auth.py\n", stderr=""
+        )
+        code, out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
+        self.assertEqual(code, 0)
+        self.assertIn('Suggested Commit: git commit -m "feat(sample):', out)
+
     def test_cli_retrospective_and_lookup(self):
         self._run_cli(["init", "sample_plan"])
         code, out = self._run_cli([

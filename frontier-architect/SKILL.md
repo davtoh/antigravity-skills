@@ -84,7 +84,7 @@ Before diving in, protect the context window and classify the task:
 3. **Triage Edge Cases**:
    - **Existing Plan Handoff: Execution vs. Improvement Intent**:
      - **Execution Intent (`implement`, `continue`, `execute`, `run`)**:
-       1. **DO NOT re-run Phases 1–5 or re-read full `SKILL.md` / full plan**: On `/frontier-architect continue`, run `plan_engine.py status` and `plan_engine.py next` immediately (`next` outputs the exact active slice), and do not emit a duplicate plan artifact with `RequestFeedback: true` (which prematurely halts the turn).
+       1. **Mandatory Continuation Reflex (Zero-File-Inspection Gate)**: On `/frontier-architect continue`, YOUR FIRST ACTIONS MUST BE `plan_engine.py status` and `plan_engine.py next` immediately (`next` outputs the exact active slice). DO NOT call `read_file` on `SKILL.md`, the markdown plan file, or legacy logs before running the engine. Never manually patch plan checkboxes with `edit_file`—let `plan_engine.py advance` maintain the ledger and checkboxes. Do not emit a duplicate plan artifact with `RequestFeedback: true` (which prematurely halts the turn).
        2. **Execute Active Milestone Immediately**: Jump directly to **Phase 6 (Atomic Vertical Slicing)** to implement only the active milestone (consult `[references/cli-cheatsheet.md](./references/cli-cheatsheet.md)` for exact CLI flags).
        3. Do not run the full workspace test suite unless targeted unit tests are missing or a milestone is completing.
      - **Improvement Intent (`improve`, `enhance`, `refine`, `review`, `elevate`)**:
@@ -236,6 +236,8 @@ Before modifying production files on any multi-step task:
        2. Simultaneously write the exact same markdown content to `<workspace>/.TODO/<slug>.md` (or `<workspace>/.plans/<slug>.md`) **without** `ArtifactMetadata`, and register it via `python "<skill_dir>/scripts/plan_engine.py" init .TODO/<slug>.md`.
      - Never leave orphaned plans strictly in temporary brain directories where subsequent sessions cannot locate or resume them.
      - **Vertical Slice Parity**: Pair each milestone's implementation tasks with its corresponding unit/integration tests directly inside that milestone rather than deferring all tests into an isolated empty-shell final milestone.
+    - **Changelog Task Formulation Invariant**: In implementation plans, NEVER declare milestone tasks targeting raw log files (e.g., `- [ ] **MIGRATION_LOG.md**: update log`). Always declare changelog recording via the CLI:
+      `- [ ] **CHANGELOG.md**: Record milestone completion via 'diagnose.py changelog add'`.
    - **Architectural Invariant & Surface Baseline Inventory**:
      - Before modifying existing systems, identify and document all public surface invariants in the plan: public API routes/payload schemas, exported symbols/types, state machine transitions, and critical UI selectors (`#main-canvas`, `.control-bar`).
      - **Skill Delegation Boundary for Monolith Decomposition**: If the task specifically requires decomposing oversized legacy files or classes exceeding the modularity budget into modular submodules while performing deep AST/DOM contract snapshotting, explicitly recommend or delegate to the specialized `/refactor-monolith` skill (which provides dedicated surface scanners and contract diff tooling; if not installed locally, it can be acquired from `https://github.com/davtoh/antigravity-skills`). If `/refactor-monolith` is unavailable and cannot be installed, proceed self-contained by isolating public interfaces, writing manual regression test harnesses before editing, and decomposing incrementally.
@@ -297,13 +299,14 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
 6. **Milestone Advance & 3-Tier Continuous Learning Loop** *(see [`references/cli-cheatsheet.md`](./references/cli-cheatsheet.md) for exact flags)*:
    - **Verification Baseline**: Run `python "<skill_dir>/scripts/plan_engine.py" verify` (auto-extracts verifiers or pass `--command "<cmd>"`) to record test pass counts.
    - **Advance Milestone & Commit Suggestion**: Run `python "<skill_dir>/scripts/plan_engine.py" advance` to patch checkboxes (`- [ ]` $\rightarrow$ `- [x]`), record the current commit SHA, and emit a copy-pasteable `git commit` suggestion. Never execute `git add` or `git commit` without explicit user consent.
+      - **Smart Commit Hint Gate**: If `plan_engine.py advance` reports `(None - Milestone was verification/audit only; no application code changes)`, do not present a commit command in your turn-end message; explain that milestone verification succeeded without requiring code commits.
    - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --tri "<scores>" --hypotheses <n> --learn "<candidate>" --escalate "<bug>"`. Never skip this step; it dual-writes telemetry to `.frontier/plans/<slug>/retrospectives.json` and `.frontier/state.json` for `/frontier-architect lookup`.
      - Dimensions: *Token Efficiency Grade (A–F)*, *Hypothesis Accuracy* ($\le 2$ attempts), *Tool Reliability Index (TRI 1–5)*, and *Architectural Defense* (SSOT & modularity adherence).
    - **Continuous Learning Feed**: Propose discovered reusable patterns and bug remediations to `/learn`.
    - **Turn-Termination Gate & Interactive User Checkpoint (MANDATORY)**: After advancing an intermediate milestone and logging retrospective telemetry, **STOP calling tools immediately**:
      > *"Milestone [N] is verified and complete. Ready to proceed with Milestone [N+1] ([Milestone Title])? Reply to continue or invoke `/frontier-architect continue`."*
 7. **Final Plan Completion Sign-Off & Pre-Merge Gate (Axiom 8 Safety)**:
-   - When all milestones reach 100% completion (`- [x]`), run the complete regression test suite, verify zero `file:///` links or secrets and full compliance with 350/500-line modularity budgets, record the changelog via `diagnose.py changelog add`, provide `git diff main...plan/<slug>`, and advise clicking **New Conversation (+)** or `/compact`.
+   - When all milestones reach 100% completion (`- [x]`), run the complete regression test suite, verify zero `file:///` links or secrets and full compliance with 350/500-line modularity budgets, record the changelog via `diagnose.py changelog add` (which auto-rotates active log <= 150 lines and auto-discovers archive directories: archive/changelogs, docs/changelogs, or .changelogs, with --archive-dir support), provide `git diff main...plan/<slug>`, and advise clicking **New Conversation (+)** or `/compact`.
 
 ---
 
