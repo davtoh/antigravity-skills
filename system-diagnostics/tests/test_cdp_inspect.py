@@ -328,5 +328,17 @@ class TestCDPInspect(unittest.TestCase):
             cdp_inspect.main()
             mock_exit.assert_called_once_with(0)
 
+    def test_resolve_eval_file_arg(self):
+        parser = cdp_inspect.build_parser()
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as tf:
+            tf.write("(() => ({ ok: 1 }))()")
+            tf_path = tf.name
+        try:
+            args = parser.parse_args(["--eval-file", tf_path])
+            cdp_inspect._resolve_eval_arg(parser, args)
+            self.assertEqual(args.eval, "(() => ({ ok: 1 }))()")
+        finally:
+            os.remove(tf_path)
+
 if __name__ == "__main__":
     unittest.main()

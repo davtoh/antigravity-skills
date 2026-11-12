@@ -180,6 +180,36 @@ class TestSubcommandsExecution(unittest.TestCase):
             self.assertIn("2.0", called_cmd)
             self.assertIn("--strict", called_cmd)
 
+    def test_cmd_ui_live_omits_headless_and_forwards_eval_file(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            parser = diagnose.build_parser()
+            args = parser.parse_args([
+                "ui", "--url", "http://localhost:8000", "--live",
+                "--eval-file", "probe.js", "--port", "9222", "--no-fallback-headless",
+            ])
+            code = diagnose.cmd_ui(args)
+            self.assertEqual(code, 0)
+            called_cmd = mock_run.call_args[0][0]
+            self.assertNotIn("--headless", called_cmd)
+            self.assertIn("--eval-file", called_cmd)
+            self.assertIn("probe.js", called_cmd)
+            self.assertIn("--port", called_cmd)
+            self.assertIn("9222", called_cmd)
+            self.assertIn("--no-fallback-headless", called_cmd)
+
+    def test_stage_standalone_skill_materializes_ssot(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skills_root = diagnose.SCRIPTS_DIR.parent.parent
+            fa_dir = skills_root / "frontier-architect"
+            staged = diagnose.skill_packager.stage_standalone_skill(fa_dir, Path(tmpdir))
+            self.assertFalse((staged / "tests").exists())
+            self.assertFalse((staged / "evals").exists())
+            self.assertTrue((staged / "scripts" / "cdp_transport.py").is_file())
+            self.assertTrue((staged / "scripts" / "audit_layout.js").is_file())
+            cdp_lines = (staged / "scripts" / "cdp_inspect.py").read_text(encoding="utf-8").splitlines()
+            self.assertGreater(len(cdp_lines), 100)
+
     def test_cmd_container_invokes_docker_audit(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)

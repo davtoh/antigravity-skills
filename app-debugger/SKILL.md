@@ -66,6 +66,8 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    # Live visible tab (with optional settle delay for scroll-snap resting offsets and transitions)
    python skills/app-debugger/scripts/run_diagnose.py ui --live --audit-layout
    python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout
+   # Evaluate multi-statement JS without PowerShell quote stripping
+   python skills/app-debugger/scripts/run_diagnose.py ui --live --eval-file scratch/probe.js
    # Or isolated headless background
    python skills/app-debugger/scripts/run_diagnose.py ui --headless --audit-layout --screenshot scratch/bug_before.jpg
    ```

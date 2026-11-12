@@ -6,17 +6,15 @@ This document serves as persistent operational memory across conversations for A
 
 ## 1. Architecture & Repository Topology
 
-- **`frontier-architect/`**: SOTA system architecture, SPIKE protocols, cognitive harness, and plan-first gatekeeper.
-- **`system-diagnostics/`**: Centralized read-only diagnostic front door:
-  - `scripts/diagnose.py`: Unified CLI (`ui`, `container`, `surface`, `tests`, `all`, `probe`, `audit`, `scan`, `scaffold-defect`).
-  - `scripts/static_auditor.py`: Virtualenv typecheckers (`ruff`/`mypy`), platform import smells, and callable smoke checks.
-  - `scripts/shadow_prober.py`: Polyglot static AST/lexer scanner and opt-in PEP 578 isolated sandbox prober.
-  - `tests/`: Unit test suite for diagnostics tools (`74/74` tests passing).
-- **`refactor-monolith/`**: Zero-drift monolith decomposition engine enforcing $\Delta(\text{Observable Behavior}) \equiv 0$:
-  - `scripts/campaign_manager.py`: Refactoring campaign tracker and handoff manager.
-  - `scripts/smoke_test_generator.py`: Module import and signature parity smoke test synthesizer.
-  - `tests/`: Decomposition test suite (`135/135` tests passing).
-- **`app-debugger/`**: Dedicated empirical bug hunter and symptom-to-root-cause debugger.
+- **`frontier-architect/`**: SOTA system architecture, SPIKE protocols, cognitive harness, and plan-first gatekeeper. Uses thin SSOT delegating shims for `scripts/cdp_inspect.py` and `scripts/docker_audit.py`.
+- **`system-diagnostics/`**: Centralized Single Source of Truth (SSOT) diagnostic front door:
+  - `scripts/diagnose.py`: Unified CLI (`ui`, `container`, `surface`, `tests`, `all`, `probe`, `audit`, `scan`, `scaffold-defect`, `changelog`, `traces`, `run`, `package-skill`).
+  - `scripts/cdp_inspect.py`, `cdp_transport.py`, `audit_layout.js`, `docker_audit.py`, `surface_scanners.py`, `css_inspector.py`: Authoritative SSOT diagnostic and scanner engines shared across the monorepo.
+  - `scripts/skill_packager.py`: Standalone `/skill-creator`-compliant bundler (`diagnose.py package-skill`) that temp-stages skills, materializes SSOT shims into full scripts, and strips `tests/` & `evals/`.
+  - `scripts/static_auditor.py` & `scripts/shadow_prober.py`: Virtualenv typecheckers (`ruff`/`mypy`), platform import smells, callable smoke checks, and polyglot AST/lexer scanner.
+- **`refactor-monolith/`**: Zero-drift monolith decomposition engine enforcing $\Delta(\text{Observable Behavior}) \equiv 0$. Uses thin SSOT delegating shims for `scripts/css_inspector.py` and `scripts/surface_scanners.py`.
+- **`app-debugger/`**: Dedicated empirical bug hunter and symptom-to-root-cause debugger (`scripts/run_diagnose.py` delegates to `system-diagnostics`).
+- **In-Flight Tool Elevation Rule (SSOT)**: Always fix shared diagnostic bugs in `system-diagnostics/scripts/` and run `system-diagnostics/tests/`—never overwrite thin delegating shims with forked code copies.
 - **`.TODO/`**: Active implementation plans and architectural roadmaps.
 
 ---

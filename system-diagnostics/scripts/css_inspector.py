@@ -14,7 +14,15 @@ from surface_scanners import scan_css_surface
 try:
     from defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
 except ImportError:
-    from .defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
+    try:
+        from .defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
+    except ImportError:
+        IGNORED_DIRS: frozenset[str] = frozenset({
+            ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
+            "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+            "dist", "build", "_build", "out", "target", ".idea", ".vscode",
+            "scratch", "coverage", "htmlcov", "migrations", ".refactor",
+        })
 
 def _is_vendor_or_minified(path: Path) -> bool:
     name = path.name.lower()

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""
-Frontier Architect - Cross-Platform, Project-Agnostic CDP Browser Inspector.
-Zero-dependency inspection engine supporting Windows, macOS, Linux, and WSL.
+"""Cross-Platform, Zero-Dependency CDP Browser Inspector (Windows, macOS, Linux, WSL).
+Attaches to live Chrome/Edge via DevToolsActivePort or launches an isolated headless instance.
 
 Connection Cascade:
 1. Attaches to the user's LIVE running Chrome/Chromium/Edge instance via `DevToolsActivePort`
@@ -15,6 +14,7 @@ Generic Capabilities:
   --selectors "#app,.card"     Inspect specific CSS selectors (bounding boxes, styles, media state)
   --click "#submit-btn"        Click an element before auditing/evaluating
   --eval "document.title"      Evaluate arbitrary JS expression and print JSON result
+  --eval-file                  Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page  
   --screenshot out.jpg         Capture JPEG screenshot of the viewport
 """
 
@@ -319,13 +319,25 @@ def parse_viewport(value: str) -> tuple[int, int]:
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"--window-size must look like 1440x900, got '{value}'") from exc
 
-def main():
+def _resolve_eval_arg(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    eval_file = getattr(args, "eval_file", None)
+    if args.eval and eval_file:
+        parser.error("Use either --eval or --eval-file, not both.")
+    if eval_file:
+        try:
+            args.eval = sys.stdin.read() if eval_file == "-" else Path(eval_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"[CDP] Error: Cannot read --eval-file '{eval_file}': {exc}", file=sys.stderr)
+            sys.exit(2)
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Frontier Architect Cross-Platform CDP Browser Inspector")
     parser.add_argument("--url", default=None, help="Target URL to match or open (defaults to $APP_URL if set)")
     parser.add_argument("--list-tabs", action="store_true", help="List open tabs in live browser")
     parser.add_argument("--audit-layout", action="store_true", help="Run generic DOM/viewport overflow and media audit")
     parser.add_argument("--selectors", default=None, help="Comma-separated CSS selectors (e.g. '#app,.player,video')")
     parser.add_argument("--eval", default=None, help="JavaScript expression to evaluate in target page")
+    parser.add_argument("--eval-file", default=None, help="Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page")
     parser.add_argument("--click", default=None, help="CSS selector to click before auditing/evaluating")
     parser.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
     parser.add_argument("--navigate", action="store_true", help="Force (re)navigation to target URL, e.g. a hard reload after a fix")
@@ -336,7 +348,12 @@ def main():
     parser.set_defaults(fallback_headless=True)
     parser.add_argument("--window-size", dest="viewport", type=parse_viewport, default=(1440, 900), help="Headless viewport (default: 1440x900)")
     parser.add_argument("--port", type=int, default=0, help="Headless debugging port (default: 0 = OS-assigned free port)")
+    return parser
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
+    _resolve_eval_arg(parser, args)
     args.target_url = args.url or os.getenv("APP_URL", "")
     sys.exit(asyncio.run(main_async(args)))
 

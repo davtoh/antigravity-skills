@@ -28,6 +28,7 @@ import shadow_prober
 import changelog_manager
 import trace_recorder
 import runtime_runner
+import skill_packager
 from defect_catalog import IGNORED_WORKSPACE_DIRS
 
 # Configure UTF-8 stdout/stderr across all platforms
@@ -105,6 +106,8 @@ def cmd_ui(args: argparse.Namespace) -> int:
         cmd.extend(["--screenshot", args.screenshot])
     if args.eval:
         cmd.extend(["--eval", args.eval])
+    if getattr(args, "eval_file", None):
+        cmd.extend(["--eval-file", args.eval_file])
     if args.click:
         cmd.extend(["--click", args.click])
     if args.navigate:
@@ -113,9 +116,13 @@ def cmd_ui(args: argparse.Namespace) -> int:
         cmd.extend(["--window-size", args.window_size])
     if getattr(args, "wait", None) is not None:
         cmd.extend(["--wait", str(args.wait)])
+    if getattr(args, "port", None) is not None:
+        cmd.extend(["--port", str(args.port)])
     if getattr(args, "strict", False):
         cmd.append("--strict")
-    if args.headless or not args.live:
+    if getattr(args, "fallback_headless", True) is False:
+        cmd.append("--no-fallback-headless")
+    if not getattr(args, "live", False):
         cmd.append("--headless")
 
     print(f"=== Diagnose UI: Browser Inspection ({target_url or 'Live Tabs'}) ===")
@@ -310,15 +317,23 @@ def cmd_all(args: argparse.Namespace) -> int:
         return 1
     return 0
 
-def cmd_probe(args: argparse.Namespace) -> int:
-    """Execute dynamic probe commands (list, run, new, save)."""
-    action = getattr(args, "probe_action", None)
-    if not action:
-        print("[diagnose probe] Error: Probe action required. Use 'list', 'run', 'new', or 'save'.", file=sys.stderr)
-        return 2
+def _print_probe_run_result(result: dict, as_json: bool) -> None:
+    """Format and print probe execution result."""
+    if as_json:
+        print(json.dumps(result, indent=2))
+        return
+    sym = {"ok": "✓", "warning": "⚠", "error": "✗"}.get(result.get("status", ""), "•")
+    print(f"\n[{sym}] Diagnostic Probe: {result.get('probe')} ({result.get('latency_ms', 0)}ms)\n    Summary: {result.get('summary')}")
+    details = result.get("details", {})
+    if isinstance(details, dict):
+        for k, v in details.items():
+            print(f"    - {k}: {v}")
+    else:
+        print(f"    - Output: {details}")
+    print()
 
-    root = Path(args.path).resolve() if getattr(args, "path", None) else None
-
+def _run_probe_list_or_exec(action: str, root: Path | None, args: argparse.Namespace) -> int:
+    """Handle 'list' and 'run' probe actions."""
     if action == "list":
         probes = probe_runner.list_probes(workspace_root=root)
         if getattr(args, "json", False):
@@ -332,43 +347,31 @@ def cmd_probe(args: argparse.Namespace) -> int:
             print(f"  - {p.name:<20} [{p.scope}] {p.description}")
         print()
         return 0
+    if not args.name:
+        print("[diagnose probe run] Error: Probe name or path required.", file=sys.stderr)
+        return 2
+    py_bin = find_virtualenv_python(root or Path.cwd())
+    res = probe_runner.run_probe(args.name, probe_args=args.probe_args, python_bin=py_bin, workspace_root=root)
+    _print_probe_run_result(res, getattr(args, "json", False))
+    return 0 if res.get("status") in ("ok", "warning") else 1
 
-    if action == "run":
-        if not args.name:
-            print("[diagnose probe run] Error: Probe name or path required.", file=sys.stderr)
-            return 2
-        py_bin = find_virtualenv_python(root or Path.cwd())
-        result = probe_runner.run_probe(
-            args.name,
-            probe_args=args.probe_args,
-            python_bin=py_bin,
-            workspace_root=root,
-        )
-        if getattr(args, "json", False):
-            print(json.dumps(result, indent=2))
-        else:
-            status_symbol = {"ok": "✓", "warning": "⚠", "error": "✗"}.get(result.get("status", ""), "•")
-            print(f"\n[{status_symbol}] Diagnostic Probe: {result.get('probe')} ({result.get('latency_ms', 0)}ms)")
-            print(f"    Summary: {result.get('summary')}")
-            details = result.get("details", {})
-            if isinstance(details, dict):
-                for k, v in details.items():
-                    print(f"    - {k}: {v}")
-            else:
-                print(f"    - Output: {details}")
-            print()
-        return 0 if result.get("status") in ("ok", "warning") else 1
-
+def cmd_probe(args: argparse.Namespace) -> int:
+    """Execute dynamic probe commands (list, run, new, save)."""
+    action = getattr(args, "probe_action", None)
+    if not action:
+        print("[diagnose probe] Error: Probe action required. Use 'list', 'run', 'new', or 'save'.", file=sys.stderr)
+        return 2
+    root = Path(args.path).resolve() if getattr(args, "path", None) else None
+    if action in ("list", "run"):
+        return _run_probe_list_or_exec(action, root, args)
     if action == "new":
         if not getattr(args, "name", None):
             print("[diagnose probe new] Error: Probe name required.", file=sys.stderr)
             return 2
         domain = getattr(args, "domain", "general") or "general"
-        target_dir = root / ".diagnostics" / "probes" if root else None
-        dest = probe_runner.scaffold_probe(args.name, domain=domain, target_dir=target_dir)
+        dest = probe_runner.scaffold_probe(args.name, domain=domain, target_dir=(root / ".diagnostics" / "probes" if root else None))
         print(f"[diagnose probe new] Scaffolded new probe template: {dest}")
         return 0
-
     if action == "save":
         if not getattr(args, "source", None) or not getattr(args, "name", None):
             print("[diagnose probe save] Error: Both source script and probe name are required.", file=sys.stderr)
@@ -377,7 +380,6 @@ def cmd_probe(args: argparse.Namespace) -> int:
         dest = probe_runner.save_probe(args.source, args.name, scope=scope, workspace_root=root)
         print(f"[diagnose probe save] Successfully registered probe '{args.name}' ({scope}): {dest}")
         return 0
-
     print(f"[diagnose probe] Error: Unknown probe action '{action}'.", file=sys.stderr)
     return 2
 
@@ -392,16 +394,21 @@ def build_parser() -> argparse.ArgumentParser:
     # 1. UI subcommand
     p_ui = sub.add_parser("ui", help="Browser layout, DOM overflow, and JS exception inspector")
     p_ui.add_argument("--url", default=None, help="Target URL (auto-probes ports if omitted)")
-    p_ui.add_argument("--live", action="store_true", help="Inspect visible live Chrome tab")
-    p_ui.add_argument("--headless", action="store_true", default=True, help="Run headless Chrome (default)")
+    ui_mode = p_ui.add_mutually_exclusive_group()
+    ui_mode.add_argument("--live", action="store_true", help="Inspect visible live Chrome tab")
+    ui_mode.add_argument("--headless", action="store_true", default=None, help="Run headless Chrome (default unless --live)")
+    p_ui.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
+    p_ui.set_defaults(fallback_headless=True)
     p_ui.add_argument("--audit-layout", action="store_true", help="Audit bounding box overflow")
     p_ui.add_argument("--selectors", default=None, help="Comma-separated CSS selectors to measure")
     p_ui.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
     p_ui.add_argument("--navigate", action="store_true", help="Force fresh page reload")
     p_ui.add_argument("--eval", default=None, help="Evaluate JS expression and return JSON")
+    p_ui.add_argument("--eval-file", default=None, help="Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page")
     p_ui.add_argument("--click", default=None, help="CSS selector to click before auditing")
     p_ui.add_argument("--window-size", default="1440x900", help="Viewport size WxH (default: 1440x900)")
     p_ui.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection (default: 1.5)")
+    p_ui.add_argument("--port", type=int, default=None, help="Debugging port override")
     p_ui.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     p_ui.add_argument("--list-tabs", action="store_true", help="List active Chrome tabs")
 
@@ -451,6 +458,9 @@ def build_parser() -> argparse.ArgumentParser:
     # 11. Zero-code auto-trace runner
     runtime_runner.register_parser(sub)
 
+    # 12. Standalone skill bundler (/skill-creator compliant)
+    skill_packager.register_parser(sub)
+
     return parser
 
 def main() -> int:
@@ -475,6 +485,7 @@ def main() -> int:
         "changelog": changelog_manager.cmd_changelog,
         "traces": trace_recorder.cmd_traces,
         "run": runtime_runner.cmd_run,
+        "package-skill": skill_packager.cmd_package_skill,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

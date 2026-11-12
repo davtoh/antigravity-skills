@@ -49,7 +49,7 @@ These standalone repositories provide full CLI tools alongside automated `--inst
 | Skill | Directory | Description & Key Capabilities |
 | :--- | :--- | :--- |
 | **`frontier-architect`** | [`frontier-architect/`](frontier-architect/SKILL.md) | SOTA architectural exploration, SPIKE prototyping, 3-tier proposals, and system design governance. |
-| **`system-diagnostics`** | [`system-diagnostics/`](system-diagnostics/SKILL.md) | Centralized 3-tier diagnostics engine (Browser layout/CDP, Docker sync/CPU, AST surface scanning), plus the **Latent Defect & Smell Audit Pipeline** (polyglot static AST prober, callable smoke tests, virtualenv typecheckers, and SSOT catalog). |
+| **`system-diagnostics`** | [`system-diagnostics/`](system-diagnostics/SKILL.md) | Centralized 3-tier SSOT diagnostics engine (Browser layout/CDP with `--eval-file`, Docker sync/CPU, AST surface scanning, standalone `.skill` packager via `diagnose.py package-skill`), plus the **Latent Defect & Smell Audit Pipeline**. |
 | **`refactor-monolith`** | [`refactor-monolith/`](refactor-monolith/SKILL.md) | Safe zero-drift decomposition of oversized files/classes, enforcing $\Delta(\text{Observable Behavior}) \equiv 0$, contract snapshots, and Zero-Drift Defect Quarantine. |
 | **`app-debugger`** | [`app-debugger/`](app-debugger/SKILL.md) | Empirical bug hunting and regression resolution workflow with symptom-to-root-cause mapping and closed-loop Red $\rightarrow$ Green fixes. |
 
