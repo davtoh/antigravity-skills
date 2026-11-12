@@ -60,6 +60,8 @@ class TestSurfaceScanners(unittest.TestCase):
         const card = document.querySelector('#preview-card');
         window.App = { switchCamera: (id) => {} };
         window.showToast = (msg) => {};
+        function renderGrid(items) {}
+        async function fetchMetrics() {}
         document.addEventListener('DOMContentLoaded', () => {});
         export function initModule() {}
         """
@@ -68,6 +70,8 @@ class TestSurfaceScanners(unittest.TestCase):
         self.assertIn("preview-card", surf.queried_ids)
         self.assertIn("App", surf.global_exports)
         self.assertIn("showToast", surf.global_exports)
+        self.assertIn("renderGrid", surf.global_exports)
+        self.assertIn("fetchMetrics", surf.global_exports)
         self.assertIn("DOMContentLoaded", surf.event_listeners)
         self.assertIn("initModule", surf.es_exports)
 

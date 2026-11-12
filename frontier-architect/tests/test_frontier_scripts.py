@@ -223,5 +223,10 @@ class TestCDPInspect(unittest.TestCase):
         self.assertIn("#canvas", js_code)
         self.assertIn(".player", js_code)
 
+    def test_eval_file_option_in_parser(self):
+        parser = cdp_inspect.build_parser()
+        args = parser.parse_args(["--eval-file", "probe.js"])
+        self.assertEqual(args.eval_file, "probe.js")
+
 if __name__ == "__main__":
     unittest.main()

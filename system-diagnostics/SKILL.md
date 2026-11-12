@@ -105,6 +105,8 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Custom Source/Target Log Names** | Custom file override | `--source-log --target-log` | `python skills/system-diagnostics/scripts/diagnose.py changelog migrate --source-log HISTORY.md --target-log CHANGELOG.md` |
 | **Check Changelog & Archive Health** | Status inspection | `--path` | `python skills/system-diagnostics/scripts/diagnose.py changelog status --path .` |
 | **Read Recent 3 Milestones (On Demand)** | Bounded context lookup | `--recent 3` | `python skills/system-diagnostics/scripts/diagnose.py changelog show --recent 3` |
+| **Evaluate Multi-Statement JS in Page** | Live or headless CDP | `--eval-file <js_path>` | `python skills/system-diagnostics/scripts/diagnose.py ui --live --eval-file scratch/check_dom.js` |
+| **Package Standalone `.skill` Bundle** | Distribution / `/skill-creator` | Resolves SSOT shims & strips `tests/` | `python skills/system-diagnostics/scripts/diagnose.py package-skill all --out dist/` |
 
 ---
 
@@ -122,8 +124,11 @@ python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
 - `--screenshot <PATH>`: Saves a JPEG viewport screenshot.
 - `--navigate`: Forces a page refresh before measuring.
 - `--eval <JS>`: Evaluates arbitrary JavaScript expression in page context.
+- `--eval-file <PATH>`: Reads UTF-8 JavaScript from a file (or `-` for stdin) and evaluates in page context (avoids Windows PowerShell quote-stripping).
 - `--click <SELECTOR>`: Clicks an element before measuring.
 - `--window-size <WxH>`: Headless viewport dimensions (default: `1440x900`).
+- `--port <PORT>`: Debugging port override.
+- `--no-fallback-headless`: Fails immediately if live Chrome is unreachable instead of falling back to headless.
 
 ### Subcommand: `container`
 ```bash
@@ -208,6 +213,14 @@ python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID_OR
 - `--fix`: Forces Track A tactical test generation (`tests/quarantine/test_<id>.py`) even if classified as architectural.
 - `--elevate`: Forces Track B architectural elevation brief generation for `/frontier-architect` + `/grill-me`.
 - `--workspace <PATH>`: Target project directory (defaults to current directory).
+
+### Subcommand: `package-skill`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py package-skill <SKILL_OR_ALL> [--out <DIR>]
+```
+- `<SKILL_OR_ALL>`: Skill name/directory (`frontier-architect`, `refactor-monolith`, `system-diagnostics`, `app-debugger`) or `all`.
+- `--out <DIR>`: Output directory for `.skill` archives (default: `dist/`).
+- *Temp-Stage Standalone Bundling*: Stages the skill in an isolated temporary directory, materializes any thin SSOT shims into full standalone scripts from `system-diagnostics/scripts/`, strips dev-only directories (`tests/`, `evals/`, `.coverage`, `.diagnostics/`), and invokes `/skill-creator`'s `package_skill.py` validator/packager.
 
 ---
 

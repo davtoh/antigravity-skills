@@ -7,6 +7,7 @@ cross-platform path resolution, and CLI subcommands with zero external dependenc
 
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -360,6 +361,21 @@ class TestPlanEngineCLI(unittest.TestCase):
         code, out = self._run_cli(["verify", "no_ver_plan"])
         self.assertEqual(code, 0)
         self.assertIn("Running verifier: pytest tests/custom.py", out)
+
+    @patch("subprocess.run")
+    def test_cli_verify_pytest_counts_and_windows_norm(self, mock_subproc):
+        self._run_cli(["init", "sample_plan"])
+        mock_subproc.return_value = MagicMock(
+            returncode=1, stdout="=== 12 passed, 2 failed, 1 error in 0.42s ===\n", stderr=""
+        )
+        code, _ = self._run_cli(["verify", "sample_plan", "--command", ".venv/Scripts/python.exe -m pytest tests/unit"])
+        self.assertEqual(code, 1)
+        ws = load_json(get_frontier_dir(self.root) / "state.json")
+        self.assertEqual(ws["verification_baseline"]["passed_tests"], 12)
+        self.assertEqual(ws["verification_baseline"]["failed_tests"], 3)
+        called_cmd = mock_subproc.call_args[0][0]
+        if os.name == "nt":
+            self.assertTrue(called_cmd.startswith(r".venv\Scripts\python.exe -m pytest tests/unit"))
 
     def test_cross_platform_path_handling(self):
         rel_posix = self.plan_path.relative_to(self.root).as_posix()

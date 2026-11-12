@@ -95,6 +95,13 @@
     queriedSelectors[sel] = el ? describeEl(el) : null;
   }
 
+  function formatSelector(el) {
+    const cls = typeof el.className === 'string' && el.className
+      ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.')
+      : '';
+    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
+  }
+
   const layoutOverflowWarnings = [];
   if (scrollX > 0) {
     layoutOverflowWarnings.push({
@@ -105,6 +112,7 @@
     });
   }
 
+  let containerWarnCount = 0;
   for (const el of document.querySelectorAll('main, section, article, div, aside')) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
@@ -112,13 +120,38 @@
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     if (r.right > vw + 4 || (el.scrollHeight > el.clientHeight + 4 && cs.overflowY === 'hidden')) {
       layoutOverflowWarnings.push({
-        selector: (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/)[0] : '')),
+        selector: formatSelector(el),
         rect: { width: Math.round(r.width), height: Math.round(r.height), right: Math.round(r.right), bottom: Math.round(r.bottom) },
         scrollHeight: el.scrollHeight,
         clientHeight: el.clientHeight,
         overflowY: cs.overflowY
       });
-      if (layoutOverflowWarnings.length >= 15) break;
+      containerWarnCount += 1;
+      if (containerWarnCount >= 15) break;
+    }
+  }
+
+  let textOverflowCount = 0;
+  for (const el of document.querySelectorAll('button, a, .badge, .menuitem, .video-action-menu')) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    const cs = window.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const isEllipsized = (cs.overflowX === 'hidden' || cs.overflowX === 'clip') && cs.textOverflow === 'ellipsis';
+    const hasRiskStyle = cs.whiteSpace === 'nowrap' || cs.overflow === 'visible' || cs.overflowX === 'visible';
+    if (!isEllipsized && hasRiskStyle && el.scrollWidth > el.clientWidth + 2) {
+      layoutOverflowWarnings.push({
+        selector: formatSelector(el),
+        warning: "Horizontal text overflow detected (scrollWidth > clientWidth)",
+        text: (el.textContent || '').trim().slice(0, 80),
+        rect: { width: Math.round(r.width), height: Math.round(r.height), right: Math.round(r.right), bottom: Math.round(r.bottom) },
+        scrollWidth: Math.round(el.scrollWidth),
+        clientWidth: Math.round(el.clientWidth),
+        whiteSpace: cs.whiteSpace,
+        overflow: cs.overflow
+      });
+      textOverflowCount += 1;
+      if (textOverflowCount >= 15) break;
     }
   }
 
