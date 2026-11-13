@@ -50,10 +50,21 @@ def _iter_source_files(root: Path, include_tests: bool = False) -> list[Path]:
     return sorted(combined)
 
 
+def _resolve_scan_base(root: Path) -> Path:
+    """Resolve containing project/package root directory when ``root`` is a file."""
+    base_dir = root if root.is_dir() else root.parent
+    while (base_dir / "__init__.py").is_file() and base_dir.parent != base_dir:
+        base_dir = base_dir.parent
+    return base_dir
+
+
 def _detect_local_packages(root: Path) -> set[str]:
     """Identify top-level Python package names in the repository."""
     pkgs: set[str] = set()
-    for child in root.iterdir():
+    scan_dir = _resolve_scan_base(root)
+    if not scan_dir.is_dir():
+        return pkgs
+    for child in scan_dir.iterdir():
         if child.is_dir() and not child.name.startswith(".") and child.name not in IGNORED_DIRS:
             if (child / "__init__.py").is_file() or any(child.glob("*.py")):
                 pkgs.add(child.name)
@@ -213,14 +224,15 @@ def _build_report_dict(
 def scan_architecture(root: Path, include_tests: bool = False) -> dict[str, Any]:
     """Scan repository architecture, modularity budgets, routes, CLI, and coupling."""
     root = root.resolve()
-    local_pkgs = _detect_local_packages(root)
+    base_dir = _resolve_scan_base(root) if root.is_file() else root
+    local_pkgs = _detect_local_packages(base_dir)
     files = _iter_source_files(root, include_tests=include_tests)
     modules: list[ModuleStats] = []
     dir_summary: dict[str, dict[str, int]] = defaultdict(lambda: {"files": 0, "lines": 0})
     pkg_edges: dict[str, set[str]] = defaultdict(set)
 
     for fp in files:
-        rel = fp.relative_to(root).as_posix()
+        rel = fp.relative_to(base_dir).as_posix()
         text = fp.read_text(encoding="utf-8", errors="replace")
         line_count = len(text.splitlines())
         top_dir = rel.split("/", 1)[0] if "/" in rel else "."

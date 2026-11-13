@@ -241,6 +241,17 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(plan_engine._parse_tri("5"), {"overall": 5})
         self.assertEqual(plan_engine._parse_tri("cdp=5, plan=4, bad=xyz"), {"cdp": 5, "plan": 4})
         self.assertEqual(plan_engine._parse_tri("plan_engine:5, diagnose:4"), {"plan_engine": 5, "diagnose": 4})
+        self.assertEqual(
+            plan_engine._parse_tri("9,9,9,9"),
+            {
+                "token_efficiency": 5,
+                "hypothesis_accuracy": 5,
+                "tool_reliability": 5,
+                "architectural_defense": 5,
+                "overall": 5,
+            },
+        )
+        self.assertEqual(plan_engine._parse_tri("cdp=9, plan=0"), {"cdp": 5, "plan": 1})
 
     def test_cli_discover_and_init(self):
         code, out = self._run_cli(["discover"])
@@ -485,6 +496,11 @@ class TestPlanEngineCLI(unittest.TestCase):
                 "overall": 4.5,
             },
         )
+
+        code, next_out = self._run_cli(["next", "sample_plan"])
+        self.assertEqual(code, 0)
+        self.assertIn("Prior Milestone /learn Guards", next_out)
+        self.assertIn("Log completed milestone after advance", next_out)
 
     def test_commit_suggestion_strips_status_tags_and_master_preplan_gate(self):
         master_path = self.root / ".TODO" / "world_master_roadmap.md"

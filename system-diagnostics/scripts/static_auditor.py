@@ -52,6 +52,8 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
     py_files = _find_py_files(target)
     issues: list[dict[str, Any]] = []
     root = target if target.is_dir() else target.parent
+    while (root / "__init__.py").is_file() and root.parent != root:
+        root = root.parent
     root_str = str(root.resolve())
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
@@ -78,7 +80,7 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
 
         for name, obj in inspect.getmembers(mod):
             if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:
-                if inspect.isabstract(obj):
+                if inspect.isabstract(obj) or issubclass(obj, BaseException):
                     continue
                 try:
                     sig = inspect.signature(obj)
@@ -224,6 +226,10 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
         "typecheck_logs": [],
         "status": "PASS",
     }
+    line_cnt: int | None = None
+    if target.is_file() and target.exists():
+        line_cnt = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
+        results["line_count"] = line_cnt
     overall_code = 0
 
     # 1. Typecheck & Linters
@@ -256,6 +262,9 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
         return overall_code
 
     print(f"\n=== Static Quality & Defect Audit ({target.name}) ===")
+    if line_cnt is not None:
+        budget_tag = "HARD >=500L" if line_cnt >= 500 else ("WARN >=350L" if line_cnt >= 350 else "OK <350L")
+        print(f"  [lines] {target.name}: {line_cnt} lines ({budget_tag})")
     for log in results["typecheck_logs"]:
         print(f"  {log}")
 

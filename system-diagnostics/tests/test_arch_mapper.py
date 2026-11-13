@@ -123,6 +123,20 @@ class TestArchMapper(unittest.TestCase):
             md_full = arch_mapper.format_markdown(report, full=True)
             self.assertNotIn("more file(s) omitted", md_full)
 
+    def test_scan_architecture_single_file_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            pkg = root / "mypkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            core = pkg / "core.py"
+            core.write_text("def helper():\n    return 42\n", encoding="utf-8")
+
+            report = arch_mapper.scan_architecture(core)
+            self.assertEqual(report["total_files"], 1)
+            self.assertIn("mypkg", report["local_packages"])
+            self.assertEqual(report["directories"]["mypkg"]["files"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

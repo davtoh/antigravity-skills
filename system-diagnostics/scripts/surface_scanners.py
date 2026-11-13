@@ -292,6 +292,11 @@ def walk_source_files(root: Path, include_tests: bool = True) -> dict[str, list[
     """Collect HTML, JS/TS, Python, and CSS source files while skipping ignored dirs."""
     files: dict[str, list[Path]] = {"html": [], "js": [], "py": [], "css": []}
     ext_map = {"html": "html", "htm": "html", "jinja": "html", "jinja2": "html", "js": "js", "mjs": "js", "ts": "js", "jsx": "js", "tsx": "js", "py": "py", "css": "css", "scss": "css"}
+    if root.is_file():
+        bucket = ext_map.get(root.suffix.lstrip(".").lower())
+        if bucket:
+            files[bucket].append(root)
+        return files
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in IGNORED_WORKSPACE_DIRS and not d.startswith(".") and (include_tests or d not in ("tests", "test", "__tests__")))
         for fn in sorted(filenames):

@@ -39,6 +39,17 @@ class TestStaticAuditor(unittest.TestCase):
             issues = static_auditor.audit_callable_smoke(tmp)
             self.assertEqual(issues, [])
 
+    def test_callable_smoke_skips_exception_subclasses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "errors.py").write_text(
+                "class CameraError(Exception):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            issues = static_auditor.audit_callable_smoke(tmp / "errors.py")
+            self.assertEqual(issues, [])
+
     def test_callable_smoke_catches_init_type_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

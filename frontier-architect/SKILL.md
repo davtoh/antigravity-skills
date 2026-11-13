@@ -25,8 +25,8 @@ It also implements the **Flash-to-Opus Cognitive Harness**—a structured reason
    - Fast models shine when they externalize working memory rather than holding implicit state across giant monolithic edits. Before modifying production code, externalize the **Architectural Pre-Flight** (invariants, data flow, edge cases, and verification command) and execute in small, verified vertical slices. *(See [references/flash-opus-harness.md](./references/flash-opus-harness.md)).*
 4. **Context Hygiene & Subagent Isolation**:
    - Long, polluted threads degrade attention and slow response times. Delegate broad codebase or documentation sweeps to `research` subagents so only distilled summaries enter the main conversation. Checkpoint state into `AGENTS.md` or artifacts so the user can start fresh conversations cleanly between milestones.
-   - **Zero Subagent Duplication**: Once a `research` subagent is dispatched for a set of files or library internals, do NOT re-read those same files or run `inspect.getsource` loops in the parent conversation. Wait for the subagent's distilled summary (or inspect at most 1–2 targeted lines for editing).
-   - **Strict 1-Milestone-Per-Turn Ceiling**: Never implement multiple plan milestones in a single turn. Advancing a milestone terminates the turn.
+   - **Zero Subagent Duplication & Transcript Scraping**: Once a `research` subagent is dispatched for a set of files or library internals, do NOT re-read those same files, never read the subagent's `transcript.jsonl`, and never poll `manage_subagents list` or `schedule` timers—wait for the subagent's distilled summary via reactive wakeup.
+   - **Strict 1-Milestone-Per-Turn & Scope Lock**: Never implement multiple plan milestones in a single turn, and never expand a milestone beyond its planned target files without amending the child plan first. Advancing a milestone terminates the turn.
    - **Zero `manage_task` Polling**: Never poll `manage_task status` in a loop. When a background task is launched, stop calling tools and let reactive wakeup resume execution.
 5. **Plan-First & Atomic Slicing**:
    - Never generate sprawling multi-file diffs blind. Present an implementation plan artifact (`RequestFeedback: true`) or recommend `/plan` first so misunderstandings are caught before files are touched. Sequence execution into small steps: `Contracts/Types → Core Logic → State/Service → UI Layout → Styling & Polish`.
@@ -278,7 +278,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
      - `/frontier-architect lookup <query_or_sha>`: Surfaces past architectural decisions, milestones, commit SHAs, and retrospectives via `scripts/plan_engine.py lookup`.
 2. **Mandatory Pre-Flight Critic Gate (The Cognitive Checkpoint)**:
    - Before writing or editing production code in any vertical slice, explicitly audit 4 vectors:
-     - **Public Surface Invariants**: Explicitly document schemas, API contracts, exported types, and DOM selector IDs.
+     - **Public Surface Invariants & Runtime Types**: Explicitly document schemas, API contracts, exported types, and DOM selector IDs. In Python, never apply runtime union syntax (`| None`) to factory functions like `threading.RLock` (`TypeError`); use `Optional[Any]` or `from __future__ import annotations`.
      - **Defensive Edge Cases**: Address boundary states, timeouts, missing inputs, network drops, and resource cleanup.
      - **Modularity Line Budgets**: Enforce soft trigger at **350 lines**, hard split ceiling at **500 lines**, $\le 10–12$ methods/class, and $\le 40$ lines/function.
      - **Scenario Verifiers**: Commit to exact runnable command from the plan's Scenario Combinations Matrix.
