@@ -29,6 +29,7 @@ import changelog_manager
 import trace_recorder
 import runtime_runner
 import skill_packager
+import arch_mapper
 from defect_catalog import IGNORED_WORKSPACE_DIRS
 
 # Configure UTF-8 stdout/stderr across all platforms
@@ -458,9 +459,9 @@ def build_parser() -> argparse.ArgumentParser:
     # 11. Zero-code auto-trace runner
     runtime_runner.register_parser(sub)
 
-    # 12. Standalone skill bundler (/skill-creator compliant)
+    # 12. Standalone skill bundler & architecture mapper
     skill_packager.register_parser(sub)
-
+    arch_mapper.register_parser(sub)
     return parser
 
 def main() -> int:
@@ -486,6 +487,7 @@ def main() -> int:
         "traces": trace_recorder.cmd_traces,
         "run": runtime_runner.cmd_run,
         "package-skill": skill_packager.cmd_package_skill,
+        "arch-map": arch_mapper.cmd_arch_map,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:
