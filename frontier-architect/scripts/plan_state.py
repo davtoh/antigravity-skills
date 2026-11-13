@@ -153,6 +153,8 @@ def bootstrap_plan(root: Path, plan_path: Path) -> tuple[dict[str, Any], dict[st
         plan_state["parent_plan"] = existing["parent_plan"]
     if existing.get("child_plans"):
         plan_state["child_plans"] = existing["child_plans"]
+    if existing.get("last_advanced_milestone") is not None:
+        plan_state["last_advanced_milestone"] = existing["last_advanced_milestone"]
     save_json(pdir / "state.json", plan_state)
     if not (pdir / "retrospectives.json").exists():
         save_json(pdir / "retrospectives.json", [])
@@ -215,6 +217,7 @@ def record_milestone_advance(
         ps["active_milestone_index"] = incomplete[0]["index"]
     else:
         ps["active_milestone_index"] = ps["milestones"][-1]["index"] if ps["milestones"] else ps["total_milestones"]
+    ps["last_advanced_milestone"] = target_idx
     ps["status"] = "completed" if all_done else "in_progress"
     ps["updated_at"] = now_iso
 

@@ -154,6 +154,26 @@ class TestStaticAuditor(unittest.TestCase):
             code = static_auditor.cmd_audit(tmp, "python", args)
             self.assertEqual(code, 1)
 
+    def test_diagnose_audit_accepts_multiple_paths(self) -> None:
+        import diagnose
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            f1 = tmp / "a.py"
+            f2 = tmp / "b.py"
+            f1.write_text("x = 1\n", encoding="utf-8")
+            f2.write_text("y = 2\n", encoding="utf-8")
+            args = MagicMock(
+                path=[str(f1), str(f2)],
+                callable_smoke=False,
+                smells=True,
+                typecheck=False,
+                json=False,
+                strict=True,
+            )
+            code = diagnose.cmd_audit(args)
+            self.assertEqual(code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

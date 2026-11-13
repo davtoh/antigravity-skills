@@ -138,6 +138,23 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
         print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
     elif target_m.get("child_plan"):
         print(f"Declared Child Plan: {target_m['child_plan']}")
+    else:
+        is_master_roadmap = (
+            bool(ps.get("child_plans"))
+            or any(k in ps.get("slug", "").lower() for k in ("master", "roadmap"))
+            or any(k in ps.get("title", "").lower() for k in ("master", "roadmap"))
+        )
+        if is_master_roadmap:
+            print("\n" + "=" * 72)
+            print(f"[plan_engine] MASTER STEP PRE-PLAN GATE (Step {active_idx}):")
+            print("No child implementation plan is linked to this master step yet.")
+            print("MANDATORY: DO NOT implement this entire master step in one turn.")
+            print("Instead, execute Pre-Plan -> Child Plan Synthesis:")
+            print("  1. Read AGENTS.md and any referenced architecture blueprint (e.g. docs/architecture/).")
+            print("  2. Run 'diagnose.py arch-map --path .' and delegate file/import sweeps to a research subagent.")
+            print(f"  3. Draft a vertical-sliced child plan (.TODO/step_{active_idx}_<slug>.md) + RequestFeedback artifact.")
+            print(f"  4. Register via: plan_engine.py init .TODO/step_{active_idx}_<slug>.md --parent {ps['slug']} --milestone {active_idx}")
+            print("=" * 72)
     print("Tasks to implement in this vertical slice:")
     for t in target_m["tasks"]:
         chk = "[x]" if t["checked"] else "[ ]"
@@ -194,8 +211,9 @@ def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
         (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
         f"milestone {target_idx}",
     )
+    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", milestone_title)
     clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
-    clean_title = re.sub(r"[^\w\s-]", "", milestone_title).strip().lower()
+    clean_title = re.sub(r"[^\w\s-]", "", stripped_title).strip().lower()
     clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"
     return f'git commit -m "feat({clean_scope}): {clean_title}"'
 
@@ -244,15 +262,23 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
-def _parse_tri(tri_arg: str | None) -> dict[str, int]:
+def _parse_tri(tri_arg: str | None) -> dict[str, Any]:
     """Parse tool reliability index argument into dictionary."""
     if not tri_arg:
         return {}
+    items = [item.strip() for item in tri_arg.split(",") if item.strip()]
+    if items and all("=" not in item for item in items) and len(items) == 4:
+        dims = ["token_efficiency", "hypothesis_accuracy", "tool_reliability", "architectural_defense"]
+        try:
+            vals = [int(x) for x in items]
+            scores: dict[str, Any] = dict(zip(dims, vals))
+            avg = sum(vals) / 4.0
+            scores["overall"] = int(avg) if avg.is_integer() else round(avg, 2)
+            return scores
+        except ValueError:
+            pass
     scores = {}
-    for item in tri_arg.split(","):
-        item = item.strip()
-        if not item:
-            continue
+    for item in items:
         if "=" in item:
             k, v = item.split("=", 1)
             try:
@@ -261,7 +287,7 @@ def _parse_tri(tri_arg: str | None) -> dict[str, int]:
                 pass
         else:
             try:
-                scores["overall"] = int(item.strip())
+                scores["overall"] = int(item)
             except ValueError:
                 pass
     return scores
@@ -278,8 +304,13 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     retro_path = fdir / "plans" / ps["slug"] / "retrospectives.json"
     retros = load_json(retro_path, [])
 
+    milestone_idx = (
+        args.milestone
+        if args.milestone is not None
+        else ps.get("last_advanced_milestone", ps["active_milestone_index"])
+    )
     entry = {
-        "milestone_index": args.milestone if args.milestone is not None else ps["active_milestone_index"],
+        "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "token_efficiency_grade": (args.grade or "A").upper(),
         "tool_reliability_scores": _parse_tri(args.tri),

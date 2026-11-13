@@ -169,9 +169,14 @@ def cmd_tests(args: argparse.Namespace) -> int:
 
 def cmd_audit(args: argparse.Namespace) -> int:
     """Execute static quality, defect, and code smell audit."""
-    target_path = Path(args.path).resolve() if args.path else Path.cwd()
-    py_bin = find_virtualenv_python(target_path)
-    return static_auditor.cmd_audit(target_path, py_bin, args)
+    raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
+    targets = [Path(p).resolve() for p in raw_paths] if raw_paths else [Path.cwd()]
+    py_bin = find_virtualenv_python(targets[0])
+    overall_code = 0
+    for target_path in targets:
+        rc = static_auditor.cmd_audit(target_path, py_bin, args)
+        overall_code = max(overall_code, rc)
+    return overall_code
 
 def cmd_scan(args: argparse.Namespace) -> int:
     """Execute polyglot defect scan and update .diagnostics/ SSOT catalog."""

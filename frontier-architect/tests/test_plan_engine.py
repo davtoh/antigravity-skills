@@ -444,6 +444,48 @@ class TestPlanEngineCLI(unittest.TestCase):
         parent_state = load_json(get_frontier_dir(self.root) / "plans" / "master_roadmap" / "state.json")
         self.assertEqual(parent_state["child_plans"]["1"]["status"], "completed")
 
+    def test_retrospective_after_advance_logs_completed_milestone_and_4d_tri(self):
+        self._run_cli(["init", "sample_plan"])
+        code, _ = self._run_cli(["advance", "sample_plan", "--commit", "abc1234"])
+        self.assertEqual(code, 0)
+
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--tri", "5,4,5,4",
+            "--hypotheses", "1", "--learn", "Log completed milestone after advance",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Logged retrospective for Milestone 1:", out)
+
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-1]["milestone_index"], 1)
+        self.assertEqual(
+            retros[-1]["tool_reliability_scores"],
+            {
+                "token_efficiency": 5,
+                "hypothesis_accuracy": 4,
+                "tool_reliability": 5,
+                "architectural_defense": 4,
+                "overall": 4.5,
+            },
+        )
+
+    def test_commit_suggestion_strips_status_tags_and_master_preplan_gate(self):
+        master_path = self.root / ".TODO" / "world_master_roadmap.md"
+        master_path.write_text(
+            "# World Master Roadmap\n\n"
+            "## Step 1: Core *(Active Execution Target)*\n"
+            "- [ ] Build core\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "world_master_roadmap"])
+        code, next_out = self._run_cli(["next", "world_master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("MASTER STEP PRE-PLAN GATE (Step 1)", next_out)
+
+        code, adv_out = self._run_cli(["advance", "world_master_roadmap", "--commit", "deadbeef"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("active execution target", adv_out.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
