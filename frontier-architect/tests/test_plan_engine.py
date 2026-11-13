@@ -519,6 +519,17 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("active execution target", adv_out.lower())
 
+    def test_retrospective_retries_caps_inflated_grade(self):
+        self._run_cli(["init", "sample_plan"])
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--retries", "5", "--tri", "5",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Token Grade: C", out)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-1]["token_efficiency_grade"], "C")
+        self.assertEqual(retros[-1]["retries"], 5)
+
 
 if __name__ == "__main__":
     unittest.main()

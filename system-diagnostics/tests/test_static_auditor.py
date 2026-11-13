@@ -185,6 +185,24 @@ class TestStaticAuditor(unittest.TestCase):
             code = diagnose.cmd_audit(args)
             self.assertEqual(code, 0)
 
+    def test_audit_modularity_budgets_flags_long_function_and_custom_max_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            f = tmp / "sample.py"
+            body = "\n".join("    x += 1" for _ in range(42))
+            f.write_text(f"def too_long():\n    x = 0\n{body}\n    return x\n", encoding="utf-8")
+            args = MagicMock(
+                callable_smoke=False,
+                smells=False,
+                typecheck=False,
+                json=False,
+                strict=False,
+                max_lines=40,
+                max_fn_lines=40,
+            )
+            code = static_auditor.cmd_audit(f, "python", args)
+            self.assertEqual(code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -93,15 +93,27 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     tri_scores = _parse_tri(args.tri)
     if args.tri and not tri_scores:
         print(f"[plan_engine] Warning: Could not parse --tri '{args.tri}'. Use 'k=5,k2=4' or '5,5,5,5'.")
-    entry = {
+    grade = (args.grade or "A").upper()
+    raw_retries = getattr(args, "retries", None)
+    retries = raw_retries if isinstance(raw_retries, int) and not isinstance(raw_retries, bool) else None
+    if retries is not None:
+        if retries > 3 and grade in ("A", "B"):
+            print(f"[plan_engine] Rubric Guard: {retries} retries > 3 -> capping Token Grade '{grade}' to 'C'.")
+            grade = "C"
+        elif retries >= 2 and grade == "A":
+            print(f"[plan_engine] Rubric Guard: {retries} retries >= 2 -> capping Token Grade 'A' to 'B'.")
+            grade = "B"
+    entry: dict[str, Any] = {
         "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "token_efficiency_grade": (args.grade or "A").upper(),
+        "token_efficiency_grade": grade,
         "tool_reliability_scores": tri_scores,
         "hypotheses_tested": args.hypotheses or 1,
         "root_causes_escalated": [args.escalate] if args.escalate else [],
         "learn_candidates": [args.learn] if args.learn else [],
     }
+    if retries is not None:
+        entry["retries"] = retries
     retros.append(entry)
     save_json(retro_path, retros)
 

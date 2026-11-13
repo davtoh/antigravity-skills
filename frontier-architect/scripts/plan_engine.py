@@ -308,6 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_retro.add_argument("--grade", default="A", help="Token Efficiency Grade (A-F)")
     p_retro.add_argument("--tri", help="Tool Reliability Index score (1-5 or tool=score)")
     p_retro.add_argument("--hypotheses", type=int, default=1, help="Hypotheses tested")
+    p_retro.add_argument("--retries", type=int, default=None, help="Failed verification/test retries during milestone")
     p_retro.add_argument("--escalate", help="Root cause escalated to /app-debugger")
     p_retro.add_argument("--learn", help="Candidate proposal for /learn")
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")

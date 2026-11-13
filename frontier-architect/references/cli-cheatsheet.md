@@ -24,8 +24,11 @@ python skills/frontier-architect/scripts/plan_engine.py advance <plan_or_slug> -
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json and retrospectives.json)
 python skills/frontier-architect/scripts/plan_engine.py retrospective <plan_or_slug> \
-  --milestone <N> --grade A --tri "plan_engine:5,diagnose:5" --hypotheses 1 \
+  --milestone <N> --grade A --retries 0 --tri "plan_engine:5,diagnose:5" --hypotheses 1 \
   --learn "<reusable insight>" --escalate "none" --root .
+
+# Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)
+python skills/system-diagnostics/scripts/diagnose.py audit --path <files...> --max-lines 350 --max-fn-lines 40
 
 # Lookup historical plans, commit SHAs, and retrospective lessons
 python skills/frontier-architect/scripts/plan_engine.py lookup "<keyword_or_sha>" --root .

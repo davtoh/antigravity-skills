@@ -217,6 +217,42 @@ def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
     return exit_code, logs
 
 
+def _opt_int(args: Any, name: str) -> int | None:
+    """Return integer attribute from args, ignoring unset or MagicMock values."""
+    val = getattr(args, name, None)
+    return val if isinstance(val, int) and not isinstance(val, bool) else None
+
+
+def audit_modularity_budgets(
+    target: Path,
+    *,
+    max_lines: int = 350,
+    max_fn_lines: int = 40,
+    max_methods: int = 12,
+) -> list[dict[str, Any]]:
+    """Flag files, classes, and functions exceeding modularity line or method budgets."""
+    issues: list[dict[str, Any]] = []
+    for p in _find_py_files(target):
+        try:
+            code = p.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(code, filename=str(p))
+        except Exception:
+            continue
+        lines = len(code.splitlines())
+        if lines >= max_lines:
+            issues.append({"type": "file_budget_overrun", "file": str(p), "line": 1, "message": f"File has {lines} lines (budget < {max_lines})."})
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and getattr(node, "end_lineno", None):
+                span = node.end_lineno - node.lineno + 1
+                if span > max_fn_lines:
+                    issues.append({"type": "function_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Function '{node.name}' is {span} lines (budget <= {max_fn_lines})."})
+            elif isinstance(node, ast.ClassDef):
+                methods = sum(1 for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)))
+                if methods > max_methods:
+                    issues.append({"type": "class_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Class '{node.name}' has {methods} methods (budget <= {max_methods})."})
+    return issues
+
+
 def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
     """Entrypoint for `diagnose.py audit` subcommand."""
     do_all = not (getattr(args, "callable_smoke", False) or getattr(args, "smells", False) or getattr(args, "typecheck", False))
@@ -257,6 +293,17 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
             results["status"] = "DEFECTS_FOUND"
             overall_code = max(overall_code, 1)
 
+    # 4. Modularity & Function Length Budgets
+    max_l = _opt_int(args, "max_lines")
+    max_fn = _opt_int(args, "max_fn_lines")
+    if do_all or max_l is not None or max_fn is not None:
+        budget_issues = audit_modularity_budgets(target, max_lines=max_l or 350, max_fn_lines=max_fn or 40)
+        results["issues"].extend(budget_issues)
+        if budget_issues:
+            results["status"] = "DEFECTS_FOUND"
+            if getattr(args, "strict", False) or max_l is not None or max_fn is not None:
+                overall_code = max(overall_code, 1)
+
     if getattr(args, "json", False):
         print(json.dumps(results, indent=2))
         return overall_code
@@ -291,5 +338,7 @@ def register_parser(subparsers: Any) -> Any:
     p_aud.add_argument("--callable-smoke", action="store_true", help="Run callable signature and constructor smoke checks")
     p_aud.add_argument("--json", action="store_true", help="Output JSON report")
     p_aud.add_argument("--strict", action="store_true", help="Exit code 1 if any smells or defects found")
+    p_aud.add_argument("--max-lines", type=int, default=None, help="Custom file line-count ceiling (fails if >= N)")
+    p_aud.add_argument("--max-fn-lines", type=int, default=None, help="Custom function line-count ceiling (default: 40)")
     return p_aud
 
