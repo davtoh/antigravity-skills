@@ -117,6 +117,7 @@ When intent is fuzzy, prevent wasted effort by asking 2 to 4 sharp, structured q
 - **Core Friction**: What exact problem or bottleneck are we solving, and for whom?
 - **Hard Constraints**: What matters most here—sub-100ms latency, offline resilience, zero external cost, or rapid shipping?
 - **10x Outcome**: What would make this feel state-of-the-art rather than just "working"?
+- **Zero-Dangling-Question Invariant**: Never end a turn with a `Question X` heading or interview transition without calling `ask_question` in the **same turn**. If the user asks a clarifying question mid-interview, answer it concisely and immediately invoke `ask_question` for the next decision in the same turn (skip `ask_question` only in non-interactive `/goal` or subagent mode).
 
 ---
 
@@ -231,10 +232,11 @@ Before modifying production files on any multi-step task:
      - **Complete Multi-Phase Roadmap Invariant**: NEVER formulate an implementation plan containing only Phase 1 when the user's objective requires multi-stage changes (e.g., contracts + logic + state + UI + persistence). The plan artifact MUST outline the complete roadmap (Phase 1 through Phase N) with explicit deliverables and definitions of done for each phase.
      - **Explicit Definition of Done (DoD) per Milestone**: Every milestone MUST conclude with a clear verification condition (unit tests pass, persistent storage verified on disk/DB, zero console errors, zero orphan background processes) and an interactive User Checkpoint prompt before stopping.
      - **Scoping Immediate Execution**: Explicitly mark Phase 1 as *Active Execution Target* and Phases 2..N as *Deferred to Next Turn / Milestone*. Clicking 'Proceed' authorizes only the active phase. At the phase boundary, checkpoint progress, record milestone via `diagnose.py changelog add`, and pause to keep context crisp.
-   - **Workspace Plan Engine Registration (Dual-Write Contract)**:
+   - **Workspace Plan Engine Registration (Dual-Write & Master Plan Hierarchy Contract)**:
      - Implementation plans MUST be dual-written so both the interactive UI and subsequent conversations work seamlessly without manual exports:
        1. Write the plan to `<appDataDir>/brain/<conversation-id>/<slug>.md` **with** `ArtifactMetadata` (`RequestFeedback: true`) so the interactive "Proceed" gate renders in chat.
        2. Simultaneously write the exact same markdown content to `<workspace>/.TODO/<slug>.md` (or `<workspace>/.plans/<slug>.md`) **without** `ArtifactMetadata`, and register it via `python "<skill_dir>/scripts/plan_engine.py" init .TODO/<slug>.md`.
+     - **Master Plans of Plans (Hierarchical Roadmaps)**: For multi-step architectural roadmaps (`## Step 0..N` or `## Milestone 1..N`), register the master roadmap first (`plan_engine.py init .TODO/<master>.md`), and bind per-step implementation plans via `plan_engine.py init .TODO/<step_plan>.md --parent <master_slug> --milestone <N>`. Distill subagent file/line audit discoveries into `docs/architecture/` so fresh threads inherit exact context without re-scanning.
      - Never leave orphaned plans strictly in temporary brain directories where subsequent sessions cannot locate or resume them.
      - **Vertical Slice Parity**: Pair each milestone's implementation tasks with its corresponding unit/integration tests directly inside that milestone rather than deferring all tests into an isolated empty-shell final milestone.
     - **Changelog Task Formulation Invariant**: In implementation plans, NEVER declare milestone tasks targeting raw log files (e.g., `- [ ] **MIGRATION_LOG.md**: update log`). Always declare changelog recording via the CLI:
@@ -288,7 +290,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - **Mandatory Turn-End Daemon & Task Teardown**: Any background daemon, dev server, or support process launched via `run_command` (`IsDaemon: true`) or `manage_task` solely for verification MUST be terminated (`manage_task kill`) before concluding the turn.
    - **Persistent State Invariant vs. In-Memory Shims**: When preserving user state, progress, or job reports across tabs, page reloads, or file navigation, state MUST be backed by persistent storage (database, local storage, or server-side cache), not volatile in-memory JS structures (`Map`, `Object`).
 4. **Closed-Loop Verification Ladder & Second-Check Gate**:
-   - **Tier 1 (Static & Type Contract Parity)**: Run native verification commands (`pytest`, `npm test`, `tsc --noEmit`, `mypy`, `cargo test`) ensuring zero syntax errors and type safety.
+   - **Tier 1 (Static & Type Contract Parity)**: Run targeted unit tests for the modified module (`-p "test_<module>.py"`) **before** running full-suite discovery to avoid burning context on unrelated noisy output, then run native verification commands (`pytest`, `npm test`, `tsc --noEmit`, `mypy`, `cargo test`) ensuring zero syntax errors and type safety.
    - **Tier 2 (Container Deployment Check)**: If the app runs in Docker, verify with `scripts/docker_audit.py --container <name> --sync-check ...` that host and container MD5s match (`IN_SYNC`) and zero orphan processes spike CPU.
    - **Tier 3 (Live Browser & Bounding-Box Check)**:
      - **Pre-Flight Pause Protocol**: Check if `$APP_URL` is responding and if Chrome remote debugging requires user approval ("Allow" banner). If not ready, pause and prompt the user via `ask_question` rather than failing blind.

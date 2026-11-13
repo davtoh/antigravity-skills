@@ -403,6 +403,47 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertNotIn("\\", rel_posix)
         self.assertTrue(rel_posix.startswith(".TODO/"))
 
+    def test_master_plan_step_zero_and_child_plan_linking(self):
+        master_path = self.root / ".TODO" / "master_roadmap.md"
+        master_path.write_text(
+            "# Master Roadmap\n\n"
+            "## Step 0: Tooling *(Completed)*\n"
+            "- **Goal**: Build mapper\n\n"
+            "## Step 1: Core Engine\n"
+            "- [ ] Unify pipeline\n"
+            "- **Child Plan**: `.TODO/sample_plan.md`\n",
+            encoding="utf-8",
+        )
+        parsed = parse_plan_markdown(master_path.read_text(encoding="utf-8"))
+        self.assertEqual([m["index"] for m in parsed["milestones"]], [0, 1])
+        self.assertTrue(parsed["milestones"][0]["is_complete"])
+        self.assertEqual(parsed["milestones"][1]["child_plan"], ".TODO/sample_plan.md")
+
+        code, out = self._run_cli(["init", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Active Milestone: 1/2", out)
+
+        code, out = self._run_cli(["init", "sample_plan", "--parent", "master_roadmap", "--milestone", "1"])
+        self.assertEqual(code, 0)
+        self.assertIn("Parent Master Plan: master_roadmap (Step/Milestone 1)", out)
+
+        code, status_out = self._run_cli(["status", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Child Plan: sample_plan [in_progress", status_out)
+
+        code, next_out = self._run_cli(["next", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Linked Child Plan: sample_plan", next_out)
+
+        # Complete all milestones in child plan and verify parent sync + hint
+        self._run_cli(["advance", "sample_plan", "--milestone", "1"])
+        code, adv_out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
+        self.assertEqual(code, 0)
+        self.assertIn("Master Sync: Run 'plan_engine.py advance master_roadmap --milestone 1'", adv_out)
+
+        parent_state = load_json(get_frontier_dir(self.root) / "plans" / "master_roadmap" / "state.json")
+        self.assertEqual(parent_state["child_plans"]["1"]["status"], "completed")
+
 
 if __name__ == "__main__":
     unittest.main()

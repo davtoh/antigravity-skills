@@ -30,7 +30,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
-    load_json, record_milestone_advance, resolve_plan_path, save_json,
+    link_child_plan, load_json, record_milestone_advance, resolve_plan_path, save_json,
 )
 
 
@@ -54,9 +54,17 @@ def cmd_init(root: Path, args: argparse.Namespace) -> int:
         print(f"[plan_engine] Error: Plan '{args.plan or ''}' could not be resolved.")
         return 1
     _ws, ps = bootstrap_plan(root, target)
+    parent_arg = getattr(args, "parent", None)
+    if parent_arg:
+        parent_ps = link_child_plan(root, ps, parent_arg, getattr(args, "milestone", None))
+        if not parent_ps:
+            print(f"[plan_engine] Warning: Parent plan '{parent_arg}' could not be linked.")
     print(f"[plan_engine] Initialized plan: {ps['title']}")
     print(f"  Slug: {ps['slug']} | Active Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
     print(f"  Status: {ps['status']} | Path: {ps['plan_path']}")
+    if ps.get("parent_plan"):
+        p = ps["parent_plan"]
+        print(f"  Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']})")
     return 0
 
 
@@ -78,15 +86,24 @@ def cmd_status(root: Path, args: argparse.Namespace) -> int:
     print("=== Frontier Architect Plan Status ===")
     print(f"Plan: {ps['title']} ({ps['plan_path']})")
     print(f"Slug: {ps['slug']} | Status: {ps['status'].upper()}")
+    if ps.get("parent_plan"):
+        p = ps["parent_plan"]
+        print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']})")
     print(f"Progress: [{bar}] {pct}% (Milestone {ps['active_milestone_index']} of {ps['total_milestones']})")
     vb = ws.get("verification_baseline", {})
     if vb.get("command"):
         print(f"Baseline: {vb.get('command')} -> Exit: {vb.get('last_exit_code')} ({vb.get('passed_tests')} passed)")
     print("\nMilestones:")
+    children = ps.get("child_plans", {})
     for m in ps["milestones"]:
         mark = "✓" if m["status"] == "completed" else ("▶" if m["status"] == "active" else " ")
         sha_str = f" [{m['commit_sha']}]" if m.get("commit_sha") else ""
         print(f"  [{mark}] Milestone {m['index']}: {m['title']} ({m['completed_tasks']}/{m['total_tasks']} tasks){sha_str}")
+        c_info = children.get(str(m["index"]))
+        if c_info:
+            print(f"      ↳ Child Plan: {c_info['slug']} [{c_info['status']} | M{c_info['active_milestone_index']}/{c_info['total_milestones']}] ({c_info['plan_path']})")
+        elif m.get("child_plan"):
+            print(f"      ↳ Child Plan (declared): {m['child_plan']}")
     return 0
 
 
@@ -113,6 +130,14 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
         return 0
 
     print(f"=== Active Milestone: {target_m['index']} - {target_m['title']} ===")
+    if ps.get("parent_plan"):
+        p = ps["parent_plan"]
+        print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']}) -> {p['plan_path']}")
+    c_info = ps.get("child_plans", {}).get(str(active_idx))
+    if c_info:
+        print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
+    elif target_m.get("child_plan"):
+        print(f"Declared Child Plan: {target_m['child_plan']}")
     print("Tasks to implement in this vertical slice:")
     for t in target_m["tasks"]:
         chk = "[x]" if t["checked"] else "[ ]"
@@ -182,7 +207,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         print("[plan_engine] Error: No plan resolved.")
         return 1
     _ws, ps = bootstrap_plan(root, plan_p)
-    target_idx = args.milestone or ps["active_milestone_index"]
+    target_idx = args.milestone if args.milestone is not None else ps["active_milestone_index"]
 
     patched = patch_milestone_checkboxes(plan_p, target_idx)
     sha = args.commit or get_git_sha(root)
@@ -202,6 +227,9 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     print(f"  Suggested Commit: {commit_hint}")
     if ps["status"] == "completed":
         print("[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off & Pre-Merge Gate.")
+        if ps.get("parent_plan"):
+            p = ps["parent_plan"]
+            print(f"[plan_engine] Master Sync: Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' to complete parent step.")
     else:
         print(f"  Status: in_progress | Next Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
         print("=" * 72)
@@ -251,7 +279,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     retros = load_json(retro_path, [])
 
     entry = {
-        "milestone_index": args.milestone or ps["active_milestone_index"],
+        "milestone_index": args.milestone if args.milestone is not None else ps["active_milestone_index"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "token_efficiency_grade": (args.grade or "A").upper(),
         "tool_reliability_scores": _parse_tri(args.tri),
@@ -410,6 +438,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("discover", parents=[root_parent], help="Discover architectural plans in workspace")
     p_init = sub.add_parser("init", parents=[root_parent], help="Initialize or bind active plan")
     p_init.add_argument("plan", nargs="?", help="Path or slug of plan")
+    p_init.add_argument("--parent", default=None, help="Optional parent master plan path or slug")
+    p_init.add_argument("--milestone", type=int, default=None, help="Parent milestone/step index for child plan")
     plan_parent = argparse.ArgumentParser(add_help=False, parents=[root_parent])
     plan_parent.add_argument("plan", nargs="?", help="Optional plan target")
     p_status = sub.add_parser("status", parents=[plan_parent], help="Show active plan status")

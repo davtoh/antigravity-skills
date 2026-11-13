@@ -9,10 +9,14 @@ from pathlib import Path
 from typing import Any
 import re
 
-M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
+M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase|Step)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
 TASK_REGEX = re.compile(r"^(\s*[-*]\s*\[)([ xX])(\]\s*(.*))$")
 TASK_UNCHECKED_REGEX = re.compile(r"^(\s*[-*]\s*\[)[ ](\]\s*.*)$")
 BULLET_TASK_REGEX = re.compile(r"^(\s*[-*]\s+)(?!\[[ xX]\])(.*)$")
+CHILD_PLAN_REGEX = re.compile(
+    r"^\s*[-*]?\s*\*{0,2}Child\s+Plan\*{0,2}:\s*(?:\[[^\]]*\]\(([^)\s]+\.md)\)|`?([^`\s]+\.md)`?)",
+    re.IGNORECASE,
+)
 VERIFIER_PREFIXES = (
     "python", "pytest", "npm", "cargo", "go test", "unittest",
     "node", "deno", "bun", "mvn", "gradle", "flutter", "dotnet", ".venv",
@@ -82,17 +86,23 @@ def parse_plan_markdown(content: str) -> dict[str, Any]:
                 "raw_heading": line,
                 "line_index": idx,
                 "tasks": [],
+                "child_plan": None,
                 "is_complete": False,
             }
             continue
 
         if current_m:
+            cp_match = CHILD_PLAN_REGEX.match(line)
+            if cp_match:
+                current_m["child_plan"] = (cp_match.group(1) or cp_match.group(2)).strip()
+                continue
             t_match = TASK_REGEX.match(line)
             b_match = BULLET_TASK_REGEX.match(line) if not t_match else None
             if t_match:
                 current_m["tasks"].append({
                     "text": t_match.group(4).strip(),
                     "checked": t_match.group(2).lower() == "x",
+                    "has_checkbox": True,
                     "line_index": idx,
                 })
             elif b_match and not line.strip().startswith(("#", "```", "---", "***")):
@@ -100,6 +110,7 @@ def parse_plan_markdown(content: str) -> dict[str, Any]:
                 current_m["tasks"].append({
                     "text": b_match.group(2).strip(),
                     "checked": False,
+                    "has_checkbox": False,
                     "line_index": idx,
                 })
             elif _is_section_boundary(line):
@@ -122,6 +133,13 @@ def parse_plan_markdown(content: str) -> dict[str, Any]:
 
 def _finalize_milestone(m: dict[str, Any]) -> None:
     """Calculate milestone completion state."""
+    has_explicit_unchecked = any(t.get("has_checkbox") and not t["checked"] for t in m["tasks"])
+    marked_completed = "(completed)" in m.get("title", "").lower()
+    if marked_completed and not has_explicit_unchecked:
+        for t in m["tasks"]:
+            t["checked"] = True
+        m["is_complete"] = True
+        return
     m["is_complete"] = len(m["tasks"]) > 0 and all(t["checked"] for t in m["tasks"])
 
 
