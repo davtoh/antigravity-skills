@@ -6,11 +6,20 @@ JavaScript window.* exports, event listeners, Python routes, mutable globals,
 and stylesheet custom properties from raw text without external dependencies.
 """
 
+import argparse
 import ast
+import json
+import os
 import re
 import textwrap
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
+
+try:
+    from defect_catalog import IGNORED_WORKSPACE_DIRS
+except ImportError:
+    from .defect_catalog import IGNORED_WORKSPACE_DIRS
 
 @dataclass
 class HtmlSurface:
@@ -277,3 +286,58 @@ def scan_css_surface(text: str) -> CssSurface:
         section_banners=section_banners,
         has_crlf=has_crlf,
     )
+
+
+def walk_source_files(root: Path, include_tests: bool = True) -> dict[str, list[Path]]:
+    """Collect HTML, JS/TS, Python, and CSS source files while skipping ignored dirs."""
+    files: dict[str, list[Path]] = {"html": [], "js": [], "py": [], "css": []}
+    ext_map = {"html": "html", "htm": "html", "jinja": "html", "jinja2": "html", "js": "js", "mjs": "js", "ts": "js", "jsx": "js", "tsx": "js", "py": "py", "css": "css", "scss": "css"}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in IGNORED_WORKSPACE_DIRS and not d.startswith(".") and (include_tests or d not in ("tests", "test", "__tests__")))
+        for fn in sorted(filenames):
+            bucket = ext_map.get(fn.rsplit(".", 1)[-1].lower() if "." in fn else "")
+            if bucket:
+                files[bucket].append(Path(dirpath) / fn)
+    return files
+
+
+def cmd_surface(args: argparse.Namespace) -> int:
+    """Scan directory surface for HTML element IDs, JS globals, and Python routes."""
+    target_path = Path(args.path).resolve() if args.path else Path.cwd()
+    files = walk_source_files(target_path, include_tests=True)
+    all_ids, all_selects, all_globals, all_routes, important_count = set(), set(), set(), [], 0
+
+    def _read(p: Path) -> str:
+        return p.read_text(encoding="utf-8", errors="replace")
+
+    for hp in files["html"]:
+        surf = scan_html_surface(_read(hp))
+        all_ids.update(surf.ids); all_selects.update(surf.selects)
+    for jp in files["js"]:
+        all_globals.update(scan_js_surface(_read(jp)).global_exports)
+    for pp in files["py"]:
+        all_routes.extend(scan_python_surface(_read(pp)).routes)
+    for cp in files["css"]:
+        important_count += scan_css_surface(_read(cp)).important_count
+
+    data = {
+        "workspace": str(target_path), "total_html_files": len(files["html"]),
+        "total_ids": len(all_ids), "ids": sorted(all_ids),
+        "interactive_selects": sorted(all_selects), "global_window_exports": sorted(all_globals),
+        "backend_routes": all_routes, "css_important_count": important_count,
+    }
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print(f"=== Surface Inventory ({target_path}) ===")
+    print(f"HTML Files: {len(files['html'])} | Unique IDs: {len(all_ids)} | Selects: {len(all_selects)}")
+    print(f"JS Files:   {len(files['js'])} | window.* Globals: {len(all_globals)}")
+    print(f"Python Files: {len(files['py'])} | API Routes: {len(all_routes)}")
+    print(f"CSS Files:  {len(files['css'])} | !important Count: {important_count}")
+    if args.show_ids and all_ids:
+        print("\n--- Element IDs ---\n" + "\n".join(f"  #{i}" for i in sorted(all_ids)))
+    if args.show_globals and all_globals:
+        print("\n--- window.* Exports ---\n" + "\n".join(f"  {g}" for g in sorted(all_globals)))
+    if args.show_routes and all_routes:
+        print("\n--- Backend Routes ---\n" + "\n".join(f"  {r.get('method', 'GET')} {r.get('path', '')}" for r in all_routes))
+    return 0

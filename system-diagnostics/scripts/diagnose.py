@@ -30,7 +30,6 @@ import trace_recorder
 import runtime_runner
 import skill_packager
 import arch_mapper
-from defect_catalog import IGNORED_WORKSPACE_DIRS
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -148,87 +147,13 @@ def cmd_container(args: argparse.Namespace) -> int:
     return res.returncode
 
 def _walk_source_files(root: Path) -> dict[str, list[Path]]:
-    """Collect source files for surface scanning, filtering ignore directories."""
-    files: dict[str, list[Path]] = {"html": [], "js": [], "py": [], "css": []}
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in IGNORED_WORKSPACE_DIRS and not d.startswith(".")]
-        for fn in filenames:
-            ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
-            p = Path(dirpath) / fn
-            if ext in ("html", "htm", "jinja", "jinja2"):
-                files["html"].append(p)
-            elif ext in ("js", "mjs", "ts", "jsx", "tsx"):
-                files["js"].append(p)
-            elif ext == "py":
-                files["py"].append(p)
-            elif ext in ("css", "scss"):
-                files["css"].append(p)
-    return files
+    """Delegate source collection to surface_scanners.walk_source_files."""
+    return surface_scanners.walk_source_files(root, include_tests=True)
+
 
 def cmd_surface(args: argparse.Namespace) -> int:
-    """Scan directory surface for HTML element IDs, JS globals, and Python routes."""
-    target_path = Path(args.path).resolve() if args.path else Path.cwd()
-    files = _walk_source_files(target_path)
-    all_ids, all_selects, all_globals, all_routes, important_count = set(), set(), set(), [], 0
-
-    for hp in files["html"]:
-        try:
-            surf = surface_scanners.scan_html_surface(hp.read_text(encoding="utf-8", errors="replace"))
-            all_ids.update(surf.ids); all_selects.update(surf.selects)
-        except Exception:
-            pass
-    for jp in files["js"]:
-        try:
-            surf = surface_scanners.scan_js_surface(jp.read_text(encoding="utf-8", errors="replace"))
-            all_globals.update(surf.global_exports)
-        except Exception:
-            pass
-    for pp in files["py"]:
-        try:
-            surf = surface_scanners.scan_python_surface(pp.read_text(encoding="utf-8", errors="replace"))
-            all_routes.extend(surf.routes)
-        except Exception:
-            pass
-    for cp in files["css"]:
-        try:
-            surf = surface_scanners.scan_css_surface(cp.read_text(encoding="utf-8", errors="replace"))
-            important_count += surf.important_count
-        except Exception:
-            pass
-
-    data = {
-        "workspace": str(target_path),
-        "total_html_files": len(files["html"]),
-        "total_ids": len(all_ids),
-        "ids": sorted(all_ids),
-        "interactive_selects": sorted(all_selects),
-        "global_window_exports": sorted(all_globals),
-        "backend_routes": all_routes,
-        "css_important_count": important_count,
-    }
-    if args.json:
-        print(json.dumps(data, indent=2))
-        return 0
-
-    print(f"=== Surface Inventory ({target_path}) ===")
-    print(f"HTML Files: {len(files['html'])} | Unique IDs: {len(all_ids)} | Selects: {len(all_selects)}")
-    print(f"JS Files:   {len(files['js'])} | window.* Globals: {len(all_globals)}")
-    print(f"Python Files: {len(files['py'])} | API Routes: {len(all_routes)}")
-    print(f"CSS Files:  {len(files['css'])} | !important Count: {important_count}")
-
-    if args.show_ids and all_ids:
-        print("\n--- Element IDs ---")
-        for i in sorted(all_ids):
-            print(f"  #{i}")
-    if args.show_globals and all_globals:
-        print("\n--- window.* Exports ---")
-        for g in sorted(all_globals):
-            print(f"  {g}")
-    if args.show_routes and all_routes:
-        print("\n--- Backend Routes ---")
-        for r in all_routes:
-            print(f"  {r.get('method', 'GET')} {r.get('path', '')}")
-    return 0
+    """Delegate directory surface scanning to surface_scanners.cmd_surface."""
+    return surface_scanners.cmd_surface(args)
 
 def cmd_tests(args: argparse.Namespace) -> int:
     """Execute automated test runner using virtualenv Python if available."""

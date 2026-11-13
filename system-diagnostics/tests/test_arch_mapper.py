@@ -90,6 +90,39 @@ class TestArchMapper(unittest.TestCase):
             parsed = json.loads(out_file.read_text(encoding="utf-8"))
             self.assertEqual(parsed["total_files"], 1)
 
+    def test_unused_imports_respects_all_and_ignores_docstrings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            pkg = root / "mypkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "defs.py").write_text("class A: pass\nclass B: pass\nclass C: pass\n", encoding="utf-8")
+            (pkg / "consumer.py").write_text(
+                '"""Mentions A in docstring and "A" in text."""\n'
+                "from mypkg.defs import A, B, C\n"
+                "__all__ = ['B']\n"
+                "def use(x: 'C') -> str:\n"
+                "    return 'A'\n",
+                encoding="utf-8",
+            )
+            report = arch_mapper.scan_architecture(root)
+            unused = {u["file"]: u["symbols"] for u in report["unused_internal_or_module_imports"]}
+            self.assertEqual(unused["mypkg/consumer.py"], ["mypkg.defs.A"])
+
+    def test_flags_long_functions_and_explicit_truncation_notice(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            body = "\n".join("    x += 1" for _ in range(42))
+            (root / "long_fn.py").write_text(f"def too_long():\n    x = 0\n{body}\n    return x\n", encoding="utf-8")
+            for i in range(32):
+                (root / f"m{i:02d}.py").write_text("import sys\n", encoding="utf-8")
+            report = arch_mapper.scan_architecture(root)
+            self.assertEqual(report["modularity_violations"]["functions_over_40"][0]["name"], "too_long")
+            md = arch_mapper.format_markdown(report, full=False)
+            self.assertIn("more file(s) omitted", md)
+            md_full = arch_mapper.format_markdown(report, full=True)
+            self.assertNotIn("more file(s) omitted", md_full)
+
 
 if __name__ == "__main__":
     unittest.main()
