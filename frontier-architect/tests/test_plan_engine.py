@@ -519,6 +519,27 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("active execution target", adv_out.lower())
 
+    def test_commit_suggestion_strips_em_dash_execution_tags_only(self):
+        plan_path = self.root / ".TODO" / "em_dash_plan.md"
+        plan_path.write_text(
+            "# Em Dash Plan\n\n"
+            "### Milestone 1: Core — FTS5 Index — *Active Execution Target*\n"
+            "- [ ] Task 1\n\n"
+            "### Milestone 2: Dashboard API — *Deferred to Next Turn / Milestone*\n"
+            "- [ ] Task 2\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "em_dash_plan"])
+        code, adv1 = self._run_cli(["advance", "em_dash_plan", "--milestone", "1", "--commit", "abc1111"])
+        self.assertEqual(code, 0)
+        self.assertIn("core fts5 index", adv1.lower())
+        self.assertNotIn("active execution target", adv1.lower())
+
+        code, adv2 = self._run_cli(["advance", "em_dash_plan", "--milestone", "2", "--commit", "abc2222"])
+        self.assertEqual(code, 0)
+        self.assertIn("dashboard api", adv2.lower())
+        self.assertNotIn("deferred to next turn", adv2.lower())
+
     def test_retrospective_retries_caps_inflated_grade(self):
         self._run_cli(["init", "sample_plan"])
         code, out = self._run_cli([

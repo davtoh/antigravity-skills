@@ -23,12 +23,16 @@ python skills/frontier-architect/scripts/plan_engine.py verify <plan_or_slug> --
 python skills/frontier-architect/scripts/plan_engine.py advance <plan_or_slug> --milestone <N> --commit <sha> --root .
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json and retrospectives.json)
+# Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
 python skills/frontier-architect/scripts/plan_engine.py retrospective <plan_or_slug> \
-  --milestone <N> --grade A --retries 0 --tri "plan_engine:5,diagnose:5" --hypotheses 1 \
+  --milestone <N> --grade A --retries 0 --tri "5,5,5,5" --hypotheses 1 \
   --learn "<reusable insight>" --escalate "none" --root .
 
 # Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)
 python skills/system-diagnostics/scripts/diagnose.py audit --path <files...> --max-lines 350 --max-fn-lines 40
+
+# Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
+python skills/system-diagnostics/scripts/diagnose.py arch-map --path .
 
 # Lookup historical plans, commit SHAs, and retrospective lessons
 python skills/frontier-architect/scripts/plan_engine.py lookup "<keyword_or_sha>" --root .

@@ -50,6 +50,26 @@ class TestStaticAuditor(unittest.TestCase):
             issues = static_auditor.audit_callable_smoke(tmp / "errors.py")
             self.assertEqual(issues, [])
 
+    def test_callable_smoke_skips_typing_protocol_and_reports_concrete_lineno(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "protos.py").write_text(
+                "from typing import Protocol, runtime_checkable\n\n"
+                "@runtime_checkable\n"
+                "class SemanticProvider(Protocol):\n"
+                "    name: str\n"
+                "    def synthesize(self, query: str) -> str: ...\n\n"
+                "class BrokenProvider:\n"
+                "    def __init__(self) -> None:\n"
+                "        raise TypeError('bad concrete init')\n",
+                encoding="utf-8",
+            )
+            issues = static_auditor.audit_callable_smoke(tmp / "protos.py")
+            self.assertEqual(len(issues), 1)
+            self.assertEqual(issues[0]["type"], "initialization_type_error")
+            self.assertIn("BrokenProvider", issues[0]["message"])
+            self.assertEqual(issues[0]["line"], 8)
+
     def test_callable_smoke_catches_init_type_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

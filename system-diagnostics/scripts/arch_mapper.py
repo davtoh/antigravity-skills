@@ -14,6 +14,7 @@ Zero external dependencies; Python 3.10+ stdlib only.
 import argparse
 import ast
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -221,12 +222,25 @@ def _build_report_dict(
     }
 
 
-def scan_architecture(root: Path, include_tests: bool = False) -> dict[str, Any]:
+def _resolve_targets(root: Path | list[Path], include_tests: bool) -> tuple[Path, Path, list[Path]]:
+    """Resolve workspace root, relative-path base, and sorted source files."""
+    targets = [Path(p).resolve() for p in root] if isinstance(root, (list, tuple)) else [Path(root).resolve()]
+    if len(targets) == 1:
+        t0 = targets[0]
+        return t0, (_resolve_scan_base(t0) if t0.is_file() else t0), _iter_source_files(t0, include_tests=include_tests)
+    dirs = [str(t if t.is_dir() else t.parent) for t in targets]
+    try:
+        common = Path(os.path.commonpath(dirs))
+    except ValueError:
+        common = Path.cwd()
+    base_dir = _resolve_scan_base(common)
+    return base_dir, base_dir, sorted({fp for t in targets for fp in _iter_source_files(t, include_tests=include_tests)})
+
+
+def scan_architecture(root: Path | list[Path], include_tests: bool = False) -> dict[str, Any]:
     """Scan repository architecture, modularity budgets, routes, CLI, and coupling."""
-    root = root.resolve()
-    base_dir = _resolve_scan_base(root) if root.is_file() else root
+    workspace_root, base_dir, files = _resolve_targets(root, include_tests)
     local_pkgs = _detect_local_packages(base_dir)
-    files = _iter_source_files(root, include_tests=include_tests)
     modules: list[ModuleStats] = []
     dir_summary: dict[str, dict[str, int]] = defaultdict(lambda: {"files": 0, "lines": 0})
     pkg_edges: dict[str, set[str]] = defaultdict(set)
@@ -249,28 +263,25 @@ def scan_architecture(root: Path, include_tests: bool = False) -> dict[str, Any]
             mod = ModuleStats(path=rel, ext=fp.suffix.lower(), lines=line_count, css_important=imp_cnt)
         modules.append(mod)
 
-    return _build_report_dict(root, local_pkgs, modules, dir_summary, pkg_edges)
+    return _build_report_dict(workspace_root, local_pkgs, modules, dir_summary, pkg_edges)
+
+
+def _append_capped(lines: list[str], items: list[Any], limit: int, fmt, label: str, full: bool) -> None:
+    """Append formatted items up to ``limit`` unless ``full`` is True."""
+    for item in (items if full else items[:limit]):
+        lines.append(fmt(item))
+    if not full and len(items) > limit:
+        lines.append(f"- *... and {len(items) - limit} more {label} omitted (pass `--full` to view all).*")
 
 
 def _format_modularity_section(viol: dict[str, Any], full: bool) -> list[str]:
     """Render modularity budget alerts for files, classes, long functions, and CSS."""
     lines = ["", "## Modularity Budget Alerts (>= 350L / > 12 methods / > 40L fn)"]
-    for item in viol["files_over_500"]:
-        lines.append(f"- **HARD (>=500L)**: `{item['path']}` ({item['lines']} lines)")
-    for item in viol["files_350_to_499"]:
-        lines.append(f"- **WARN (350-499L)**: `{item['path']}` ({item['lines']} lines)")
-    cls_list = viol["classes_over_budget"]
-    for cls in (cls_list if full else cls_list[:15]):
-        lines.append(f"- **CLASS**: `{cls['path']}` -> `{cls['name']}` ({cls['methods']} methods, {cls['lines']} lines)")
-    if not full and len(cls_list) > 15:
-        lines.append(f"- *... and {len(cls_list) - 15} more class alert(s) omitted (pass `--full` to view all).*")
-    fn_list = viol.get("functions_over_40", [])
-    for fn in (fn_list if full else fn_list[:10]):
-        lines.append(f"- **FUNC (>40L)**: `{fn['path']}:{fn['line']}` -> `{fn['name']}` ({fn['lines']} lines)")
-    if not full and len(fn_list) > 10:
-        lines.append(f"- *... and {len(fn_list) - 10} more function alert(s) omitted (pass `--full` to view all).*")
-    for css in viol.get("css_important_files", []):
-        lines.append(f"- **CSS (!important)**: `{css['path']}` ({css['count']} occurrences)")
+    lines.extend(f"- **HARD (>=500L)**: `{i['path']}` ({i['lines']} lines)" for i in viol["files_over_500"])
+    lines.extend(f"- **WARN (350-499L)**: `{i['path']}` ({i['lines']} lines)" for i in viol["files_350_to_499"])
+    _append_capped(lines, viol["classes_over_budget"], 15, lambda c: f"- **CLASS**: `{c['path']}` -> `{c['name']}` ({c['methods']} methods, {c['lines']} lines)", "class alert(s)", full)
+    _append_capped(lines, viol.get("functions_over_40", []), 10, lambda f: f"- **FUNC (>40L)**: `{f['path']}:{f['line']}` -> `{f['name']}` ({f['lines']} lines)", "function alert(s)", full)
+    lines.extend(f"- **CSS (!important)**: `{c['path']}` ({c['count']} occurrences)" for c in viol.get("css_important_files", []))
     return lines
 
 
@@ -283,22 +294,16 @@ def _format_surfaces_section(report: dict[str, Any], full: bool) -> list[str]:
         lines.append(f"- `{src}` -> {', '.join(f'`{t}`' for t in shown)}{suffix}")
 
     lines.extend(["", "## Unused Imports (Potential Disconnected Modules)"])
-    unused_all = report["unused_internal_or_module_imports"]
-    for item in (unused_all if full else unused_all[:30]):
-        lines.append(f"- `{item['file']}`: {', '.join(f'`{s}`' for s in item['symbols'])}")
-    if not full and len(unused_all) > 30:
-        lines.append(f"- *... and {len(unused_all) - 30} more file(s) omitted (pass `--full` to view all).*")
+    _append_capped(lines, report["unused_internal_or_module_imports"], 30, lambda u: f"- `{u['file']}`: {', '.join(f'`{s}`' for s in u['symbols'])}", "file(s)", full)
 
     lines.extend(["", "## CLI Surfaces"])
-    for cli in report["cli_surfaces"]:
-        lines.append(f"- `{cli['file']}`: subcommands={cli['subcommands']} | flags={len(cli['flags'])}")
+    lines.extend(f"- `{c['file']}`: subcommands={c['subcommands']} | flags={len(c['flags'])}" for c in report["cli_surfaces"])
 
     lines.extend(["", f"## API Routes ({report['routes_count']} total)"])
     for rfile, rlist in report["routes_by_file"].items():
         lines.append(f"- `{rfile}`: {len(rlist)} routes")
         if full:
-            for r in rlist:
-                lines.append(f"  - `{r['method']} {r['path']}` -> `{r['handler']}`")
+            lines.extend(f"  - `{r['method']} {r['path']}` -> `{r['handler']}`" for r in rlist)
     return lines
 
 
@@ -308,13 +313,9 @@ def format_markdown(report: dict[str, Any], full: bool = False) -> str:
         f"# Architecture Map: `{report['workspace']}`",
         f"- **Files scanned**: {report['total_files']} | **Total lines**: {report['total_lines']:,} | **API routes**: {report['routes_count']}",
         f"- **Top-level packages**: {', '.join(f'`{p}`' for p in report['local_packages']) or 'None'}",
-        "",
-        "## Directory Footprint",
-        "| Directory | Files | Lines |",
-        "| :--- | ---: | ---: |",
+        "", "## Directory Footprint", "| Directory | Files | Lines |", "| :--- | ---: | ---: |",
     ]
-    for d, st in report["directories"].items():
-        lines.append(f"| `{d}` | {st['files']} | {st['lines']:,} |")
+    lines.extend(f"| `{d}` | {st['files']} | {st['lines']:,} |" for d, st in report["directories"].items())
     lines.extend(_format_modularity_section(report["modularity_violations"], full=full))
     lines.extend(_format_surfaces_section(report, full=full))
     return "\n".join(lines) + "\n"
@@ -323,7 +324,7 @@ def format_markdown(report: dict[str, Any], full: bool = False) -> str:
 def register_parser(subparsers: argparse._SubParsersAction) -> None:
     """Register the 'arch-map' subcommand in diagnose.py."""
     p = subparsers.add_parser("arch-map", help="Generate compact architecture, modularity, route, and coupling map")
-    p.add_argument("--path", default=None, help="Root directory to scan (default: current directory)")
+    p.add_argument("--path", nargs="+", default=None, help="Root directory (or multiple subpaths) to scan (default: cwd)")
     p.add_argument("--include-tests", action="store_true", help="Include test directories in scan")
     p.add_argument("--json", action="store_true", help="Output structured JSON instead of Markdown")
     p.add_argument("--full", action="store_true", help="Include full route and symbol lists without truncation")
@@ -332,11 +333,11 @@ def register_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def cmd_arch_map(args: argparse.Namespace) -> int:
     """Execute the arch-map diagnostic command."""
-    target = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd()
+    raw = getattr(args, "path", None)
+    target: Path | list[Path] = [Path(p) for p in raw] if isinstance(raw, (list, tuple)) and raw else Path(raw or Path.cwd())
     report = scan_architecture(target, include_tests=getattr(args, "include_tests", False))
     output = json.dumps(report, indent=2) if getattr(args, "json", False) else format_markdown(report, full=getattr(args, "full", False))
-    out_path = getattr(args, "out", None)
-    if out_path:
+    if out_path := getattr(args, "out", None):
         Path(out_path).write_bytes(output.encode("utf-8"))
         print(f"[diagnose arch-map] Wrote architecture map to {out_path}")
     else:

@@ -137,6 +137,28 @@ class TestArchMapper(unittest.TestCase):
             self.assertIn("mypkg", report["local_packages"])
             self.assertEqual(report["directories"]["mypkg"]["files"], 1)
 
+    def test_diagnose_arch_map_accepts_multiple_subpaths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for sub in ("pkg_a", "pkg_b", "pkg_c"):
+                d = root / sub
+                d.mkdir()
+                (d / "__init__.py").write_text("", encoding="utf-8")
+                (d / "mod.py").write_text("def fn():\n    return 1\n", encoding="utf-8")
+            parser = diagnose.build_parser()
+            out_file = root / "multi.json"
+            args = parser.parse_args([
+                "arch-map", "--path", str(root / "pkg_a"), str(root / "pkg_b"),
+                "--json", "--out", str(out_file),
+            ])
+            rc = arch_mapper.cmd_arch_map(args)
+            self.assertEqual(rc, 0)
+            parsed = json.loads(out_file.read_text(encoding="utf-8"))
+            self.assertEqual(parsed["total_files"], 4)
+            self.assertIn("pkg_a", parsed["directories"])
+            self.assertIn("pkg_b", parsed["directories"])
+            self.assertNotIn("pkg_c", parsed["directories"])
+
 
 if __name__ == "__main__":
     unittest.main()

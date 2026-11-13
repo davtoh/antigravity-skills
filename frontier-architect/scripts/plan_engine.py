@@ -227,7 +227,13 @@ def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
         (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
         f"milestone {target_idx}",
     )
-    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", milestone_title)
+    stripped_title = re.sub(
+        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
+        "",
+        milestone_title,
+        flags=re.IGNORECASE,
+    )
+    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", stripped_title)
     clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
     clean_title = re.sub(r"[^\w\s-]", "", stripped_title).strip().lower()
     clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"

@@ -80,7 +80,7 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
 
         for name, obj in inspect.getmembers(mod):
             if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:
-                if inspect.isabstract(obj) or issubclass(obj, BaseException):
+                if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, BaseException):
                     continue
                 try:
                     sig = inspect.signature(obj)
@@ -96,10 +96,14 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
                         try:
                             obj()
                         except TypeError as te:
+                            try:
+                                _, lineno = inspect.getsourcelines(obj)
+                            except (OSError, TypeError):
+                                lineno = 1
                             issues.append({
                                 "type": "initialization_type_error",
                                 "file": str(p),
-                                "line": getattr(obj, "__doc__", "") and 1 or 1,
+                                "line": lineno,
                                 "message": f"Initialization TypeError in {name}(): {te}",
                             })
                         except Exception:
