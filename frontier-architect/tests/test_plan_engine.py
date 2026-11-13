@@ -240,6 +240,7 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(plan_engine._parse_tri(None), {})
         self.assertEqual(plan_engine._parse_tri("5"), {"overall": 5})
         self.assertEqual(plan_engine._parse_tri("cdp=5, plan=4, bad=xyz"), {"cdp": 5, "plan": 4})
+        self.assertEqual(plan_engine._parse_tri("plan_engine:5, diagnose:4"), {"plan_engine": 5, "diagnose": 4})
 
     def test_cli_discover_and_init(self):
         code, out = self._run_cli(["discover"])
@@ -397,6 +398,22 @@ class TestPlanEngineCLI(unittest.TestCase):
         called_cmd = mock_subproc.call_args[0][0]
         if os.name == "nt":
             self.assertTrue(called_cmd.startswith(r".venv\Scripts\python.exe -m pytest tests/unit"))
+
+    @patch("subprocess.run")
+    def test_cli_verify_resolves_bare_python_and_leading_env(self, mock_subproc):
+        self._run_cli(["init", "sample_plan"])
+        venv_py = self.root / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
+        venv_py.parent.mkdir(parents=True, exist_ok=True)
+        venv_py.write_text("", encoding="utf-8")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="Ran 2 tests\n\nOK\n", stderr="")
+
+        code, _ = self._run_cli(["verify", "sample_plan", "--command", "MPLBACKEND=Agg python -m unittest tests/t.py"])
+        self.assertEqual(code, 0)
+        called_cmd = mock_subproc.call_args[0][0]
+        called_env = mock_subproc.call_args[1]["env"]
+        expected_prefix = r".venv\Scripts\python.exe" if os.name == "nt" else ".venv/bin/python"
+        self.assertTrue(called_cmd.startswith(f"{expected_prefix} -m unittest tests/t.py"))
+        self.assertEqual(called_env["MPLBACKEND"], "Agg")
 
     def test_cross_platform_path_handling(self):
         rel_posix = self.plan_path.relative_to(self.root).as_posix()

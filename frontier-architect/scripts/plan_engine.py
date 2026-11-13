@@ -267,7 +267,7 @@ def _parse_tri(tri_arg: str | None) -> dict[str, Any]:
     if not tri_arg:
         return {}
     items = [item.strip() for item in tri_arg.split(",") if item.strip()]
-    if items and all("=" not in item for item in items) and len(items) == 4:
+    if items and all("=" not in item and ":" not in item for item in items) and len(items) == 4:
         dims = ["token_efficiency", "hypothesis_accuracy", "tool_reliability", "architectural_defense"]
         try:
             vals = [int(x) for x in items]
@@ -279,8 +279,9 @@ def _parse_tri(tri_arg: str | None) -> dict[str, Any]:
             pass
     scores = {}
     for item in items:
-        if "=" in item:
-            k, v = item.split("=", 1)
+        sep = "=" if "=" in item else (":" if ":" in item else None)
+        if sep:
+            k, v = item.split(sep, 1)
             try:
                 scores[k.strip()] = int(v.strip())
             except ValueError:
@@ -309,11 +310,14 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
         if args.milestone is not None
         else ps.get("last_advanced_milestone", ps["active_milestone_index"])
     )
+    tri_scores = _parse_tri(args.tri)
+    if args.tri and not tri_scores:
+        print(f"[plan_engine] Warning: Could not parse --tri '{args.tri}'. Use 'k=5,k2=4' or '5,5,5,5'.")
     entry = {
         "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "token_efficiency_grade": (args.grade or "A").upper(),
-        "tool_reliability_scores": _parse_tri(args.tri),
+        "tool_reliability_scores": tri_scores,
         "hypotheses_tested": args.hypotheses or 1,
         "root_causes_escalated": [args.escalate] if args.escalate else [],
         "learn_candidates": [args.learn] if args.learn else [],
@@ -372,9 +376,35 @@ def cmd_lookup(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def _extract_leading_env(cmd: str) -> tuple[dict[str, str], str]:
+    """Extract leading POSIX VAR=VAL assignments so Windows shell=True runs cleanly."""
+    extra_env: dict[str, str] = {}
+    rest = cmd.lstrip()
+    while True:
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=([^\s'\"]+)\s+(.+)$", rest)
+        if not m:
+            break
+        extra_env[m.group(1)] = m.group(2)
+        rest = m.group(3).lstrip()
+    return extra_env, rest
+
+
+def _resolve_venv_python(root: Path) -> str | None:
+    """Return relative virtualenv python path if .venv/venv/env exists under root."""
+    rel_candidates = (
+        (".venv\\Scripts\\python.exe", "venv\\Scripts\\python.exe", "env\\Scripts\\python.exe")
+        if os.name == "nt"
+        else (".venv/bin/python", "venv/bin/python", "env/bin/python")
+    )
+    for rel in rel_candidates:
+        if (root / rel.replace("\\", "/")).is_file():
+            return rel
+    return None
+
+
 def _normalize_verify_cmd(cmd: str, root: Path) -> str:
-    """Normalize leading Unix virtualenv paths on Windows while preserving arguments."""
-    if os.name != "nt" or not cmd.strip():
+    """Normalize leading python/venv paths for the host OS while preserving arguments."""
+    if not cmd.strip():
         return cmd
     stripped = cmd.lstrip()
     quote = stripped[0] if stripped[0] in ('"', "'") else ""
@@ -386,7 +416,10 @@ def _normalize_verify_cmd(cmd: str, root: Path) -> str:
     else:
         parts = stripped.split(None, 1)
         first_token, rest = parts[0], (" " + parts[1] if len(parts) > 1 else "")
-    if "/" not in first_token:
+    if first_token in ("python", "python3"):
+        venv_py = _resolve_venv_python(root)
+        return f"{venv_py}{rest}" if venv_py else cmd
+    if os.name != "nt" or "/" not in first_token:
         return cmd
     clean = first_token.removeprefix("./")
     if clean in (".venv/bin/python", "venv/bin/python", "env/bin/python"):
@@ -436,9 +469,11 @@ def cmd_verify(root: Path, args: argparse.Namespace) -> int:
         )
         return 1
 
-    exec_cmd = _normalize_verify_cmd(cmd, root)
+    extra_env, stripped_cmd = _extract_leading_env(cmd)
+    exec_cmd = _normalize_verify_cmd(stripped_cmd, root)
+    run_env = {**os.environ, **extra_env} if extra_env else None
     print(f"[plan_engine] Running verifier: {exec_cmd}")
-    proc = subprocess.run(exec_cmd, shell=True, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    proc = subprocess.run(exec_cmd, shell=True, cwd=root, env=run_env, capture_output=True, text=True, encoding="utf-8", errors="replace")
     output = (proc.stdout or "") + (proc.stderr or "")
     print(output)
 
