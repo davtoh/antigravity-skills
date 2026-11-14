@@ -43,28 +43,7 @@ For exact CLI commands/flags (`plan_engine.py`, `diagnose.py`), consult [`refere
 
 ## The End-to-End Architecture & Execution Workflow
 
-```mermaid
-flowchart TD
-    Start["User Prompt / Goal"] --> Hygiene["Phase 0: Context Hygiene & Complexity Triage\n(Delegate noisy discovery to research subagents)"]
-    
-    Hygiene -->|Simple & Single-Step| FastSlice["Fast Path: Pre-Flight Check -> Edit -> Local Verify"]
-    Hygiene -->|Multi-Symptom Bug / UI / CPU Issue| DiagGate["Phase 1B: Live Reproduction & UX Interview Gate\n(Browser/DOM Inspect + Container/CPU Audit + Clarify UX Policy)"]
-    Hygiene -->|Vague Intent| Clarify["Phase 1A: Socratic Clarification Gate\n(Pinpoint pain, constraints & success criteria)"]
-    Hygiene -->|Complex / Novel| Elevate["Phase 2 & 3: Capability Scan & 3-Tier SOTA Proposals\n(Baseline vs. Frontier SOTA vs. Novel Moonshot)"]
-    
-    Clarify --> Elevate
-    DiagGate --> PlanGate
-    
-    Elevate --> Dialogue["Pedagogical Inquiry Gate\n(Demystify concepts; answer user questions before deciding)"]
-    Dialogue --> RiskCheck{"Unproven Technical Risk?"}
-    
-    RiskCheck -->|Yes| Spike["Phase 4: Technical SPIKE Protocol\n(Timeboxed PoC in scratch/ to test Riskiest Assumption)"]
-    RiskCheck -->|No / Proven| PlanGate["Phase 5: Plan-First Gate & Persistent Rules\n(Artifact Plan / Symptom Matrix + Update AGENTS.md)"]
-    Spike -->|Validated| PlanGate
-    
-    PlanGate --> Loop["Phase 6: Atomic Slicing & Closed-Loop Verification\n(Types -> Logic -> State -> UI | Live Browser + Runtime CPU Check)"]
-    Loop --> Handoff["Milestone Checkpoint & Fresh Thread Recommendation"]
-```
+*(Workflow flowchart: [`references/workflow-diagram.md`](./references/workflow-diagram.md).)*
 
 ---
 
@@ -122,9 +101,8 @@ When intent is fuzzy, prevent wasted effort by asking 2 to 4 sharp, structured q
 
 ### Phase 1B: Reproduce-First & Browser/Runtime Diagnostic Gate (For Bugs & Regressions)
 
-Why do bug fixes fail or burn excessive tokens?
-1. Agents guess fixes from static source files without inspecting live DOM dimensions or container sync.
-2. When `chrome_devtools` MCP or `/browser` fails (e.g. `npx` not in `%PATH%` / `$PATH`), agents waste thousands of tokens probing Node/Chrome versions and writing repetitive CDP scripts in `scratch/`.
+Bug fixes fail or burn tokens when agents guess from static source without live DOM/container evidence, or when chrome_devtools//browser is unavailable (e.g. 
+px missing) and they hand-write repetitive CDP scripts.
 
 When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**.
 - **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or when using `/app-debugger` for dedicated bug hunting), invoke the unified CLI via its configuration path:
@@ -163,15 +141,10 @@ Assess whether current capabilities and model tiers are optimal for the goal:
 
 For architectural or product decisions, never offer a single default. Present **3 distinct tiers** so the user sees the full landscape of possibilities *(consult [references/sota-patterns.md](./references/sota-patterns.md) for frontier primitives)*:
 
-1. **Tier 1: Pragmatic Baseline**
-   - The conventional, battle-tested approach (how 90% of teams build it).
-   - *Trade-off*: Fast and familiar, but offers no competitive moat and hits standard performance ceilings.
-2. **Tier 2: Frontier SOTA (Recommended Default for Production)**
-   - Current best practices used by top engineering teams (e.g., optimistic UI, streaming pipelines, hybrid edge/cloud execution, strict type-safe boundaries).
-   - *Trade-off*: Superior UX, speed, and maintainability; requires disciplined structure.
-3. **Tier 3: Novel 0-to-1 Paradigm (The Moonshot)**
-   - A paradigm-inverting approach that creates an unfair advantage (e.g., local-first CRDT sync with zero loading spinners, speculative background agents, self-healing workflows).
-   - *Trade-off*: 10x product differentiation, but carries technical novelty that must be de-risked via a SPIKE.
+1. **Tier 1 Pragmatic Baseline**: conventional, fast, familiar; no moat.
+2. **Tier 2 Frontier SOTA (Recommended Default)**: current best practice (optimistic UI, streaming, type-safe boundaries); needs discipline.
+3. **Tier 3 Novel Moonshot**: paradigm-inverting (local-first CRDT, speculative agents); must be de-risked via a SPIKE.
+*(Full tier descriptions & trade-offs: [`references/sota-patterns.md`](./references/sota-patterns.md#3-tier-detail).)*
 
 #### The Pedagogical Inquiry Rule
 - Explain advanced concepts in plain, accessible language using concrete analogies.
@@ -247,6 +220,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - **Sequence Slices Cleanly**: Types/Contracts $\rightarrow$ Core Logic $\rightarrow$ State/Service $\rightarrow$ UI Layout $\rightarrow$ Styling & Polish.
    - **In-Flight Tool Elevation Protocol (SSOT)**: When encountering a limitation, false positive (e.g., `static_auditor.py` failing on `Protocol`), or bug in an invoked skill tool, fix it at its authoritative source rather than ignoring it or lowering TRI: for `plan_engine.py`/`plan_parser.py`/`plan_state.py`, update `frontier-architect/scripts/` and run `frontier-architect/tests/`; for shared diagnostic scripts (`cdp_inspect.py`, `cdp_transport.py`, `audit_layout.js`, `docker_audit.py`, `static_auditor.py`, `arch_mapper.py`), update the SSOT in `system-diagnostics/scripts/` and run `system-diagnostics/tests/` before resuming application code.
    - **Tooling Hygiene**: Use `<appDataDir>/brain/<conversation-id>/scratch/` strictly for throwaway Phase 4 SPIKEs or `--eval-file` inputs—never leave `scratch/` in project repositories or vendor skill scripts into `<workspace>/scripts/`.
+   - **Serial Same-File Edits**: Never issue multiple parallel `edit_file` calls on one file in a single turn (later `Target`s go stale); merge adjacent edits into one call or apply them sequentially.
    - **Run Heavy Tests Asynchronously**: Kick off slow integration suites or builds as background tasks (`WaitMsBeforeAsync: 500`).
    - **Lightweight Test Fixtures (Zero Compute/Resource Starvation)**: Always use synthetic mini-fixtures, mocks, or sampled data slices instead of full-dataset inferences or multi-gigabyte media conversions during automated verification.
    - **Mandatory Turn-End Daemon & Task Teardown**: Any background daemon, dev server, or support process launched via `run_command` (`IsDaemon: true`) or `manage_task` solely for verification MUST be terminated (`manage_task kill`) before concluding the turn.
@@ -268,26 +242,22 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --retries <n> --steps <step_count> --tri "5,5,5,5" --hypotheses <n> --learn "<candidate>" --escalate "<bug>"` (or named `key=score` pairs). Never inflate grades (`plan_engine.py` enforces rubric caps when `--retries >= 2` or `--steps > 60` / `> 100`).
      - Dimensions (positional `5,5,5,5`): *Token Efficiency (1–5)*, *Hypothesis Accuracy (1–5)* ($\le 2$ attempts), *Tool Reliability Index (TRI 1–5)*, and *Architectural Defense (1–5)* (SSOT & modularity adherence).
      - Grading rubric (honest self-assessment): `A` (0–1 retries, $\le 60$ steps), `B` (2–3 retries or 61–100 steps), `C` (>3 retries or >100 steps), `D/F` (repeated thrash or unverified).
+   - **Deterministic Telemetry**: Take `--steps`/`--retries` from `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <id>` (never estimate); at plan close run `plan_engine.py digest <slug>` instead of a manual post-mortem.
    - **Continuous Learning Feed**: Propose discovered reusable patterns and bug remediations to `/learn`.
    - **Turn-Termination Gate & Interactive User Checkpoint (MANDATORY)**: After advancing an intermediate milestone and logging retrospective telemetry, **STOP calling tools immediately**:
      > *"Milestone [N] is verified and complete. Ready to proceed with Milestone [N+1] ([Milestone Title])? Reply to continue or invoke `/frontier-architect continue`."*
 7. **Final Plan Completion Sign-Off & Pre-Merge Gate (Axiom 8 Safety)**:
+   - **Post-Step Integration & Non-Mocked Branch Gate**: Before ticking a Master Step `[x]`, run `diagnose.py scan --path <touched packages>` and exercise unconfigured/empty/fallback branches (`api_key=""`, `None` deps, missing config) without mocks that hide them; then run `plan_engine.py digest <slug> [--cids <ids>]` and resolve or log every integrity issue, `/learn` candidate, and escalation it lists.
    - When all milestones reach 100% (`- [x]`), run the full regression suite, verify zero `file:///` links or secrets and full 350/500-line budget compliance, record the changelog via `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add`, provide `git diff main...plan/<slug>`, and advise clicking **New Conversation (+)** or `/compact`.
 
 ---
 
 ## Built-In Cross-Platform Helper Scripts & Reference Library
 
-### Pre-Built Diagnostic & Plan Scripts (`scripts/` — Windows, macOS & Linux)
-*(Note: In the skills monorepo, `scripts/cdp_inspect.py` and `scripts/docker_audit.py` are thin SSOT shims delegating to `system-diagnostics/scripts/`. Running `diagnose.py package-skill frontier-architect` materializes all SSOT scripts into a 100% self-contained standalone `.skill` archive).*
-- **[`scripts/plan_engine.py`](./scripts/plan_engine.py)**, **[`scripts/plan_parser.py`](./scripts/plan_parser.py)**, **[`scripts/plan_state.py`](./scripts/plan_state.py)**: Cross-platform CLI orchestrator for `/frontier-architect continue`, `status`, `next`, `advance`, `retrospective`, `lookup`, and `verify` with dual-track `.frontier/state.json` sync.
-- **[`scripts/cdp_inspect.py`](./scripts/cdp_inspect.py)**: Cross-platform Chrome DevTools Protocol (CDP) inspector (backed by `cdp_transport.py` RFC 6455 WebSocket client and `audit_layout.js`). Supports `--audit-layout`, `--selectors`, `--click`, `--eval`, `--eval-file`, and `--screenshot`.
-- **[`scripts/docker_audit.py`](./scripts/docker_audit.py)**: Cross-platform Docker container CPU/memory/PID auditor (`docker stats`), `docker top` inspector, and host-vs-container MD5 file sync verifier (`--sync-check`).
-
-### Reference Library (`references/`)
-- **[`references/cli-cheatsheet.md`](./references/cli-cheatsheet.md)**: Exact runnable commands and flags for `plan_engine.py`, `diagnose.py ui --eval-file`, `changelog add`, and `package-skill`.
-- **[`references/flash-opus-harness.md`](./references/flash-opus-harness.md)**: Cognitive harness, `AGENTS.md` templates, verification matrices, and context hygiene.
-- **[`references/sota-patterns.md`](./references/sota-patterns.md)** & **[`references/spike-protocol.md`](./references/spike-protocol.md)**: Phase 3 SOTA patterns and Phase 4 timeboxed SPIKE protocol.
+### Scripts (`scripts/`) & References (`references/`)
+- `plan_engine.py` (+ `plan_parser.py`, `plan_state.py`, `plan_telemetry.py`, `plan_digest.py`): `continue`, `status`, `next`, `advance`, `retrospective`, `lookup`, `verify`, `digest`.
+- `cdp_inspect.py` / `docker_audit.py`: thin SSOT shims to `system-diagnostics/scripts/` (`package-skill` materializes a standalone `.skill`).
+- `references/`: [`cli-cheatsheet.md`](./references/cli-cheatsheet.md) (exact commands), [`flash-opus-harness.md`](./references/flash-opus-harness.md), [`sota-patterns.md`](./references/sota-patterns.md), [`spike-protocol.md`](./references/spike-protocol.md), [`workflow-diagram.md`](./references/workflow-diagram.md).
 
 ### Skill Self-Testing & Benchmark Suite (`tests/`)
 - **[`tests/README.md`](./tests/README.md)**: Run `python -m unittest discover -s skills/frontier-architect/tests -p "test_*.py"` or `python skills/frontier-architect/tests/run_benchmark.py`. For generative multi-agent benchmarking, invoke `/skill-creator`.

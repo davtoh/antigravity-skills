@@ -30,6 +30,7 @@ import trace_recorder
 import runtime_runner
 import skill_packager
 import arch_mapper
+import transcript_auditor
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -392,6 +393,7 @@ def build_parser() -> argparse.ArgumentParser:
     # 12. Standalone skill bundler & architecture mapper
     skill_packager.register_parser(sub)
     arch_mapper.register_parser(sub)
+    transcript_auditor.register_parser(sub)
     return parser
 
 def main() -> int:
@@ -418,6 +420,7 @@ def main() -> int:
         "run": runtime_runner.cmd_run,
         "package-skill": skill_packager.cmd_package_skill,
         "arch-map": arch_mapper.cmd_arch_map,
+        "transcript-audit": transcript_auditor.cmd_transcript_audit,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

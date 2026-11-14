@@ -104,6 +104,17 @@ class TestShadowProber(unittest.TestCase):
         self.assertIn("SILENT_BARE_EXCEPT", rules)
         self.assertIn("OVERBROAD_SHADOW_CATCH", rules)
 
+    def test_baseexception_cleanup_and_bare_reraise_is_not_flagged(self):
+        code = "try:\n    pass\nexcept BaseException:\n    cleanup()\n    raise\n"
+        findings = PythonAstScanner("test.py", code).scan(ast.parse(code))
+        self.assertNotIn("OVERBROAD_SHADOW_CATCH", {f.rule_id for f in findings})
+
+    def test_baseexception_swallowed_or_wrapped_still_flagged(self):
+        for tail in ("    pass\n", "    raise RuntimeError('x')\n"):
+            code = "try:\n    pass\nexcept BaseException:\n" + tail
+            findings = PythonAstScanner("test.py", code).scan(ast.parse(code))
+            self.assertIn("OVERBROAD_SHADOW_CATCH", {f.rule_id for f in findings})
+
     def test_hardcoded_secrets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "config.py"

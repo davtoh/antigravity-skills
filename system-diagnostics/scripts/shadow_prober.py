@@ -184,9 +184,8 @@ class PythonAstScanner(ast.NodeVisitor):
             sym = f"{self.rel_path}:{h.lineno}"
             if h.type is None:
                 self._add("SILENT_BARE_EXCEPT", "EXCEPTION_SMELL", "MEDIUM", "tactical", h.lineno, sym,
-                          "Silent bare 'except:' clause suppresses unexpected errors and interrupts.",
-                          "Catch specific exception types (e.g. 'except (ValueError, KeyError):') and log failures.")
-            elif isinstance(h.type, ast.Name) and h.type.id == "BaseException":
+                          "Silent bare 'except:' clause suppresses unexpected errors and interrupts.", "Catch specific exception types (e.g. 'except (ValueError, KeyError):') and log failures.")
+            elif isinstance(h.type, ast.Name) and h.type.id == "BaseException" and not (h.body and isinstance(h.body[-1], ast.Raise) and h.body[-1].exc is None):  # cleanup-and-reraise is safe
                 self._add("OVERBROAD_SHADOW_CATCH", "EXCEPTION_SMELL", "HIGH", "architectural", h.lineno, sym,
                           "Catching 'BaseException' intercepts SystemExit and KeyboardInterrupt.",
                           "Catch 'Exception' instead of 'BaseException', or re-raise with 'raise ... from err'.")
