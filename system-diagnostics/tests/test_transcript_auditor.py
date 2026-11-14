@@ -123,6 +123,41 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertIn("| dup reads |", md)
         self.assertIn("5 subagent duplicate reads (5 pending + 0 unedited overlap)", md)
 
+    def test_prefix_and_comma_separated_cids(self) -> None:
+        _write(self.brain, "20aa8189-94b2-4ab5", [_planner()])
+        _write(self.brain, "7dba2e24-97af-455c", [_planner()])
+        resolved = ta._resolve_cids(self.brain, ["20aa8189,7dba2e24"], None)
+        self.assertEqual(resolved, ["20aa8189-94b2-4ab5", "7dba2e24-97af-455c"])
+
+    def test_latest_prefers_substantive_conversations(self) -> None:
+        import os
+        import time
+        _write(self.brain, "older-long", [_planner() for _ in range(7)])
+        _write(self.brain, "newer-short", [_planner(), _planner()])
+        old_log = self.brain / "older-long" / ".system_generated" / "logs" / "transcript.jsonl"
+        new_log = self.brain / "newer-short" / ".system_generated" / "logs" / "transcript.jsonl"
+        now = time.time()
+        os.utime(old_log, (now - 100, now - 100))
+        os.utime(new_log, (now, now))
+        self.assertEqual(ta._resolve_cids(self.brain, None, 1, min_steps=6), ["older-long"])
+
+    def test_markdown_includes_fail_repeat_and_correction(self) -> None:
+        _write(self.brain, "diag-1", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nNo, fix parser instead\n</USER_REQUEST>"},
+            _planner(("read_file", {"Path": "foo.py"}), ("read_file", {"Path": "foo.py"})),
+            _planner(("run_command", {"CommandLine": "pytest tests/test_foo.py"})),
+            {"type": "GENERIC", "content": "Created At: x\nCommand exited with code 1.\nCommand output:\nAssertionError: boom\nLog: file:///x.log\n</SYSTEM_MESSAGE>\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "diag-1")
+        self.assertEqual(len(row["failure_samples"]), 1)
+        self.assertEqual(len(row["user_corrections"]), 1)
+        md = ta.format_markdown([row])
+        self.assertIn("- FAIL diag-1:", md)
+        self.assertIn("AssertionError: boom", md)
+        self.assertNotIn("</SYSTEM_MESSAGE>", md)
+        self.assertIn("- REPEAT diag-1: foo.py (2x)", md)
+        self.assertIn("- CORRECTION diag-1: step 0: No, fix parser instead", md)
+
 
 if __name__ == "__main__":
     unittest.main()

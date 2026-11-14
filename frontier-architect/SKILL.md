@@ -113,16 +113,7 @@ Bug fixes fail or burn tokens when agents guess from static source without live 
 px missing) and they hand-write repetitive CDP scripts.
 
 When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**.
-- **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or when using `/app-debugger` for dedicated bug hunting), invoke the unified CLI via its configuration path:
-  ```bash
-  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" all
-  # Or target specific subsystems:
-  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --live --audit-layout
-  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" container --container <name> --sync-check <files...>
-  # For domain-specific inspections (hardware, databases, network), use the dynamic probe registry:
-  python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" probe run camera_hardware
-  ```
-  *(Where `<config_dir>` is `%USERPROFILE%\.gemini\config` on Windows or `~/.gemini/config` on Linux/macOS).*
+- **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or via `/app-debugger`), run `"<config_dir>/skills/system-diagnostics/scripts/diagnose.py"` (`all`, `ui --live --audit-layout`, `container --sync-check`, `probe run <name>`); see [`references/cli-cheatsheet.md`](./references/cli-cheatsheet.md) for full flags.
 - **Self-Contained Bundled Fallback**: When running standalone without sibling skills, execute the built-in cross-platform helpers in `<skill_dir>/scripts/` (`docker_audit.py`, `cdp_inspect.py`) as detailed below.
 
 Execute these 3 steps *before* editing production code:
@@ -243,14 +234,14 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - **Second-Check Verification Gate**: Verify interruptibility with active asynchronous cancellation (`threading.Timer`), grep upstream call-sites for shadowing defaults, and audit that blocking waits/joins occur strictly outside lock blocks.
 5. **Anti-Thrash Stop-Loss ($\le 2$ Attempts)**:
    - If the same symptom survives two fix attempts, stop editing. Revert or isolate speculative changes, go back to Phase 1B evidence (live DOM, logs, container state), document the failed hypothesis, and escalate to `/app-debugger` or higher model tier (`/boost`).
-6. **Milestone Advance & 3-Tier Continuous Learning Loop** *(see [`references/cli-cheatsheet.md`](./references/cli-cheatsheet.md) for exact flags)*:
-   - **Verification Baseline**: Run `python "<skill_dir>/scripts/plan_engine.py" verify` (auto-extracts verifiers or pass `--command "<cmd>"`) to record test pass counts.
-   - **Advance Milestone & Commit Suggestion**: Run `python "<skill_dir>/scripts/plan_engine.py" advance` to patch checkboxes (`- [ ]` $\rightarrow$ `- [x]`), record the current commit SHA, and emit a copy-pasteable `git commit` suggestion. Never execute `git add` or `git commit` without explicit user consent.
+6. **Milestone Advance & 3-Tier Continuous Learning Loop** *(exact CLI templates in [`references/cli-cheatsheet.md`](./references/cli-cheatsheet.md))*:
+   - **Verification Baseline**: Run `plan_engine.py verify` (auto-extracts verifiers or pass `--command "<cmd>"`) to record test pass counts.
+   - **Advance Milestone & Commit Suggestion**: Run `plan_engine.py advance` to patch checkboxes (`- [ ]` $\rightarrow$ `- [x]`), record the current commit SHA, and emit a copy-pasteable `git commit` suggestion. Never execute `git add` or `git commit` without explicit user consent.
       - **Smart Commit Hint Gate**: If `plan_engine.py advance` reports `(None - Milestone was verification/audit only; no application code changes)`, do not present a commit command in your turn-end message; explain that milestone verification succeeded without requiring code commits.
-   - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --retries <n> --steps <step_count> --tri "5,5,5,5" --hypotheses <n> --learn "<project_candidate>" --skill-learn "<skill_or_tool_candidate>" --tool-gap "<gap_or_none>" --escalate "<bug>"` (or named `key=score` pairs). Never inflate grades (`plan_engine.py` enforces rubric caps when `--retries >= 2` or `--steps > 60` / `> 100`).
+   - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `plan_engine.py retrospective` (`--grade`, `--retries`, `--steps`, `--tri "5,5,5,5"` or `key=score`, `--hypotheses`, `--learn`, `--skill-learn`, `--tool-gap`, `--escalate`). Never inflate grades (`plan_engine.py` enforces rubric caps when `--retries >= 2` or `--steps > 60` / `> 100`).
      - Dimensions (positional `5,5,5,5`): *Token Efficiency (1–5)*, *Hypothesis Accuracy (1–5)* ($\le 2$ attempts), *Tool Reliability Index (TRI 1–5)*, and *Architectural Defense (1–5)* (SSOT & modularity adherence).
      - Grading rubric (honest self-assessment): `A` (0–1 retries, $\le 60$ steps), `B` (2–3 retries or 61–100 steps), `C` (>3 retries or >100 steps), `D/F` (repeated thrash or unverified).
-   - **Deterministic Telemetry**: Take `--steps`/`--retries` from `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <id>` (or pass `--cid <id>` directly to `retrospective`); at plan close run `plan_engine.py digest <slug> --backfill --write-scaffold` instead of a manual post-mortem.
+   - **Deterministic Telemetry**: Take `--steps`/`--retries` from `diagnose.py transcript-audit --cids <id>` (or pass `--cid <id>` directly to `retrospective`); at plan close run `plan_engine.py digest <slug> --backfill --write-scaffold` instead of a manual post-mortem.
    - **Continuous Learning Feed & User-Selectable Introspectives**: Propose discovered project/skill candidates to `/learn`, and at the end of any completed task or milestone always present a concise **Introspective Options** block telling the user what they can choose to run (e.g., `plan_engine.py digest <slug> --backfill --write-scaffold`, `diagnose.py transcript-audit --latest 1`, or `/learn`) so they decide without surprise token burn.
    - **Turn-Termination Gate & Interactive User Checkpoint (MANDATORY)**: After advancing an intermediate milestone and logging retrospective telemetry, **STOP calling tools immediately**:
      > *"Milestone [N] is verified and complete. Ready to proceed with Milestone [N+1] ([Milestone Title])? Reply to continue or invoke `/frontier-architect continue`."*

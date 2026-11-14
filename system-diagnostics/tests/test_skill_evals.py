@@ -99,6 +99,30 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         has_budget = bool(re.search(r"top\s*5|token-budget", text, re.I))
         return has_budget, f"Token budgeting / top 5: {has_budget}"
 
+    if "transcript-audit" in exp_lower:
+        has_ta = bool(re.search(r"transcript-audit", text, re.I)) and bool(re.search(r"--latest|--cids", text, re.I))
+        return has_ta, f"transcript-audit command: {has_ta}"
+
+    if "parallel same-file" in exp_lower or "duplicate subagent" in exp_lower:
+        has_dup = bool(re.search(r"--json", text, re.I)) and bool(re.search(r"parallel same-file|subagent duplicate", text, re.I))
+        return has_dup, f"transcript-audit JSON metrics: {has_dup}"
+
+    if "grade cap" in exp_lower or "--brain-dir" in exp_lower or "agy_brain_dir" in exp_lower:
+        has_cap = bool(re.search(r"grade cap", text, re.I)) and bool(re.search(r"--brain-dir|AGY_BRAIN_DIR", text, re.I))
+        return has_cap, f"transcript-audit grade caps & brain-dir: {has_cap}"
+
+    if "--path src/" in exp_lower or "multiple files or directories" in exp_lower:
+        has_mp = bool(re.search(r"diagnose\.py\s+scan", text, re.I)) and bool(re.search(r"--path\s+<paths\.\.\.>|one or more files/directories", text, re.I))
+        return has_mp, f"Multi-path scan --path: {has_mp}"
+
+    if "--deep" in exp_lower or "extended rules" in exp_lower:
+        has_deep = bool(re.search(r"--deep", text, re.I)) and bool(re.search(r"--all", text, re.I))
+        return has_deep, f"scan --deep / --all: {has_deep}"
+
+    if "--prune" in exp_lower:
+        has_prune = bool(re.search(r"--prune", text, re.I)) and bool(re.search(r"vanished|resolved", text, re.I))
+        return has_prune, f"scan --prune: {has_prune}"
+
     if "diagnose.py scan" in exp_lower:
         has_scan = bool(re.search(r"diagnose\.py\s+scan", text, re.I))
         return has_scan, f"Polyglot scan: {has_scan}"

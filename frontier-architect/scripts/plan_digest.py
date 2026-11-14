@@ -208,6 +208,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     entries = _load_entries(root, ps)
     learns, escalations = _unresolved(entries)
     skill_learns, tool_gaps = _unresolved_skill_items(entries)
+    entry_cids = list(dict.fromkeys(str(e["cid"]) for e in entries if e.get("cid")))
     rows = _transcript_rows(cids, brain_dir)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
@@ -216,7 +217,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "retro_entries": len(entries), "backfilled_entries": backfilled, "integrity_issues": check_retro_integrity(entries),
         "learn_candidates": learns, "skill_learn_candidates": skill_learns,
         "tool_gaps": tool_gaps, "escalations": escalations,
-        "transcripts": rows, "transcripts_unavailable": rows is None,
+        "cids": entry_cids, "transcripts": rows, "transcripts_unavailable": rows is None,
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
@@ -238,10 +239,14 @@ def format_digest(d: dict[str, Any]) -> str:
         lines += ["", "## Transcripts"] + [
             f"- {r['cid'][:8]}: " + ("MISSING" if r.get("missing") else f"steps={r['steps']} fails={r['total_failures']} cap={r['suggested_grade_cap']} subagents={len(r['subagents'])}")
             for r in d["transcripts"]]
+    ta_cmd = (
+        f"`diagnose.py transcript-audit --cids {' '.join(d['cids'])}` (or `--latest 1`)"
+        if d.get("cids") else "`diagnose.py transcript-audit --latest 1`"
+    )
     lines += [
         "", "## Introspective Commands (User Choice)",
         f"- Digest + Scaffold: `plan_engine.py digest {d['slug']} --backfill --write-scaffold`",
-        "- Transcript Audit: `diagnose.py transcript-audit --latest 1`",
+        f"- Transcript Audit: {ta_cmd}",
         "- Persist Lessons: `/learn`",
     ]
     return "\n".join(lines + ["", f"Next: {d['next_step']}"])

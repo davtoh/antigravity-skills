@@ -180,6 +180,18 @@
         "Logs 4-dimensional retrospective telemetry (Token Efficiency Grade, TRI scores, hypotheses, and architectural defense) via plan_engine.py retrospective",
         "Proactively feeds discovered reusable patterns and architectural improvements into the /learn catalog"
       ]
+    },
+    {
+      "id": 14,
+      "prompt": "We just finished the final milestone of our plan. Walk me through how you record deterministic step/retry counts, capture both project and skill/tooling lessons without inflating grades, close out the plan digest, and present user-selectable Introspective Options without burning extra tokens unasked.",
+      "expected_output": "Uses diagnose.py transcript-audit for deterministic --steps/--retries, logs plan_engine.py retrospective with --learn, --skill-learn, and --tool-gap (respecting rubric grade caps), runs plan_engine.py digest <slug> --backfill --write-scaffold at plan close, and presents a concise Introspective Options block for the user to choose next steps.",
+      "files": [],
+      "expectations": [
+        "Uses diagnose.py transcript-audit for deterministic --steps and --retries telemetry rather than guessing",
+        "Logs dual-axis learning and tooling gaps via --skill-learn and --tool-gap flags in plan_engine.py retrospective",
+        "Runs plan_engine.py digest <slug> --backfill --write-scaffold at plan close instead of a manual post-mortem",
+        "Presents a user-selectable Introspective Options summary at milestone/task completion offering digest, transcript-audit, or /learn without surprise token burn"
+      ]
     }
   ]
 }

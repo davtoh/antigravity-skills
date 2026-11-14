@@ -172,6 +172,28 @@ def evaluate_expectation_against_text(text: str, expectation: str) -> tuple[bool
         has_retro = bool(re.search(r"4-dimensional retrospective|token efficiency grade|tri|retrospective", text, re.I))
         return has_retro, f"4-Dimensional Retrospective: {has_retro}"
 
+    # Eval 14 patterns (checked before /learn to avoid shadowing)
+    if "introspective options" in exp_lower:
+        has_io = (
+            bool(re.search(r"introspective options", text, re.I))
+            and bool(re.search(r"transcript-audit", text, re.I))
+            and bool(re.search(r"digest", text, re.I))
+            and bool(re.search(r"/learn", text, re.I))
+        )
+        return has_io, f"Introspective Options block: {has_io}"
+
+    if "--skill-learn" in exp_lower or "--tool-gap" in exp_lower:
+        has_sl_tg = bool(re.search(r"--skill-learn", text, re.I)) and bool(re.search(r"--tool-gap", text, re.I))
+        return has_sl_tg, f"--skill-learn / --tool-gap flags: {has_sl_tg}"
+
+    if "transcript-audit" in exp_lower:
+        has_ta = bool(re.search(r"transcript-audit", text, re.I)) and bool(re.search(r"--steps|--retries", text, re.I))
+        return has_ta, f"transcript-audit deterministic telemetry: {has_ta}"
+
+    if "digest" in exp_lower and "--backfill" in exp_lower:
+        has_dig = bool(re.search(r"digest\s+<slug>\s+--backfill\s+--write-scaffold", text, re.I))
+        return has_dig, f"plan_engine.py digest --backfill --write-scaffold: {has_dig}"
+
     if "/learn" in exp_lower or "continuous learning" in exp_lower:
         has_learn = bool(re.search(r"/learn|continuous learning", text, re.I))
         return has_learn, f"Continuous learning feed to /learn: {has_learn}"

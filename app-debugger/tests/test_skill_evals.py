@@ -101,6 +101,15 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         return has_ds, f"Avoid disposable scratch scripts: {has_ds}"
 
     # 5. Core Workflow Steps & Output Patterns
+    if "introspective options" in exp_lower:
+        has_io = (
+            bool(re.search(r"introspective options", text, re.I))
+            and bool(re.search(r"transcript-audit", text, re.I))
+            and bool(re.search(r"digest", text, re.I))
+            and bool(re.search(r"/learn", text, re.I))
+        )
+        return has_io, f"Introspective Options hint: {has_io}"
+
     if "dual output" in exp_lower or "markdown artifact" in exp_lower or "inline" in exp_lower:
         has_dual = bool(re.search(r"dual output|inline markdown|artifact", text, re.I))
         return has_dual, f"Dual output rules: {has_dual}"

@@ -86,6 +86,28 @@
         "Unlocks tactical defects via diagnose.py scaffold-defect --id <ID> --branch with dirty-tree safety guard",
         "Dispatches Dual-Track Remediation routing tactical defects to /app-debugger and architectural flaws to /frontier-architect"
       ]
+    },
+    {
+      "id": 7,
+      "prompt": "Audit the latest conversation transcript from the brain directory to count planner steps, tool failures, duplicate file reads after subagent dispatch, and parallel same-file edits, and output JSON so we can feed accurate telemetry into plan_engine.py retrospective.",
+      "expected_output": "Executes diagnose.py transcript-audit --latest 1 --json (or --cids <IDs...>) to inspect brain transcript logs and report steps, failures, subagent overlap reads, parallel same-file edits, and rubric grade caps.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py transcript-audit with --latest or --cids to audit conversation brain logs",
+        "Supports --json output reporting steps, failures, duplicate subagent reads, and parallel same-file edits",
+        "Surfaces rubric grade caps and supports --brain-dir or AGY_BRAIN_DIR override"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Run a polyglot defect scan across both src/ and tests/ together with extended deep rules enabled, and prune any vanished or already-resolved defects from the catalog.",
+      "expected_output": "Executes diagnose.py scan --path src/ tests/ --deep --prune to scan multiple paths in one pass, apply extended rules, and reconcile/prune closed or vanished defects in .diagnostics/defect_catalog.json.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py scan --path src/ tests/ to scan multiple files or directories in a single pass",
+        "Supports --deep or --all to enable extended rules (CSS !important, unbounded containers, blocking loops)",
+        "Supports --prune to purge closed (resolved/dismissed) or vanished defects during catalog reconciliation"
+      ]
     }
   ]
 }

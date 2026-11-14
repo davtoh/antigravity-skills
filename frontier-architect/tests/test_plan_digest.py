@@ -153,6 +153,15 @@ class TestPlanDigest(unittest.TestCase):
         self.assertEqual(parsed["slug"], "demo")
         self.assertTrue((self.root / ".frontier" / "plans" / "demo" / "LEARNING_SCAFFOLD.md").is_file())
 
+    def test_digest_includes_recorded_cids_in_introspective_command(self) -> None:
+        self._write_retros([
+            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 20, "retries": 0,
+             "tool_reliability_scores": {"overall": 5}, "cid": "20aa8189-94b2-4ab5"},
+        ])
+        digest = pd.build_digest(self.root, "demo")
+        self.assertEqual(digest["cids"], ["20aa8189-94b2-4ab5"])
+        self.assertIn("transcript-audit --cids 20aa8189-94b2-4ab5", pd.format_digest(digest))
+
 
 if __name__ == "__main__":
     unittest.main()

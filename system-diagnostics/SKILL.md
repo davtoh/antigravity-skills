@@ -199,12 +199,12 @@ python skills/system-diagnostics/scripts/diagnose.py scan [OPTIONS]
 
 ### Subcommand: `transcript-audit`
 ```bash
-python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <IDs...>] [--latest <N>] [--json]
+python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <IDs...>] [--latest <N>] [--min-steps <N>] [--json]
 ```
-- `--cids <IDs...>`: Conversation IDs to audit from `<appDataDir>/brain`.
-- `--latest <N>`: Audit the `N` most recently modified conversations (default: `1`).
+- `--cids <IDs...>`: Full UUIDs, 8-char prefixes, or comma-separated IDs from `<appDataDir>/brain`.
+- `--latest <N>` / `--min-steps <N>`: Audit the `N` most recent substantive conversations (prefers `>= 6` steps, skipping empty new chats).
 - `--brain-dir <DIR>`: Override brain directory (or set `AGY_BRAIN_DIR`).
-- `--json`: Emit JSON instead of markdown table (reports steps, failures, pending/overlap subagent duplicate reads, parallel same-file edits, and rubric grade caps).
+- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
 
 ### Subcommand: `resolve-defect` & `dismiss-defect`
 ```bash

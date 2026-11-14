@@ -16,7 +16,8 @@ from typing import Any, Iterator
 
 _EXIT_RE = re.compile(r"(?:^|\n)Command exited with code (-?\d+)")
 _MODEL_RE = re.compile(r"Model Selection` from [^\n]+? to ([^\n]+?)\. No need")
-_USER_REQ_RE = re.compile(r"<USER_REQUEST>.*?</USER_REQUEST>", re.DOTALL)
+_USER_REQ_RE = re.compile(r"<USER_REQUEST>(.*?)</USER_REQUEST>", re.DOTALL)
+_CORRECTION_RE = re.compile(r"\b(no|instead|wrong|failed|don't|do not|stop|worthless|why did you)\b", re.I)
 _SUB_CID_RE = re.compile(r'"conversationId"\s*:\s*"([^"]+)"')
 _SENDER_RE = re.compile(r"sender=([^\s\]>]+)")
 _LOG_REL = Path(".system_generated") / "logs" / "transcript.jsonl"
@@ -125,6 +126,8 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
         if name == "read_file":
             p_str = str(args.get("Path", ""))
             acc["reads"][p_str] += 1
+            if p_str:
+                acc["last_target"] = Path(p_str).name
             if acc["pending_unnamed"] > 0 or acc["pending_cids"]:
                 acc["reads_while_pending"] += 1
             elif acc["first_subagent_step"] is not None and p_str:
@@ -133,8 +136,12 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             p_str = str(args.get("Path", ""))
             if p_str:
                 acc["edited_paths"].add(_norm_path(p_str))
+                acc["last_target"] = Path(p_str).name
             if name == "edit_file":
                 same_step_edits[p_str] += 1
+        elif name == "run_command":
+            cmd_line = str(args.get("CommandLine", "")).strip()
+            acc["last_target"] = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
             acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
             acc["pending_unnamed"] += 1
@@ -163,6 +170,32 @@ def _track_subagent_events(kind: str, content: str, cid: str, acc: dict[str, Any
                 acc["pending_unnamed"] -= 1
 
 
+def _extract_user_correction(content: str, idx: int, acc: dict[str, Any]) -> None:
+    """Capture up to 3 user correction/override prompts for /learn and eval generation."""
+    if len(acc["user_corrections"]) >= 3:
+        return
+    matches = _USER_REQ_RE.findall(content)
+    req_text = "\n".join(matches) if matches else content
+    clean_req = " ".join(req_text.split())
+    if clean_req and _CORRECTION_RE.search(clean_req):
+        acc["user_corrections"].append(f"step {idx}: {clean_req[:110]}")
+
+
+_NOISE_PREFIXES = (
+    "Created At:", "Completed At:", "Command output:", "Log: file:///",
+    "<SYSTEM_MESSAGE>", "</SYSTEM_MESSAGE>", "YOU MUST TAKE ", "DO NOTHING ELSE.",
+)
+
+
+def _failure_snippet(content: str) -> str:
+    """Extract a concise single-line failure snippet from tool output."""
+    lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+    body = [ln for ln in lines if not ln.startswith(_NOISE_PREFIXES)]
+    non_exit = [ln for ln in body if not _EXIT_RE.match(ln)]
+    chosen = non_exit[-1] if non_exit else (body[0] if body else "error")
+    return " ".join(chosen.split())[:90]
+
+
 def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
     """Audit one conversation; returns ``{"cid", "missing": True}`` when no transcript exists."""
     path = brain_dir / cid / _LOG_REL
@@ -172,7 +205,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "tools": Counter(), "reads": Counter(), "subagents": [], "first_subagent_step": None,
         "pending_unnamed": 0, "pending_cids": set(), "subagent_cids": [], "reads_while_pending": 0,
         "post_dispatch_reads": [], "edited_paths": set(), "parallel_same_file_edits": [],
-        "failures": Counter(), "models": [],
+        "failures": Counter(), "failure_samples": [], "user_corrections": [], "last_target": "", "models": [],
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -183,10 +216,14 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             _record_calls(step, idx, acc)
         elif kind == "USER_INPUT":
             acc["models"].extend(_extract_models(content))
+            _extract_user_correction(content, idx, acc)
         else:
             _track_subagent_events(kind, content, cid, acc)
             if fail := _classify_result(content, step.get("status", "")):
                 acc["failures"][fail] += 1
+                if len(acc["failure_samples"]) < 5:
+                    target = acc["last_target"] or "tool"
+                    acc["failure_samples"].append(f"step {idx} {fail} ({target}): {_failure_snippet(content)}")
     sub_reads = _collect_subagent_reads(brain_dir, acc["subagent_cids"])
     acc["overlap_reads"] = sum(
         1 for p in acc["post_dispatch_reads"] if _matches_any(p, sub_reads) and not _matches_any(p, acc["edited_paths"])
@@ -202,6 +239,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"],
         "tool_calls": dict(acc["tools"]), "failures": dict(acc["failures"]),
         "total_failures": sum(acc["failures"].values()),
+        "failure_samples": acc["failure_samples"], "user_corrections": acc["user_corrections"],
         "subagents": acc["subagents"], "reads_after_subagent": dupes,
         "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
@@ -210,39 +248,82 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
     }
 
 
-def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None) -> list[str]:
-    """Pick explicit ids, or the ``latest`` most recently modified conversations."""
-    if cids:
-        return cids
+def _has_min_steps(log_path: Path, min_steps: int) -> bool:
+    """Return True when ``log_path`` contains at least ``min_steps`` non-empty lines."""
+    count = 0
+    with log_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+                if count >= min_steps:
+                    return True
+    return False
+
+
+def _resolve_cid_token(brain_dir: Path, token: str, dirs: list[Path]) -> str:
+    """Resolve an exact or prefix conversation ID token within ``brain_dir``."""
+    if (brain_dir / token / _LOG_REL).is_file():
+        return token
+    low = token.lower()
+    for d in dirs:
+        if d.name.lower().startswith(low):
+            return d.name
+    return token
+
+
+def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, min_steps: int = 6) -> list[str]:
+    """Pick explicit/prefix ids, or the ``latest`` most recently modified substantive conversations."""
     dirs = [d for d in brain_dir.iterdir() if (d / _LOG_REL).is_file()] if brain_dir.is_dir() else []
+    if cids:
+        tokens = [tok.strip() for raw in cids for tok in raw.split(",") if tok.strip()]
+        return [_resolve_cid_token(brain_dir, tok, dirs) for tok in tokens]
     dirs.sort(key=lambda d: (d / _LOG_REL).stat().st_mtime, reverse=True)
-    return [d.name for d in dirs[: latest or 1]]
+    limit = latest or 1
+    substantive, short = [], []
+    for d in dirs:
+        (substantive if _has_min_steps(d / _LOG_REL, min_steps) else short).append(d.name)
+        if len(substantive) >= limit:
+            break
+    return (substantive + short)[:limit]
+
+
+def _append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
+    """Append waste flags, failure samples, repeated reads, and user corrections for one row."""
+    if r["subagents"] and r["reads_after_subagent"] > 4:
+        notes.append(
+            f"- FLAG {cid8}: {r['reads_after_subagent']} subagent duplicate reads "
+            f"({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)"
+        )
+    for e in r["parallel_same_file_edits"]:
+        notes.append(f"- FLAG {cid8}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}")
+    for sample in r.get("failure_samples", []):
+        notes.append(f"- FAIL {cid8}: {sample}")
+    if reps := ", ".join(f"{Path(p).name} ({n}x)" for p, n in (r.get("repeated_reads") or {}).items() if n >= 2):
+        notes.append(f"- REPEAT {cid8}: {reps}")
+    for corr in r.get("user_corrections", []):
+        notes.append(f"- CORRECTION {cid8}: {corr}")
 
 
 def format_markdown(rows: list[dict[str, Any]]) -> str:
-    """Render a compact markdown table plus waste flags."""
+    """Render a compact markdown table plus waste, failure, repeat, and correction diagnostics."""
     out = ["| cid | steps | fails | subagents | dup reads | grade cap |", "|---|---:|---:|---:|---:|:--:|"]
-    flags: list[str] = []
+    notes: list[str] = []
     for r in rows:
         if r.get("missing"):
             out.append(f"| {r['cid'][:8]} | MISSING | - | - | - | - |")
             continue
-        out.append(f"| {r['cid'][:8]} | {r['steps']} | {r['total_failures']} | {len(r['subagents'])} "
+        cid8 = r["cid"][:8]
+        out.append(f"| {cid8} | {r['steps']} | {r['total_failures']} | {len(r['subagents'])} "
                    f"| {r['reads_after_subagent']} | {r['suggested_grade_cap']} |")
-        if r["subagents"] and r["reads_after_subagent"] > 4:
-            flags.append(
-                f"{r['cid'][:8]}: {r['reads_after_subagent']} subagent duplicate reads "
-                f"({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)"
-            )
-        for e in r["parallel_same_file_edits"]:
-            flags.append(f"{r['cid'][:8]}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}")
-    return "\n".join(out + [""] + [f"- FLAG {f}" for f in flags])
+        _append_row_notes(r, cid8, notes)
+    return "\n".join(out + ([""] + notes if notes else [""]))
 
 
 def cmd_transcript_audit(args: argparse.Namespace) -> int:
     """Run the audit for the requested conversations; exit 1 if none could be read."""
     brain = Path(args.brain_dir) if args.brain_dir else default_brain_dir()
-    rows = [audit_conversation(brain, cid) for cid in _resolve_cids(brain, args.cids, args.latest)]
+    min_steps = getattr(args, "min_steps", 6)
+    rows = [audit_conversation(brain, cid) for cid in _resolve_cids(brain, args.cids, args.latest, min_steps)]
     print(json.dumps(rows, indent=2) if args.json else format_markdown(rows))
     return 0 if any(not r.get("missing") for r in rows) else 1
 
@@ -250,7 +331,8 @@ def cmd_transcript_audit(args: argparse.Namespace) -> int:
 def register_parser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``transcript-audit`` subcommand in diagnose.py."""
     p = subparsers.add_parser("transcript-audit", help="Audit conversation transcripts for waste, errors and subagent duplication")
-    p.add_argument("--cids", nargs="+", default=None, help="Conversation ids to audit")
-    p.add_argument("--latest", type=int, default=None, help="Audit the N most recently modified conversations")
+    p.add_argument("--cids", nargs="+", default=None, help="Conversation ids (full, 8-char prefix, or comma-separated)")
+    p.add_argument("--latest", type=int, default=None, help="Audit the N most recently modified substantive conversations")
+    p.add_argument("--min-steps", type=int, default=6, help="Minimum steps preferred for --latest (default: 6)")
     p.add_argument("--brain-dir", default=None, help="Override brain dir (default: AGY_BRAIN_DIR or ~/.gemini/antigravity/brain)")
     p.add_argument("--json", action="store_true", help="Emit JSON instead of markdown")
