@@ -57,12 +57,7 @@ def check_retro_integrity(entries: list[dict[str, Any]]) -> list[str]:
 
 def _clean_items(entries: list[dict[str, Any]], key: str) -> list[str]:
     """Return deduplicated non-placeholder strings for ``key`` across retrospective entries."""
-    return list(dict.fromkeys(
-        str(t).strip()
-        for e in entries
-        for t in (e.get(key) or [])
-        if str(t).strip().lower() not in _IGNORED_ESCALATIONS
-    ))
+    return list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get(key) or []) if str(t).strip().lower() not in _IGNORED_ESCALATIONS))
 
 
 def _unresolved(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
@@ -102,9 +97,16 @@ def audit_single_cid(cid: str, brain_dir: str | None = None) -> dict[str, Any] |
     loaded = _load_auditor(brain_dir)
     if not loaded:
         return None
-    resolved = _resolve_one_cid(loaded[1], cid)
-    row = loaded[0].audit_conversation(loaded[1], resolved)
+    row = loaded[0].audit_conversation(loaded[1], _resolve_one_cid(loaded[1], cid))
     return None if not row or row.get("missing") else row
+
+
+def _dedupe_cids(cids: list[str], brain: Path | None = None) -> list[str]:
+    """Resolve and deduplicate CIDs case-insensitively, dropping >=6-char prefixes of longer CIDs."""
+    res = [_resolve_one_cid(brain, str(c).strip()) if brain else str(c).strip() for c in cids if c and str(c).strip()]
+    kept = [c for c in res if not any(len(c) >= 6 and o.lower() != c.lower() and o.lower().startswith(c.lower()) for o in res)]
+    seen: set[str] = set()
+    return [c for c in kept if not (c.lower() in seen or seen.add(c.lower()))]
 
 
 def _transcript_rows(cids: list[str] | None, brain_dir: str | None) -> list[dict[str, Any]] | None:
@@ -114,7 +116,7 @@ def _transcript_rows(cids: list[str] | None, brain_dir: str | None) -> list[dict
     loaded = _load_auditor(brain_dir)
     if not loaded:
         return None
-    return [loaded[0].audit_conversation(loaded[1], _resolve_one_cid(loaded[1], c)) for c in cids]
+    return [loaded[0].audit_conversation(loaded[1], c) for c in _dedupe_cids(cids, loaded[1])]
 
 
 def _parse_iso(ts: str) -> datetime | None:
@@ -260,8 +262,8 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     learns, escalations = _unresolved(entries)
     skill_learns, tool_gaps = _unresolved_skill_items(entries)
     went_well = _clean_items(entries, "went_well")
-    entry_cids = list(dict.fromkeys(str(e["cid"]) for e in entries if e.get("cid")))
-    rows = _transcript_rows(list(dict.fromkeys([*entry_cids, *(cids or [])])), brain_dir)
+    entry_cids = _dedupe_cids([str(e["cid"]) for e in entries if e.get("cid")])
+    rows = _transcript_rows(_dedupe_cids([*entry_cids, *(cids or [])]), brain_dir)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
@@ -292,10 +294,7 @@ def format_digest(d: dict[str, Any]) -> str:
         lines += ["", "## Transcripts"] + [
             f"- {r['cid'][:8]}: " + ("MISSING" if r.get("missing") else f"steps={r['steps']} fails={r['total_failures']} cap={r['suggested_grade_cap']} subagents={len(r['subagents'])}")
             for r in d["transcripts"]]
-    ta_cmd = (
-        f"`diagnose.py transcript-audit --cids {' '.join(d['cids'])}` (or `--latest 1`)"
-        if d.get("cids") else "`diagnose.py transcript-audit --latest 1`"
-    )
+    ta_cmd = f"`diagnose.py transcript-audit --cids {' '.join(d['cids'])}` (or `--latest 1`)" if d.get("cids") else "`diagnose.py transcript-audit --latest 1`"
     lines += [
         "", "## Introspective Commands (User Choice)",
         f"- Digest + Scaffold: `plan_engine.py digest {d['slug']} --backfill --write-scaffold`",
@@ -313,9 +312,7 @@ def _write_scaffold_file(root: Path, digest: dict[str, Any]) -> str:
     return scaffold_p.relative_to(root).as_posix()
 
 
-def write_learning_scaffold(
-    root: Path, slug: str, backfill: bool = False, brain_dir: str | None = None
-) -> str | None:
+def write_learning_scaffold(root: Path, slug: str, backfill: bool = False, brain_dir: str | None = None) -> str | None:
     """Generate/refresh ``LEARNING_SCAFFOLD.md`` for ``slug``; safe no-op if plan fails to resolve."""
     try:
         digest = build_digest(root, slug, brain_dir=brain_dir, backfill=backfill)

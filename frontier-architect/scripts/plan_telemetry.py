@@ -14,6 +14,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+from plan_cli_helpers import print_retrospective_summary
 from plan_parser import parse_plan_markdown
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
 
@@ -192,13 +193,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     save_json(fdir / "state.json", ws)
     from plan_digest import write_learning_scaffold
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
-    print(f"[plan_engine] Logged retrospective for Milestone {entry['milestone_index']}:")
-    print(f"  Token Grade: {entry['token_efficiency_grade']} | TRI: {entry['tool_reliability_scores']}")
-    for label, key in (("/learn candidate (project)", "learn_candidates"), ("/learn candidate (skill)", "skill_learn_candidates"), ("Tool gap", "tool_gaps"), ("Went well", "went_well")):
-        if entry.get(key):
-            print(f"  {label}: {entry[key][0]}")
-    if scaffold_rel:
-        print(f"  Learning scaffold: {scaffold_rel}")
+    print_retrospective_summary(entry, ps["slug"], scaffold_rel)
     return 0
 
 

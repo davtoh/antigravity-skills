@@ -155,10 +155,8 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     c_info = ps.get("child_plans", {}).get(str(active_idx))
     if c_info:
         print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
-    elif target_m.get("child_plan"):
-        print(f"Declared Child Plan: {target_m['child_plan']}")
     else:
-        print_master_gate(ps, active_idx)
+        print_master_gate(ps, active_idx, target_m.get("child_plan"))
     print_milestone_body(target_m, parsed, prior_learns)
     return 0
 

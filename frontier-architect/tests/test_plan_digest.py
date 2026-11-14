@@ -17,7 +17,7 @@ import plan_engine  # noqa: E402
 PLAN = "# Demo Plan\n\n## Milestone 1: Core\n- [ ] **a.py**: add\n\n## Milestone 2: UI\n- [ ] **b.py**: add\n"
 
 
-class TestPlanDigest(unittest.TestCase):
+class _PlanDigestBase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -31,6 +31,8 @@ class TestPlanDigest(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(json.dumps(entries).encode("utf-8"))
 
+
+class TestPlanDigestCore(_PlanDigestBase):
     def test_grade_cap_thresholds(self) -> None:
         self.assertEqual(pd._grade_cap(None, None), "A")
         self.assertEqual(pd._grade_cap(61, 0), "B")
@@ -91,6 +93,8 @@ class TestPlanDigest(unittest.TestCase):
         self.assertEqual(digest["learn_candidates"], ["child rule"])
         self.assertIn("child:M1: grade A exceeds rubric cap C", "\n".join(digest["integrity_issues"]))
 
+
+class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
     def test_digest_backfill_persists_steps_retries_and_caps_inflated_grade(self) -> None:
         brain = Path(self._tmp.name) / "brain"
         log_dir = brain / "conv-123" / ".system_generated" / "logs"

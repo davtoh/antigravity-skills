@@ -51,6 +51,59 @@ class TestFrontierRegressions(unittest.TestCase):
             self.assertEqual(len(ws_retros), 2)
             self.assertEqual({r.get("_slug") for r in ws_retros}, {"alpha", "beta"})
 
+    def test_digest_dedupes_short_prefix_and_full_cid_across_entries_and_cli_args(self):
+        """Passing a short CID prefix to digest must not duplicate a recorded full UUID."""
+        import plan_digest as pd
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".TODO").mkdir()
+            (root / ".TODO" / "demo.md").write_text("# Demo\n## Milestone 1: A\n- [ ] **a.py**: task\n", encoding="utf-8")
+            self.assertEqual(engine_main(["init", ".TODO/demo.md"], root=root), 0)
+            full_cid = "9741e238-9bcb-4998-a0c7-f3914d12a749"
+            retros_p = get_frontier_dir(root) / "plans" / "demo" / "retrospectives.json"
+            retros_p.write_text(
+                f'[{{"milestone_index": 1, "cid": "{full_cid}", "steps": 97, "retries": 3, "token_efficiency_grade": "B", "tool_reliability_scores": {{"overall": 5}}}}]',
+                encoding="utf-8",
+            )
+            brain = root / "brain"
+            log_dir = brain / full_cid / ".system_generated" / "logs"
+            log_dir.mkdir(parents=True)
+            (log_dir / "transcript.jsonl").write_text('{"type": "GENERIC", "content": "ok"}\n', encoding="utf-8")
+
+            d_no_disk = pd.build_digest(root, "demo", cids=["9741e238", "9741E238"], brain_dir=str(root / "empty_brain"))
+            self.assertEqual(d_no_disk["cids"], [full_cid])
+            self.assertEqual([r["cid"] for r in d_no_disk["transcripts"]], [full_cid])
+
+            d_disk = pd.build_digest(root, "demo", cids=["9741e238", "9741E238"], brain_dir=str(brain))
+            self.assertEqual(d_disk["cids"], [full_cid])
+            self.assertEqual([r["cid"] for r in d_disk["transcripts"]], [full_cid])
+
+    def test_retrospective_emits_turn_end_echo_markdown_block(self):
+        """plan_engine.py retrospective must emit a copy-pasteable Continuous Learning block."""
+        import io
+        from contextlib import redirect_stdout
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".TODO").mkdir()
+            (root / ".TODO" / "demo.md").write_text("# Demo\n## Milestone 1: A\n- [ ] **a.py**: task\n", encoding="utf-8")
+            self.assertEqual(engine_main(["init", ".TODO/demo.md"], root=root), 0)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = engine_main([
+                    "retrospective", "demo", "--milestone", "1", "--steps", "20", "--retries", "0",
+                    "--went-well", "Fast verification", "--learn", "Keep CSS classes isolated",
+                    "--skill-learn", "Echo turn-end summary",
+                ], root=root)
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("### Continuous Learning & Introspective Options", out)
+            self.assertIn("- **What went well**: Fast verification", out)
+            self.assertIn("- **`/learn` candidate (project)**: Keep CSS classes isolated", out)
+            self.assertIn("- **`/learn` candidate (skill)**: Echo turn-end summary", out)
+            self.assertIn("- **Introspective Options**: Review `.frontier/plans/demo/LEARNING_SCAFFOLD.md`", out)
+
 
 if __name__ == "__main__":
     unittest.main()

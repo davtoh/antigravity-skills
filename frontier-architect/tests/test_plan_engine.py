@@ -451,6 +451,11 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Active Milestone: 1/2", out)
 
+        code, pre_next_out = self._run_cli(["next", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Declared Child Plan: .TODO/sample_plan.md", pre_next_out)
+        self.assertIn("MASTER STEP PRE-PLAN GATE (Step 1)", pre_next_out)
+
         code, out = self._run_cli(["init", "sample_plan", "--parent", "master_roadmap", "--milestone", "1"])
         self.assertEqual(code, 0)
         self.assertIn("Parent Master Plan: master_roadmap (Step/Milestone 1)", out)

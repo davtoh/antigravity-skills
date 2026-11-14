@@ -45,8 +45,10 @@ def _suggest_slice_tools(target_m: dict[str, Any]) -> list[str]:
     return tools
 
 
-def print_master_gate(ps: dict[str, Any], active_idx: int) -> None:
+def print_master_gate(ps: dict[str, Any], active_idx: int, declared_child: str | None = None) -> None:
     """Emit the MASTER STEP PRE-PLAN GATE when a master roadmap step has no child plan."""
+    if declared_child:
+        print(f"Declared Child Plan: {declared_child}")
     is_master_roadmap = (
         bool(ps.get("child_plans"))
         or any(k in ps.get("slug", "").lower() for k in ("master", "roadmap"))
@@ -142,3 +144,29 @@ def add_retrospective_parser(sub: Any, plan_parent: argparse.ArgumentParser) -> 
     p_retro.add_argument("--skill-learn", help="Skill/script candidate improvement for /learn (SKILL.md or scripts/)")
     p_retro.add_argument("--tool-gap", help="Tooling or script defect encountered during execution")
     p_retro.add_argument("--went-well", default=None, help="Positive execution or architectural pattern that worked well")
+
+
+def print_retrospective_summary(entry: dict[str, Any], slug: str, scaffold_rel: str | None) -> None:
+    """Print retrospective confirmation and copy-pasteable turn-end learning block."""
+    print(f"[plan_engine] Logged retrospective for Milestone {entry['milestone_index']}:")
+    print(f"  Token Grade: {entry['token_efficiency_grade']} | TRI: {entry['tool_reliability_scores']}")
+    pairs = (
+        ("/learn candidate (project)", "learn_candidates"),
+        ("/learn candidate (skill)", "skill_learn_candidates"),
+        ("Tool gap", "tool_gaps"),
+        ("Went well", "went_well"),
+    )
+    for label, key in pairs:
+        if entry.get(key):
+            print(f"  {label}: {entry[key][0]}")
+    if scaffold_rel:
+        print(f"  Learning scaffold: {scaffold_rel}")
+    print("\n--- Turn-End Echo (Copy-Paste Into Final Response) ---")
+    print("### Continuous Learning & Introspective Options")
+    if entry.get("went_well"):
+        print(f"- **What went well**: {entry['went_well'][0]}")
+    for label, key in (("project", "learn_candidates"), ("skill", "skill_learn_candidates")):
+        if entry.get(key):
+            print(f"- **`/learn` candidate ({label})**: {entry[key][0]}")
+    target = scaffold_rel or f".frontier/plans/{slug}/LEARNING_SCAFFOLD.md"
+    print(f"- **Introspective Options**: Review `{target}`, run `/learn`, or run `diagnose.py transcript-audit --latest 1`.")
