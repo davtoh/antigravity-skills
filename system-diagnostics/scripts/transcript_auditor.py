@@ -275,12 +275,15 @@ def _resolve_cid_token(brain_dir: Path, token: str, dirs: list[Path]) -> str:
     return token
 
 
-def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, min_steps: int = 6) -> list[str]:
+def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, min_steps: int = 6, workspace: str | None = None) -> list[str]:
     """Pick explicit/prefix ids, or the ``latest`` most recently modified substantive conversations."""
     dirs = [d for d in brain_dir.iterdir() if (d / _LOG_REL).is_file()] if brain_dir.is_dir() else []
     if cids:
         tokens = [tok.strip() for raw in cids for tok in raw.split(",") if tok.strip()]
         return [_resolve_cid_token(brain_dir, tok, dirs) for tok in tokens]
+    if workspace:
+        needle = workspace.replace("\\", "/").rstrip("/").lower()
+        dirs = [d for d in dirs if needle in (d / _LOG_REL).read_text(encoding="utf-8", errors="replace").replace("\\\\", "/").replace("\\", "/").lower()]
     dirs.sort(key=lambda d: (d / _LOG_REL).stat().st_mtime, reverse=True)
     limit = latest or 1
     substantive, short = [], []
@@ -327,7 +330,8 @@ def cmd_transcript_audit(args: argparse.Namespace) -> int:
     """Run the audit for the requested conversations; exit 1 if none could be read."""
     brain = Path(args.brain_dir) if args.brain_dir else default_brain_dir()
     min_steps = getattr(args, "min_steps", 6)
-    rows = [audit_conversation(brain, cid) for cid in _resolve_cids(brain, args.cids, args.latest, min_steps)]
+    cids = _resolve_cids(brain, args.cids, args.latest, min_steps, getattr(args, "workspace", None))
+    rows = [audit_conversation(brain, cid) for cid in cids]
     print(json.dumps(rows, indent=2) if args.json else format_markdown(rows))
     return 0 if any(not r.get("missing") for r in rows) else 1
 
@@ -338,5 +342,6 @@ def register_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--cids", nargs="+", default=None, help="Conversation ids (full, 8-char prefix, or comma-separated)")
     p.add_argument("--latest", type=int, default=None, help="Audit the N most recently modified substantive conversations")
     p.add_argument("--min-steps", type=int, default=6, help="Minimum steps preferred for --latest (default: 6)")
+    p.add_argument("--workspace", default=None, help="Filter --latest conversations to those referencing this workspace path")
     p.add_argument("--brain-dir", default=None, help="Override brain dir (default: AGY_BRAIN_DIR or ~/.gemini/antigravity/brain)")
     p.add_argument("--json", action="store_true", help="Emit JSON instead of markdown")

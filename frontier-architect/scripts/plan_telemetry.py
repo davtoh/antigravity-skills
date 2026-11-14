@@ -107,6 +107,9 @@ def _build_retrospective_entry(
     retries: int | None, steps: int | None, args: argparse.Namespace,
 ) -> dict[str, Any]:
     """Assemble retrospective telemetry payload with optional retry/step/skill/went_well fields."""
+    went_well = _clean_list(getattr(args, "went_well", None))
+    if not went_well and grade in ("A", "B") and (retries is None or retries <= 1):
+        went_well = [f"Completed within budget (steps={steps if steps is not None else '?'}, retries={retries if retries is not None else 0})"]
     entry: dict[str, Any] = {
         "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -117,7 +120,7 @@ def _build_retrospective_entry(
         "learn_candidates": _clean_list(args.learn),
         "skill_learn_candidates": _clean_list(getattr(args, "skill_learn", None)),
         "tool_gaps": _clean_list(getattr(args, "tool_gap", None)),
-        "went_well": _clean_list(getattr(args, "went_well", None)),
+        "went_well": went_well,
     }
     if retries is not None:
         entry["retries"] = retries

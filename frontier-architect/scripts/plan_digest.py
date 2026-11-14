@@ -261,7 +261,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     skill_learns, tool_gaps = _unresolved_skill_items(entries)
     went_well = _clean_items(entries, "went_well")
     entry_cids = list(dict.fromkeys(str(e["cid"]) for e in entries if e.get("cid")))
-    rows = _transcript_rows(cids, brain_dir)
+    rows = _transcript_rows(list(dict.fromkeys([*entry_cids, *(cids or [])])), brain_dir)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],

@@ -110,7 +110,7 @@ def print_advance_summary(
         if ps.get("parent_plan"):
             p = ps["parent_plan"]
             print(f"[plan_engine] Master Sync: Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then prompt '/frontier-architect continue {p['slug']}'.")
-        print(f"[plan_engine] Introspectives (User Choice): `plan_engine.py digest {ps['slug']} --backfill --write-scaffold` | `diagnose.py transcript-audit --latest 1` | `/learn`")
+        print(f"[plan_engine] Introspectives (User Choice): Review `{scaffold_rel or 'LEARNING_SCAFFOLD.md'}` -> run `/learn` to persist lessons | optional: `plan_engine.py digest {ps['slug']} --backfill --write-scaffold`")
     else:
         print(f"  Status: in_progress | Next Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
         print("=" * 72)
