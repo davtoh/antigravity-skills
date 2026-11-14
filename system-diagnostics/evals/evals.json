@@ -108,6 +108,98 @@
         "Supports --deep or --all to enable extended rules (CSS !important, unbounded containers, blocking loops)",
         "Supports --prune to purge closed (resolved/dismissed) or vanished defects during catalog reconciliation"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Our video capture pipeline is failing to open physical cameras, and we also want a reusable probe for our Redis connection pool so we stop writing throwaway scripts. List available probes, run the camera hardware probe, scaffold a new database probe, and promote our verified scratch script into the probe registry.",
+      "expected_output": "Executes diagnose.py probe list, probe run camera_hardware, probe new <name> --domain database, and probe save <source> <name> to manage reusable domain probes across global and workspace registries.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py probe list to discover registered probes across global and workspace registries",
+        "Executes diagnose.py probe run camera_hardware to validate DirectShow, Media Foundation, or V4L2 device indices and frame decoding",
+        "Supports scaffolding new probes via diagnose.py probe new <name> --domain <domain>",
+        "Promotes verified scratch scripts into permanent probes via diagnose.py probe save"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "We just finished a refactoring milestone and have an oversized legacy MIGRATION_LOG.md. Migrate it into a bounded CHANGELOG.md capped at 150 lines with auto-archived shards, record the new milestone with a copy-pasteable git commit snippet, and inspect the 3 most recent entries.",
+      "expected_output": "Executes diagnose.py changelog migrate, changelog add (sanitizing local paths/URLs and emitting --commit-hint), and changelog show --recent 3 while keeping CHANGELOG.md <= 150 lines with .changelogs/ sharding.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py changelog add with --title, --type, --summary, and --verify to record milestones and emit commit snippets",
+        "Enforces bounded CHANGELOG.md <= 150 lines with auto-sharding into .changelogs/ and path/URI sanitization",
+        "Supports migrating legacy MIGRATION_LOG.md files via diagnose.py changelog migrate",
+        "Supports bounded on-demand lookup via diagnose.py changelog show --recent 3 and changelog status"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "We fixed DEFECT-001 in .diagnostics/defect_catalog.json, confirmed DEFECT-002 is a false positive, and need to escalate DEFECT-003 as an architectural flaw to /frontier-architect. Update the catalog and generate the elevation brief.",
+      "expected_output": "Executes diagnose.py resolve-defect --id DEFECT-001 --note, dismiss-defect --id DEFECT-002 --reason, and scaffold-defect --id DEFECT-003 --elevate.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py resolve-defect --id <id> --note to mark fixed defects resolved in the catalog",
+        "Executes diagnose.py dismiss-defect --id <id> --reason to exclude false positives from active counts and --strict gates",
+        "Supports comma-separated defect IDs, fingerprints, or rule IDs in resolve-defect and dismiss-defect",
+        "Executes diagnose.py scaffold-defect --id <id> --elevate to emit a Track B Architectural Elevation Brief"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "Package our skills into standalone distributable .skill archives in dist/ with all shared SSOT scripts materialized and dev-only tests/ and evals/ stripped out.",
+      "expected_output": "Executes diagnose.py package-skill all --out dist/ to temp-stage, materialize SSOT shims, strip tests/evals, and invoke package_skill.py.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py package-skill <skill_or_all> --out dist/ to build standalone .skill bundles",
+        "Temp-stages skills and materializes thin SSOT shims into full standalone scripts",
+        "Strips dev-only directories (tests/, evals/, .coverage, .diagnostics/) and runs package_skill.py validation"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "On Windows PowerShell, we need to run a multi-statement JavaScript DOM probe against our live Chrome tab without quote-stripping issues, click a filter button, capture a JPEG screenshot, and fail immediately if live Chrome isn't reachable instead of falling back to headless.",
+      "expected_output": "Executes diagnose.py ui --live with --eval-file, --click, --screenshot, and --no-fallback-headless.",
+      "files": [],
+      "expectations": [
+        "Uses diagnose.py ui --eval-file <path> to evaluate multi-statement JavaScript safely without Windows PowerShell quote-stripping",
+        "Supports --click <selector> and --screenshot <path> for interactive state transitions and visual capture",
+        "Supports --no-fallback-headless to fail immediately when live Chrome is unreachable",
+        "Supports --navigate and --window-size for fresh asset reloads and custom viewport dimensions"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "Generate a compact architecture, modularity, route, and import-coupling map of our repository in JSON format so we can inspect coupling before planning a refactor.",
+      "expected_output": "Executes diagnose.py arch-map --path . --json (with optional --full, --include-tests, --out).",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py arch-map --path to generate a compact architecture, modularity, route, and coupling map",
+        "Supports --json output alongside Markdown, plus --full, --include-tests, and --out options",
+        "Supports scanning a single root or multiple subpaths in one invocation"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Launch our Python FastAPI app with zero-code runtime crash tracing enabled, inspect the active trace catalog, scaffold a FastAPI diagnostic bridge, and clear old traces when done.",
+      "expected_output": "Executes diagnose.py run <cmd>, diagnose.py traces, diagnose.py traces --scaffold fastapi, and diagnose.py traces --clear.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py run <command> as a zero-code runner with automatic runtime tracing bootstrapped",
+        "Executes diagnose.py traces to inspect .diagnostics/ runtime crash and trace catalogs",
+        "Supports --scaffold fastapi|flask|generic and --clear on diagnose.py traces"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "We are working on Windows where PowerShell blocks npx.ps1 execution, rg is not installed, and git autocrlf causes line-ending mismatches. What shell and tooling conventions does system-diagnostics enforce?",
+      "expected_output": "Uses cmd /c npx -y <tool>, prefers git grep -n over rg, and preserves CRLF/LF line endings without throwaway patching scripts.",
+      "files": [],
+      "expectations": [
+        "Enforces cmd /c npx -y on Windows to bypass PowerShell script execution policy",
+        "Prefers git grep -n over rg unless rg is verified on PATH",
+        "Preserves CRLF/LF line endings on Windows and avoids throwaway python patching scripts"
+      ]
     }
   ]
 }

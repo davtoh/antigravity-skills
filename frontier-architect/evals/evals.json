@@ -192,6 +192,102 @@
         "Runs plan_engine.py digest <slug> --backfill --write-scaffold at plan close instead of a manual post-mortem",
         "Presents a user-selectable Introspective Options summary at milestone/task completion offering digest, transcript-audit, or /learn without surprise token burn"
       ]
+    },
+    {
+      "id": 15,
+      "prompt": "We are planning a 5-milestone cross-layer overhaul spanning backend/, frontend/, and workers/ with 14 tasks, including a new CameraCoordinator service and extracting metrics from our frozen 480-line gallery.py. Walk through how you structure the master vs. child plans, handle MASTER STEP PRE-PLAN GATE on continue, and wire new coordinators at runtime.",
+      "expected_output": "Creates a Master Roadmap + Step 1 child plan (--parent <master_slug> --milestone 1) upon crossing the >=4 milestones / >=3 subsystems threshold, executes MASTER STEP PRE-PLAN GATE (AGENTS.md, docs/architecture/, diagnose.py arch-map, research subagent) on continue, wires coordinators into live entrypoints, and schedules a small signal adapter for the frozen monolith.",
+      "files": [],
+      "expectations": [
+        "Creates a Master Roadmap and Step 1 child plan (--parent <master_slug> --milestone 1) when crossing >=4 milestones or >=3 subsystems with >=10 tasks",
+        "Handles MASTER STEP PRE-PLAN GATE on continue by reading AGENTS.md/docs/architecture/, running diagnose.py arch-map, and sweeping imports via a research subagent before coding",
+        "Enforces Master-Step Runtime Wiring Mandate by wiring new coordinators/mappers into live entrypoints (PipelineEngine/CameraPool/app startup) in the same step",
+        "Schedules a small extracted signal/helper adapter when freezing WARN/HARD monoliths instead of leaving duck-typed getattr stubs"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Here is our existing architectural plan .TODO/video_ingest.md. Please improve and enhance it with better failure recovery and lifecycle states without stripping any existing parameters, and also tell me what you do differently when someone runs /frontier-architect continue on an existing plan.",
+      "expected_output": "Distinguishes Improvement Intent (deepen and detail, preserve all parameters/types/contracts/sub-bullets, enrich failure recovery and lifecycle states) from Execution Intent (/frontier-architect continue Zero-Plan-Re-Read Gate: status/next + cli-cheatsheet.md first, no enter_plan_mode, no parallel same-file edits, no duplicate RequestFeedback: true artifact).",
+      "files": [],
+      "expectations": [
+        "Applies Improvement Intent by deepening and detailing the plan without simplifying or stripping concrete parameters, types, or sub-bullets",
+        "Enriches existing plans with failure recovery, edge cases, lifecycle states, and modularity invariants",
+        "Enforces the Zero-Plan-Re-Read Gate on /frontier-architect continue by running plan_engine.py status/next and reading cli-cheatsheet.md before reading the full plan",
+        "Never calls enter_plan_mode, never manually patches checkboxes with edit_file, and never emits a duplicate RequestFeedback: true artifact on continue"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "You just spawned a research subagent to inspect 12 unfamiliar files in src/pipeline/ and kicked off a fast background command. How do you manage subagent coordination, file reading, and waiting without wasting tokens or causing wakeup races?",
+      "expected_output": "Follows Zero Subagent Duplication, Wakeup Race & Transcript Scraping: never re-reads files the research subagent was dispatched to sweep, waits for the subagent SYSTEM_MESSAGE instead of reading files on fast command early wakeup, never reads subagent transcript.jsonl, and never polls manage_subagents list, manage_task status, or schedule timers.",
+      "files": [],
+      "expectations": [
+        "Delegates >3-4 unfamiliar files to a research subagent (Model: 'flash') and never re-reads those swept files in the main thread",
+        "Avoids wakeup races by waiting for the subagent SYSTEM_MESSAGE instead of starting manual read_file sweeps on fast command early wakeup",
+        "Never reads subagent transcript.jsonl and never polls manage_subagents list, manage_task status, or schedule timers",
+        "Checkpoints distilled summaries into AGENTS.md or artifacts for clean fresh threads"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "Draft an export-ready implementation plan for our cross-platform Python + JS repo where AGENTS.md enforces a 300-line ceiling and the team previously put file:/// links, .venv/Scripts/python.exe, and MIGRATION_LOG.md tasks in plans.",
+      "expected_output": "Enforces the Export-Ready Portable Plan Contract (POSIX repo-relative paths, zero file:/// URIs, OS-agnostic commands, Scenario Combinations Matrix), Changelog Task Formulation Invariant (diagnose.py changelog add instead of MIGRATION_LOG.md), Plan Budget Calibration (--max-lines 300), and Filesystem Verification before plan formulation.",
+      "files": [],
+      "expectations": [
+        "Enforces Export-Ready Portable Plan Contract with POSIX repo-relative paths and zero file:/// URIs or machine-local paths",
+        "Uses OS-agnostic verification commands and includes an executable Scenario Combinations Matrix",
+        "Enforces Changelog Task Formulation Invariant using diagnose.py changelog add instead of raw MIGRATION_LOG.md tasks",
+        "Calibrates diagnose.py audit --max-lines to the project's tighter AGENTS.md line ceiling and verifies file vs. directory paths before planning"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "We finished editing 3 Python files in a vertical slice, including a threaded worker with a lock and a dev server daemon we started to test. Walk through your Tier 1 audit gate, second-check concurrency verification, test fixture rules, and turn-end cleanup.",
+      "expected_output": "Runs diagnose.py audit --path <modified_files> before unittest, enforces Zero Audit Evasion (never drops failing files or advances on non-zero exit), verifies interruptibility (threading.Timer), shadowing defaults, and waits/joins outside locks (Second-Check Verification Gate), uses lightweight synthetic mini-fixtures, and kills temporary daemons via manage_task kill before ending the turn.",
+      "files": [],
+      "expectations": [
+        "Runs diagnose.py audit --path <modified_files> before unittest and enforces Zero Audit Evasion (never drops a modified file or advances on non-zero exit)",
+        "Applies Second-Check Verification Gate checking interruptibility with threading.Timer, upstream shadowing defaults, and waits/joins strictly outside lock blocks",
+        "Uses Lightweight Test Fixtures (synthetic mini-fixtures/mocks) instead of full-dataset inferences",
+        "Enforces Mandatory Turn-End Daemon & Task Teardown via manage_task kill for temporary verification servers"
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "We need job progress and diagnostic reports in the web UI to survive tab switches and page reloads, and we also just completed a verification-only milestone with no application code changes. How should state be stored and how do you handle advance + commit hints?",
+      "expected_output": "Enforces Persistent State Invariant (DB, localStorage, or server cache rather than volatile in-memory JS Map/Object), runs plan_engine.py verify and advance, and obeys the Smart Commit Hint Gate by omitting a git commit snippet when advance reports no application code changes.",
+      "files": [],
+      "expectations": [
+        "Enforces Persistent State Invariant backed by database, local storage, or server-side cache rather than volatile in-memory JS Map or Object",
+        "Runs plan_engine.py verify and plan_engine.py advance to record test baselines and patch checkboxes",
+        "Obeys Smart Commit Hint Gate by omitting git commit commands when a milestone is verification/audit only with no application code changes",
+        "Logs 4-dimensional retrospective telemetry via plan_engine.py retrospective on milestone advance"
+      ]
+    },
+    {
+      "id": 21,
+      "prompt": "While executing a slice, static_auditor.py threw a false positive on Python Protocol classes. Also, what if a 'quick' Bucket A fix starts touching 4 files and changing a public API, or the user only asked to 'check if this is right'?",
+      "expected_output": "Applies In-Flight Tool Elevation Protocol (fixes static_auditor.py in system-diagnostics/scripts/ SSOT and runs system-diagnostics/tests/ before resuming app code), stops and re-triages when Bucket A grows past 2-3 files or changes public interfaces, and keeps read-only review requests non-editing unless asked.",
+      "files": [],
+      "expectations": [
+        "Applies In-Flight Tool Elevation Protocol by fixing skill script bugs in their SSOT (system-diagnostics/scripts/ or frontier-architect/scripts/) and running skill tests before resuming",
+        "Stops, re-triages, and informs the user when a Bucket A fix grows beyond 2-3 files, changes a public interface, or fails first verification",
+        "Treats read-only or review requests ('check this', 'audit this') by reporting findings without editing files unless requested",
+        "Splits mixed requests cleanly between empirical baseline via app-debugger/diagnose.py and architectural design via frontier-architect"
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "Walk through your rules for avoiding dangling questions during Phase 1A interviews, and your final sign-off checklist when the last milestone of a plan reaches 100%.",
+      "expected_output": "Enforces Zero-Dangling-Question Invariant (never end a turn with Question X without calling ask_question in the same turn) and Final Plan Completion Sign-Off (diagnose.py scan --path . including tests/, non-mocked unconfigured/empty fallback branches, plan_engine.py digest --backfill --write-scaffold, diagnose.py changelog add, git diff main...plan/<slug>, LEARNING_SCAFFOLD.md + Introspective Options, and New Conversation (+)/compact advice).",
+      "files": [],
+      "expectations": [
+        "Enforces Zero-Dangling-Question Invariant by always calling ask_question in the same turn when presenting an interview question",
+        "Runs diagnose.py scan --path . (including tests/) and exercises unconfigured/empty/fallback branches without mocks hiding them at plan close",
+        "Runs plan_engine.py digest --backfill --write-scaffold, diagnose.py changelog add, and provides git diff main...plan/<slug> on final completion",
+        "Surfaces LEARNING_SCAFFOLD.md highlights and Introspective Options and advises clicking New Conversation (+) or /compact"
+      ]
     }
   ]
 }

@@ -232,6 +232,16 @@ python skills/system-diagnostics/scripts/diagnose.py package-skill <SKILL_OR_ALL
 - `--out <DIR>`: Output directory for `.skill` archives (default: `dist/`).
 - *Temp-Stage Standalone Bundling*: Stages the skill in an isolated temporary directory, materializes any thin SSOT shims into full standalone scripts from `system-diagnostics/scripts/`, strips dev-only directories (`tests/`, `evals/`, `.coverage`, `.diagnostics/`), and invokes `/skill-creator`'s `package_skill.py` validator/packager.
 
+### Subcommands: `arch-map`, `traces`, & `run`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py arch-map [--path <PATHS...>] [--include-tests] [--json] [--full] [--out <FILE>]
+python skills/system-diagnostics/scripts/diagnose.py traces [--clear] [--scaffold {fastapi,flask,generic}] [--dest <DIR>]
+python skills/system-diagnostics/scripts/diagnose.py run <COMMAND...>
+```
+- `arch-map`: Generates a compact architecture, modularity, route, and import-coupling map in Markdown or `--json`.
+- `traces`: Inspects and clears `.diagnostics/` runtime crash/trace catalogs, or scaffolds a framework bridge (`--scaffold fastapi|flask|generic`).
+- `run`: Zero-code runner that launches an application command with automatic runtime tracing bootstrapped.
+
 ---
 
 ## Windows Shell & Tooling Resilience

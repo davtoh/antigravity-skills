@@ -15,139 +15,80 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 EVALS_FILE = SKILL_DIR / "evals" / "evals.json"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 
+# Ordered (trigger_terms_any, required_regexes_all, label)
+_RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
+    (("3-tier", "diagnose.py all"), (r"diagnose\.py\s+all|3-tier",), "Unified 3-tier / diagnose.py all"),
+    (("axiom 9", "honest verification"), (r"axiom\s*9|honest verification|verified|unverified|skipped",), "Axiom 9 reporting"),
+    (("auto-probe", "auto-detect"), (r"auto-probe|auto-detect|ports?|8000|3000",), "Auto-probing"),
+    (("strict",), (r"--strict",), "--strict option"),
+    (("diagnose.py ui", "cdp"), (r"diagnose\.py\s+ui|cdp",), "diagnose.py ui / CDP"),
+    (("--live", "devtoolsactiveport"), (r"--live|devtoolsactiveport|visible",), "--live flag"),
+    (("audit-layout", "bounding box", "overflow"), (r"--audit-layout|bounding box|overflow|domrect",), "--audit-layout"),
+    (("headless",), (r"--headless",), "--headless"),
+    (("diagnose.py container", "docker stats"), (r"diagnose\.py\s+container|docker stats|docker top",), "Container audit"),
+    (("sync-check", "md5"), (r"--sync-check|md5",), "Sync check"),
+    (("traceback", "--lines", "exception"), (r"--lines|traceback|exception",), "Traceback scan"),
+    (("diagnose.py surface", "html element id"), (r"diagnose\.py\s+surface|html element ids?",), "Surface scanning"),
+    (("window.*", "global"), (r"window\.\*|global",), "Window globals"),
+    (("!important",), (r"!important",), "!important count"),
+    (("diagnose.py tests", "virtualenv", ".venv"), (r"diagnose\.py\s+tests|virtualenv|\.venv",), "Virtualenv test runner"),
+    (("diagnose.py audit", "code smell audit"), (r"diagnose\.py\s+audit|static quality",), "Static quality audit"),
+    (("import ladder", "--smells"), (r"import ladder|--smells|try\.\.\.except\s+importerror",), "Import ladder smells"),
+    (("callable smoke", "--callable-smoke"), (r"--callable-smoke|callable smoke",), "Callable smoke tests"),
+    (("top 5", "token budget"), (r"top\s*5|token-budget",), "Token budgeting / top 5"),
+    (("transcript-audit",), (r"transcript-audit", r"--latest|--cids"), "transcript-audit command"),
+    (("parallel same-file", "duplicate subagent"), (r"--json", r"parallel same-file|subagent duplicate"), "transcript-audit JSON metrics"),
+    (("grade cap", "--brain-dir", "agy_brain_dir"), (r"grade cap", r"--brain-dir|AGY_BRAIN_DIR"), "transcript-audit grade caps & brain-dir"),
+    (("--path src/", "multiple files or directories"), (r"diagnose\.py\s+scan", r"--path\s+<paths\.\.\.>|one or more files/directories"), "Multi-path scan --path"),
+    (("--deep", "extended rules"), (r"--deep", r"--all"), "scan --deep / --all"),
+    (("--prune",), (r"--prune", r"vanished|resolved"), "scan --prune"),
+    (("diagnose.py scan",), (r"diagnose\.py\s+scan",), "Polyglot scan"),
+    (("dual-key",), (r"dual-key|defect-xxx",), "Dual-key IDs"),
+    (("single source of truth", "ssot"), (r"single source of truth|ssot|defect_catalog\.json",), "SSOT catalog"),
+    (("scaffold-defect",), (r"scaffold-defect",), "Scaffold defect"),
+    (("dual-track", "/app-debugger"), (r"dual-track|/app-debugger|frontier-architect",), "Dual-track remediation"),
+    (("probe list",), (r"diagnose\.py\s+probe\s+list",), "probe list"),
+    (("probe run camera_hardware",), (r"diagnose\.py\s+probe\s+run\s+camera_hardware",), "probe run camera_hardware"),
+    (("probe new",), (r"diagnose\.py\s+probe\s+new",), "probe new"),
+    (("probe save",), (r"diagnose\.py\s+probe\s+save",), "probe save"),
+    (("changelog add",), (r"diagnose\.py\s+changelog\s+add", r"--title"), "changelog add"),
+    (("150 lines", ".changelogs/"), (r"150", r"\.changelogs/"), "changelog 150-line cap & sharding"),
+    (("changelog migrate",), (r"diagnose\.py\s+changelog\s+migrate",), "changelog migrate"),
+    (("changelog show", "changelog status"), (r"changelog\s+show\s+--recent\s+3", r"changelog\s+status"), "changelog show/status"),
+    (("resolve-defect",), (r"diagnose\.py\s+resolve-defect\s+--id", r"--note"), "resolve-defect"),
+    (("dismiss-defect",), (r"diagnose\.py\s+dismiss-defect\s+--id", r"--reason"), "dismiss-defect"),
+    (("--elevate",), (r"scaffold-defect\s+--id.*--elevate",), "scaffold-defect --elevate"),
+    (("package-skill",), (r"diagnose\.py\s+package-skill",), "package-skill"),
+    (("temp-stages", "ssot shims"), (r"temp-stage", r"ssot shims"), "temp-stage SSOT shims"),
+    (("package_skill.py",), (r"package_skill\.py", r"tests/"), "package_skill.py strip tests"),
+    (("--eval-file",), (r"--eval-file", r"quote-stripping"), "ui --eval-file"),
+    (("--click", "--screenshot"), (r"--click", r"--screenshot"), "ui --click & --screenshot"),
+    (("--no-fallback-headless",), (r"--no-fallback-headless",), "ui --no-fallback-headless"),
+    (("--navigate", "--window-size"), (r"--navigate", r"--window-size"), "ui --navigate & --window-size"),
+    (("arch-map",), (r"diagnose\.py\s+arch-map",), "arch-map"),
+    (("--include-tests",), (r"--json", r"--full", r"--include-tests", r"--out"), "arch-map options"),
+    (("diagnose.py run",), (r"diagnose\.py\s+run", r"zero-code runner"), "diagnose.py run"),
+    (("diagnose.py traces", "--scaffold"), (r"diagnose\.py\s+traces",), "diagnose.py traces"),
+    (("cmd /c npx",), (r"cmd\s+/c\s+npx\s+-y",), "cmd /c npx -y"),
+    (("git grep",), (r"git grep -n",), "git grep -n"),
+    (("crlf/lf",), (r"crlf/lf",), "CRLF/LF preservation"),
+]
+
+
 def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     """Check if skill documentation provides concrete evidence for an expectation."""
     exp_lower = expectation.lower()
-
-    if "3-tier" in exp_lower or "diagnose.py all" in exp_lower:
-        has_all = bool(re.search(r"diagnose\.py\s+all|3-tier", text, re.I))
-        return has_all, f"Unified 3-tier / diagnose.py all: {has_all}"
-
-    if "axiom 9" in exp_lower or "honest verification" in exp_lower:
-        has_a9 = bool(re.search(r"axiom\s*9|honest verification|verified|unverified|skipped", text, re.I))
-        return has_a9, f"Axiom 9 reporting: {has_a9}"
-
-    if "auto-probe" in exp_lower or "auto-detect" in exp_lower:
-        has_probe = bool(re.search(r"auto-probe|auto-detect|ports?|8000|3000", text, re.I))
-        return has_probe, f"Auto-probing: {has_probe}"
-
-    if "strict" in exp_lower:
-        has_strict = bool(re.search(r"--strict", text, re.I))
-        return has_strict, f"--strict option: {has_strict}"
-
-    if "diagnose.py ui" in exp_lower or "cdp" in exp_lower:
-        has_ui = bool(re.search(r"diagnose\.py\s+ui|cdp", text, re.I))
-        return has_ui, f"diagnose.py ui / CDP: {has_ui}"
-
-    if "--live" in exp_lower or "devtoolsactiveport" in exp_lower:
-        has_live = bool(re.search(r"--live|devtoolsactiveport|visible", text, re.I))
-        return has_live, f"--live flag: {has_live}"
-
-    if "audit-layout" in exp_lower or "bounding box" in exp_lower or "overflow" in exp_lower:
-        has_audit = bool(re.search(r"--audit-layout|bounding box|overflow|domrect", text, re.I))
-        return has_audit, f"--audit-layout: {has_audit}"
-
-    if "headless" in exp_lower:
-        has_headless = bool(re.search(r"--headless", text, re.I))
-        return has_headless, f"--headless: {has_headless}"
-
-    if "diagnose.py container" in exp_lower or "docker stats" in exp_lower:
-        has_cnt = bool(re.search(r"diagnose\.py\s+container|docker stats|docker top", text, re.I))
-        return has_cnt, f"Container audit: {has_cnt}"
-
-    if "sync-check" in exp_lower or "md5" in exp_lower:
-        has_sync = bool(re.search(r"--sync-check|md5", text, re.I))
-        return has_sync, f"Sync check: {has_sync}"
-
-    if "traceback" in exp_lower or "--lines" in exp_lower or "exception" in exp_lower:
-        has_trace = bool(re.search(r"--lines|traceback|exception", text, re.I))
-        return has_trace, f"Traceback scan: {has_trace}"
-
-    if "diagnose.py surface" in exp_lower or "html element id" in exp_lower:
-        has_surf = bool(re.search(r"diagnose\.py\s+surface|html element ids?", text, re.I))
-        return has_surf, f"Surface scanning: {has_surf}"
-
-    if "window.*" in exp_lower or "global" in exp_lower:
-        has_glob = bool(re.search(r"window\.\*|global", text, re.I))
-        return has_glob, f"Window globals: {has_glob}"
-
     if "backend" in exp_lower and "route" in exp_lower:
-        has_routes = bool(re.search(r"routes?|@app\.", text, re.I))
-        return has_routes, f"Backend routes: {has_routes}"
-
-    if "!important" in exp_lower:
-        has_imp = bool(re.search(r"!important", text, re.I))
-        return has_imp, f"!important count: {has_imp}"
-
-    if "diagnose.py tests" in exp_lower or "virtualenv" in exp_lower or ".venv" in exp_lower:
-        has_test = bool(re.search(r"diagnose\.py\s+tests|virtualenv|\.venv", text, re.I))
-        return has_test, f"Virtualenv test runner: {has_test}"
-
-    if "diagnose.py audit" in exp_lower or "code smell audit" in exp_lower:
-        has_audit = bool(re.search(r"diagnose\.py\s+audit|static quality", text, re.I))
-        return has_audit, f"Static quality audit: {has_audit}"
-
-    if "import ladder" in exp_lower or "--smells" in exp_lower:
-        has_smell = bool(re.search(r"import ladder|--smells|try\.\.\.except\s+importerror", text, re.I))
-        return has_smell, f"Import ladder smells: {has_smell}"
-
-    if "callable smoke" in exp_lower or "--callable-smoke" in exp_lower:
-        has_smoke = bool(re.search(r"--callable-smoke|callable smoke", text, re.I))
-        return has_smoke, f"Callable smoke tests: {has_smoke}"
-
-    if "top 5" in exp_lower or "token budget" in exp_lower:
-        has_budget = bool(re.search(r"top\s*5|token-budget", text, re.I))
-        return has_budget, f"Token budgeting / top 5: {has_budget}"
-
-    if "transcript-audit" in exp_lower:
-        has_ta = bool(re.search(r"transcript-audit", text, re.I)) and bool(re.search(r"--latest|--cids", text, re.I))
-        return has_ta, f"transcript-audit command: {has_ta}"
-
-    if "parallel same-file" in exp_lower or "duplicate subagent" in exp_lower:
-        has_dup = bool(re.search(r"--json", text, re.I)) and bool(re.search(r"parallel same-file|subagent duplicate", text, re.I))
-        return has_dup, f"transcript-audit JSON metrics: {has_dup}"
-
-    if "grade cap" in exp_lower or "--brain-dir" in exp_lower or "agy_brain_dir" in exp_lower:
-        has_cap = bool(re.search(r"grade cap", text, re.I)) and bool(re.search(r"--brain-dir|AGY_BRAIN_DIR", text, re.I))
-        return has_cap, f"transcript-audit grade caps & brain-dir: {has_cap}"
-
-    if "--path src/" in exp_lower or "multiple files or directories" in exp_lower:
-        has_mp = bool(re.search(r"diagnose\.py\s+scan", text, re.I)) and bool(re.search(r"--path\s+<paths\.\.\.>|one or more files/directories", text, re.I))
-        return has_mp, f"Multi-path scan --path: {has_mp}"
-
-    if "--deep" in exp_lower or "extended rules" in exp_lower:
-        has_deep = bool(re.search(r"--deep", text, re.I)) and bool(re.search(r"--all", text, re.I))
-        return has_deep, f"scan --deep / --all: {has_deep}"
-
-    if "--prune" in exp_lower:
-        has_prune = bool(re.search(r"--prune", text, re.I)) and bool(re.search(r"vanished|resolved", text, re.I))
-        return has_prune, f"scan --prune: {has_prune}"
-
-    if "diagnose.py scan" in exp_lower:
-        has_scan = bool(re.search(r"diagnose\.py\s+scan", text, re.I))
-        return has_scan, f"Polyglot scan: {has_scan}"
-
-    if "dual-key" in exp_lower:
-        has_dk = bool(re.search(r"dual-key|defect-xxx", text, re.I))
-        return has_dk, f"Dual-key IDs: {has_dk}"
-
-    if "single source of truth" in exp_lower or "ssot" in exp_lower:
-        has_ssot = bool(re.search(r"single source of truth|ssot|defect_catalog\.json", text, re.I))
-        return has_ssot, f"SSOT catalog: {has_ssot}"
-
-    if "scaffold-defect" in exp_lower:
-        has_scaf = bool(re.search(r"scaffold-defect", text, re.I))
-        return has_scaf, f"Scaffold defect: {has_scaf}"
-
-    if "dual-track" in exp_lower or "/app-debugger" in exp_lower:
-        has_dt = bool(re.search(r"dual-track|/app-debugger|frontier-architect", text, re.I))
-        return has_dt, f"Dual-track remediation: {has_dt}"
-
-    # Generic keyword match
+        ok = bool(re.search(r"routes?|@app\.", text, re.I))
+        return ok, f"Backend routes: {ok}"
+    for triggers, patterns, label in _RULES:
+        if any(t in exp_lower for t in triggers):
+            ok = all(bool(re.search(p, text, re.I)) for p in patterns)
+            return ok, f"{label}: {ok}"
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
-    found_cnt = sum(1 for w in words if w in text.lower())
-    passed = (found_cnt / max(len(words), 1)) >= 0.4
-    return passed, f"Generic keywords: {found_cnt}/{len(words)}"
+    found = sum(1 for w in words if w in text.lower())
+    return (found / max(len(words), 1)) >= 0.4, f"Generic keywords: {found}/{len(words)}"
+
 
 class TestSystemDiagnosticsEvals(unittest.TestCase):
     """Test suite ensuring SKILL.md meets all evaluation requirements."""
@@ -156,11 +97,8 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
     def setUpClass(cls):
         cls.assertTrue(EVALS_FILE.exists(), f"Missing evals file at {EVALS_FILE}")
         cls.assertTrue(SKILL_MD.exists(), f"Missing SKILL.md at {SKILL_MD}")
-
         with open(EVALS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            cls.evals = data.get("evals", [])
-
+            cls.evals = json.load(f).get("evals", [])
         cls.skill_text = SKILL_MD.read_text(encoding="utf-8")
 
     def test_evals_json_structure(self):
@@ -174,20 +112,20 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
 
     def test_skill_satisfies_all_eval_expectations(self):
         """Assert current SKILL.md satisfies 100% of expectations across all scenarios."""
-        failures = []
-        for e in self.evals:
-            eid = e["id"]
-            for exp in e.get("expectations", []):
-                passed, reason = evaluate_expectation(self.skill_text, exp)
-                if not passed:
-                    failures.append(f"Eval {eid}: '{exp}' failed ({reason})")
-
+        failures = [
+            f"Eval {e['id']}: '{exp}' failed ({reason})"
+            for e in self.evals
+            for exp in e.get("expectations", [])
+            for ok, reason in (evaluate_expectation(self.skill_text, exp),)
+            if not ok
+        ]
         self.assertEqual(len(failures), 0, "Regressions found in SKILL.md:\n" + "\n".join(failures))
 
     def test_line_count_modularity_budget(self):
         """Assert SKILL.md is under the 350-line target (500 hard ceiling)."""
         lines = len(self.skill_text.splitlines())
         self.assertLessEqual(lines, 350, f"SKILL.md exceeds 350-line soft ceiling: {lines} lines")
+
 
 if __name__ == "__main__":
     unittest.main()
