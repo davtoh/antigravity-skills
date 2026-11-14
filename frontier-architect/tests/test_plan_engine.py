@@ -537,6 +537,7 @@ class TestPlanEngineCLI(unittest.TestCase):
         self._run_cli(["init", "em_dash_plan"])
         code, adv1 = self._run_cli(["advance", "em_dash_plan", "--milestone", "1", "--commit", "abc1111"])
         self.assertEqual(code, 0)
+        self.assertIn("em_dash_plan.md", adv1)
         self.assertIn("core fts5 index", adv1.lower())
         self.assertNotIn("active execution target", adv1.lower())
 
@@ -544,6 +545,11 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("dashboard api", adv2.lower())
         self.assertNotIn("deferred to next turn", adv2.lower())
+        patched_md = plan_path.read_text(encoding="utf-8")
+        self.assertNotIn("Active Execution Target", patched_md)
+        self.assertNotIn("Deferred to Next Turn", patched_md)
+        ps = load_json(get_frontier_dir(self.root) / "plans" / "em_dash_plan" / "state.json")
+        self.assertEqual([m["title"] for m in ps["milestones"]], ["Core — FTS5 Index", "Dashboard API"])
 
     def test_retrospective_retries_caps_inflated_grade(self):
         self._run_cli(["init", "sample_plan"])

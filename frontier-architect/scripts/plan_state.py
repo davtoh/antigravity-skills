@@ -16,7 +16,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_parser import discover_plans, parse_plan_markdown, slugify
+from plan_parser import STATUS_TAG_REGEX, discover_plans, parse_plan_markdown, slugify
 
 
 def get_repo_root(target: Path | None = None) -> Path:
@@ -198,6 +198,7 @@ def record_milestone_advance(
     """Update plan and workspace ledgers after advancing a milestone."""
     for m in ps["milestones"]:
         if m["index"] == target_idx:
+            m["title"] = STATUS_TAG_REGEX.sub("", m.get("title", "")).strip()
             m["status"] = "completed"
             m["completed_tasks"] = m["total_tasks"]
             m["commit_sha"] = sha

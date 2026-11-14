@@ -101,13 +101,14 @@ def print_advance_summary(
     scaffold_rel: str | None = None,
 ) -> None:
     """Print the milestone-advance result, turn gate, and user-selectable introspective commands."""
-    print(f"[plan_engine] Advanced Milestone {target_idx} (checked {patched} tasks).")
+    plan_ref = ps.get("plan_path") or ps.get("slug", "plan")
+    print(f"[plan_engine] Advanced Milestone {target_idx} (checked {patched} tasks in {plan_ref}).")
     print(f"  Commit: {sha or 'N/A'} | Status: {ps['status']}")
     print(f"  Suggested Commit: {commit_hint}")
     if missing_prior_retro is not None:
         print(f"[plan_engine] RETROSPECTIVE REMINDER: Milestone {missing_prior_retro} has no retrospective logged yet (run `plan_engine.py retrospective {ps['slug']} --milestone {missing_prior_retro} ...`).")
     if ps["status"] == "completed":
-        print("[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off & Pre-Merge Gate.")
+        print(f"[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off Gate (`diagnose.py scan --path .` + `plan_engine.py digest {ps['slug']} --backfill --write-scaffold`).")
         if scaffold_rel:
             print(f"[plan_engine] Learning Scaffold: {scaffold_rel}")
         if ps.get("parent_plan"):
