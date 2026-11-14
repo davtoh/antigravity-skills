@@ -211,24 +211,24 @@ def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | No
         return 0
     ta, brain = loaded
     rel = Path(".system_generated") / "logs" / "transcript.jsonl"
-    dirs = [brain / _resolve_one_cid(brain, c) for c in cids] if cids else (list(brain.iterdir()) if brain.is_dir() else [])
-    idx_rows = [_index_conversation(d.name, d / rel, ta) for d in dirs if (d / rel).is_file()]
+    idx_rows: list[dict[str, Any]] | None = None
     slugs = [ps["slug"]] + [c.get("slug") for c in (ps.get("child_plans") or {}).values() if c.get("slug")]
     cache, updated, pos = {}, 0, 0
     for slug in slugs:
         rpath = get_frontier_dir(root) / "plans" / slug / "retrospectives.json"
-        rows = load_json(rpath, [])
-        if not isinstance(rows, list):
+        if not isinstance(rows := load_json(rpath, []), list):
             continue
         dirty = False
-        for e in rows:
-            if not isinstance(e, dict):
-                continue
+        for e in (r for r in rows if isinstance(r, dict)):
             row = None
-            if idx_rows and (e.get("steps") is None or e.get("retries") is None or not e.get("tool_reliability_scores")):
-                if cid := _match_entry_cid(e, idx_rows, cids, pos):
-                    row = cache.setdefault(cid, ta.audit_conversation(brain, cid))
-                pos += 1
+            if e.get("steps") is None or e.get("retries") is None or not e.get("tool_reliability_scores"):
+                if idx_rows is None:
+                    dirs = [brain / _resolve_one_cid(brain, c) for c in cids] if cids else (list(brain.iterdir()) if brain.is_dir() else [])
+                    idx_rows = [_index_conversation(d.name, d / rel, ta) for d in dirs if (d / rel).is_file()]
+                if idx_rows:
+                    if cid := _match_entry_cid(e, idx_rows, cids, pos):
+                        row = cache.setdefault(cid, ta.audit_conversation(brain, cid))
+                    pos += 1
             if _apply_backfill_row(e, row):
                 dirty, updated = True, updated + 1
         rows, dropped = _dedupe_retro_rows(rows)

@@ -109,8 +109,7 @@ When intent is fuzzy, prevent wasted effort by asking 2 to 4 sharp, structured q
 
 ### Phase 1B: Reproduce-First & Browser/Runtime Diagnostic Gate (For Bugs & Regressions)
 
-Bug fixes fail or burn tokens when agents guess from static source without live DOM/container evidence, or when chrome_devtools//browser is unavailable (e.g. 
-px missing) and they hand-write repetitive CDP scripts.
+Bug fixes fail or burn tokens when agents guess from static source without live DOM/container evidence, or when `chrome_devtools` / `/browser` is unavailable (e.g. `npx` missing) and they hand-write repetitive CDP scripts.
 
 When handling **Bucket D**, **NEVER write ad-hoc CDP or Docker inspection scripts from scratch**.
 - **Centralized Diagnostic Suite (Recommended)**: If `system-diagnostics` is available (or via `/app-debugger`), run `"<config_dir>/skills/system-diagnostics/scripts/diagnose.py"` (`all`, `ui --live --audit-layout`, `container --sync-check`, `probe run <name>`); see [`references/cli-cheatsheet.md`](./references/cli-cheatsheet.md) for full flags.
@@ -254,7 +253,7 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
 ## Built-In Cross-Platform Helper Scripts & Reference Library
 
 ### Scripts (`scripts/`) & References (`references/`)
-- `plan_engine.py` (+ `plan_parser.py`, `plan_state.py`, `plan_telemetry.py`, `plan_digest.py`): `continue`, `status`, `next`, `advance`, `retrospective`, `lookup`, `verify`, `digest`.
+- `plan_engine.py` (+ `plan_parser.py`, `plan_state.py`, `plan_telemetry.py`, `plan_digest.py`, `plan_cli_helpers.py`): `discover`, `init`, `continue`, `status`, `next`, `advance`, `retrospective`, `lookup`, `verify`, `digest`.
 - `cdp_inspect.py` / `docker_audit.py`: thin SSOT shims to `system-diagnostics/scripts/` (`package-skill` materializes a standalone `.skill`).
 - `references/`: [`cli-cheatsheet.md`](./references/cli-cheatsheet.md) (exact commands), [`flash-opus-harness.md`](./references/flash-opus-harness.md), [`sota-patterns.md`](./references/sota-patterns.md), [`spike-protocol.md`](./references/spike-protocol.md), [`workflow-diagram.md`](./references/workflow-diagram.md).
 

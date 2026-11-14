@@ -34,7 +34,8 @@ def _suggest_slice_tools(target_m: dict[str, Any]) -> list[str]:
     blob = " ".join(t.get("text", "").lower() for t in target_m.get("tasks", []))
     tools: list[str] = []
     if any(k in blob for k in (".html", ".css", ".js", ".ts", ".jsx", ".tsx", "layout", "modal", "dashboard")) or re.search(r"\b(?:dom|ui)\b", blob):
-        tools.append("diagnose.py surface --show-ids --show-routes && diagnose.py ui --headless --audit-layout")
+        tools.append("diagnose.py surface --show-ids --show-routes")
+        tools.append("diagnose.py ui --headless --audit-layout")
     if any(k in blob for k in (".py", "router", "service", "refactor", "module", "pool", "pipeline")):
         tools.append("diagnose.py audit --path <modified_files> --max-lines 350 --max-fn-lines 40")
     if any(k in blob for k in ("camera", "directshow", "hardware", "probe", "database", "sqlite", "mqtt")):

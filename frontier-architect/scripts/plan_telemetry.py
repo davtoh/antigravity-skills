@@ -152,11 +152,11 @@ def _upsert_retro(entries: list[dict[str, Any]], entry: dict[str, Any], slug: st
     for i, old in enumerate(entries):
         if not isinstance(old, dict) or old.get("milestone_index") != m_idx:
             continue
-        if slug and old.get("_slug") and old.get("_slug") != slug:
+        if slug and old.get("_slug") != slug:
             continue
         old_cid = str(old.get("cid") or "").lower()
         cid_match = bool(old_cid and new_cid and (old_cid.startswith(new_cid) or new_cid.startswith(old_cid)))
-        incomplete_retry = bool(old_cid and old.get("steps") is None and new_cid)
+        incomplete_retry = bool(old.get("steps") is None and (new_cid or entry.get("steps") is not None))
         if cid_match or incomplete_retry:
             entries[i] = entry
             return
@@ -188,7 +188,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     _upsert_retro(retros, entry)
     save_json(retro_path, retros)
     ws = load_json(fdir / "state.json", {})
-    _upsert_retro(ws.setdefault("retrospectives", []), entry)
+    _upsert_retro(ws.setdefault("retrospectives", []), {**entry, "_slug": ps["slug"]}, slug=ps["slug"])
     save_json(fdir / "state.json", ws)
     from plan_digest import write_learning_scaffold
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
