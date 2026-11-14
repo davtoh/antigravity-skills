@@ -644,6 +644,38 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertIn("/learn candidate (skill): Auto-detect >=4 milestones", out)
         self.assertIn("Tool gap: scan --path lacked nargs=+", out)
 
+    def test_init_scope_recommendation_three_subsystems_ten_tasks(self):
+        plan = self.root / ".TODO" / "cross_layer.md"
+        plan.write_text(
+            "# Cross Layer\n\n"
+            "## Milestone 1: API\n"
+            "- [ ] **api/a.py**: t1\n- [ ] **api/b.py**: t2\n- [ ] **api/c.py**: t3\n- [ ] **api/d.py**: t4\n\n"
+            "## Milestone 2: UI\n"
+            "- [ ] **ui/x.js**: t5\n- [ ] **ui/y.js**: t6\n- [ ] **ui/z.js**: t7\n\n"
+            "## Milestone 3: Core\n"
+            "- [ ] **core/m.py**: t8\n- [ ] **core/n.py**: t9\n- [ ] **core/o.py**: t10\n",
+            encoding="utf-8",
+        )
+        code, out = self._run_cli(["init", ".TODO/cross_layer.md"])
+        self.assertEqual(code, 0)
+        self.assertIn("SCOPE RECOMMENDATION (MASTER PLAN)", out)
+
+    def test_slice_tools_matches_punctuated_ui_and_probe_audit_scan(self):
+        p = self.root / ".TODO" / "all_tools.md"
+        p.write_text(
+            "# All Tools\n\n"
+            "## Milestone 1: Mixed\n"
+            "- [ ] Fix UI: camera probe bug in router.py\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "all_tools"])
+        code, out = self._run_cli(["next", "all_tools"])
+        self.assertEqual(code, 0)
+        self.assertIn("diagnose.py surface", out)
+        self.assertIn("diagnose.py audit", out)
+        self.assertIn("diagnose.py probe list", out)
+        self.assertIn("diagnose.py scan --path .", out)
+
 
 if __name__ == "__main__":
     unittest.main()

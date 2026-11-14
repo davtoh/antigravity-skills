@@ -138,6 +138,21 @@ class TestPlanDigest(unittest.TestCase):
         self.assertIn("CLI flag missing", text)
         self.assertIn("## Introspective Commands (User Choice)", text)
 
+    def test_digest_write_scaffold_with_json_outputs_valid_json(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+        self._write_retros([
+            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 10, "retries": 0, "tool_reliability_scores": {"overall": 5}},
+        ])
+        ns = argparse.Namespace(plan="demo", cids=None, brain_dir=None, backfill=False, write_scaffold=True, json=True)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = pd.cmd_digest(self.root, ns)
+        self.assertEqual(rc, 0)
+        parsed = json.loads(buf.getvalue())
+        self.assertEqual(parsed["slug"], "demo")
+        self.assertTrue((self.root / ".frontier" / "plans" / "demo" / "LEARNING_SCAFFOLD.md").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

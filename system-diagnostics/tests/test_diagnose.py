@@ -291,6 +291,16 @@ class TestSubcommandsExecution(unittest.TestCase):
             self.assertTrue(cat_file.is_file())
             self.assertIn("DEFECT-002", cat_file.read_text(encoding="utf-8"))
 
+    def test_scan_and_save_single_file_uses_parent_workspace(self):
+        import shadow_prober
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sub = Path(tmpdir) / "nested"
+            sub.mkdir()
+            f = sub / "a.py"
+            f.write_text("def f(x=[]):\n    pass\n", encoding="utf-8")
+            _, json_path, _ = shadow_prober.scan_and_save(f)
+            self.assertEqual(json_path.parent.parent, sub.resolve())
+
 class TestMainDispatcher(unittest.TestCase):
     """Test top-level main() entrypoint."""
 

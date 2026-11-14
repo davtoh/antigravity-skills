@@ -107,6 +107,22 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertEqual(row["subagent_overlap_reads"], 1)
         self.assertEqual(row["reads_after_subagent"], 1)
 
+    def test_reads_while_pending_and_markdown_dup_reads_flag(self) -> None:
+        _write(self.brain, "parent-2", [
+            _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
+            _planner(
+                ("read_file", {"Path": "a.py"}), ("read_file", {"Path": "b.py"}),
+                ("read_file", {"Path": "c.py"}), ("read_file", {"Path": "d.py"}),
+                ("read_file", {"Path": "e.py"}),
+            ),
+        ])
+        row = ta.audit_conversation(self.brain, "parent-2")
+        self.assertEqual(row["reads_while_pending"], 5)
+        self.assertEqual(row["reads_after_subagent"], 5)
+        md = ta.format_markdown([row])
+        self.assertIn("| dup reads |", md)
+        self.assertIn("5 subagent duplicate reads (5 pending + 0 unedited overlap)", md)
+
 
 if __name__ == "__main__":
     unittest.main()

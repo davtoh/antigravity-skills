@@ -309,7 +309,8 @@ def scan_and_save(
         findings.extend(scan_path(t, deep=deep))
     for idx, defect in enumerate(findings, start=1):
         defect.id = f"DEFECT-{idx:03d}"
-    ws = workspace or (targets[0] if len(targets) == 1 and targets[0].is_dir() else Path.cwd())
+    single = targets[0] if len(targets) == 1 else None
+    ws = workspace or ((single if single.is_dir() else single.parent) if single else Path.cwd())
     json_path, md_path = save_catalog(ws, findings, reconcile_scan=reconcile_scan, prune=prune)
     return findings, json_path, md_path
 
