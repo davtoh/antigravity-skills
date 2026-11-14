@@ -26,7 +26,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_cli_helpers import add_retrospective_parser, print_advance_summary, print_master_gate, print_milestone_body
+from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body
 from plan_digest import cmd_digest, register_digest_parser
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_state import (
@@ -77,6 +77,9 @@ def cmd_init(root: Path, args: argparse.Namespace) -> int:
     if ps.get("parent_plan"):
         p = ps["parent_plan"]
         print(f"  Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']})")
+    parsed = parse_plan_markdown(target.read_text(encoding="utf-8"))
+    if scope_msg := assess_plan_scope(parsed, ps, parent_arg):
+        print(scope_msg)
     return 0
 
 
@@ -231,7 +234,14 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     else:
         commit_hint = _build_commit_suggestion(ps, target_idx)
 
-    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched)
+    missing_prior_retro = None
+    if target_idx > 1:
+        retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
+        logged = {r.get("milestone_index") for r in retros if isinstance(r, dict)}
+        if (target_idx - 1) not in logged:
+            missing_prior_retro = target_idx - 1
+
+    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro)
     return 0
 
 

@@ -9,8 +9,14 @@ Consult this quick-reference sheet during **Phase 1B (Diagnostics)** and **Phase
 ## 1. Plan Continuation Engine (`scripts/plan_engine.py`)
 
 ```bash
+# Discover existing plans before exploring an unfamiliar repo
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" discover --root .
+
 # Initialize or register a markdown plan (.TODO/<slug>.md, .plans/<slug>.md, or explicit path)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" init <plan_or_slug> --root .
+
+# Link a child step plan to a Master Roadmap (when >=4 milestones or >=3 subsystems)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" init .TODO/step_1_<slug>.md --parent <master_slug> --milestone 1 --root .
 
 # Inspect visual progress bar, active milestone, and verification baseline
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" status <plan_or_slug> --root .
@@ -27,17 +33,20 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json and retrospectives.json)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospective <plan_or_slug> \
-  --milestone <N> --grade A --retries 0 --steps 25 --tri "5,5,5,5" --hypotheses 1 \
-  --learn "<reusable insight>" --escalate "none" --root .
+  --milestone <N> --grade A --cid <conv_id> --tri "5,5,5,5" --hypotheses 1 \
+  --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
 
 # Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path <files...> --max-lines 350 --max-fn-lines 40
 
+# Polyglot defect scan across one or multiple paths
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path <paths...>
+
 # Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .
 
-# End-of-plan digest: retro integrity (missing --steps, inflated grades), unresolved /learn candidates, escalations, optional transcript telemetry
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest <plan_or_slug> --cids <conv_id...> --root .
+# End-of-plan digest: retro integrity, dual-axis /learn candidates, optional transcript backfill & LEARNING_SCAFFOLD.md
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest <plan_or_slug> --cids <conv_id...> --backfill --write-scaffold --root .
 
 # Deterministic transcript audit (steps, failures, subagent duplication, parallel same-file edits); use its step count for --steps
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <conv_id...> [--json] [--brain-dir <dir>]

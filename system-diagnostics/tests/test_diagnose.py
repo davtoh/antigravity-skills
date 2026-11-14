@@ -114,9 +114,9 @@ class TestParser(unittest.TestCase):
         self.assertTrue(args.strict)
 
     def test_parse_scan_subcommand(self):
-        args = self.parser.parse_args(["scan", "--path", "src", "--deep", "--json", "--strict"])
+        args = self.parser.parse_args(["scan", "--path", "src", "tests", "--deep", "--json", "--strict"])
         self.assertEqual(args.subcommand, "scan")
-        self.assertEqual(args.path, "src")
+        self.assertEqual(args.path, ["src", "tests"])
         self.assertTrue(args.deep)
         self.assertTrue(args.json)
         self.assertTrue(args.strict)
@@ -271,6 +271,25 @@ class TestSubcommandsExecution(unittest.TestCase):
             code_scaf = diagnose.cmd_scaffold_defect(args_scaf)
             self.assertEqual(code_scaf, 0)
             self.assertTrue((root / "tests" / "quarantine" / "test_defect_001.py").is_file())
+
+    def test_cmd_scan_multiple_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "pkg_a").mkdir()
+            (root / "pkg_b").mkdir()
+            (root / "pkg_a" / "a.py").write_text("def f(x=[]):\n    pass\n", encoding="utf-8")
+            (root / "pkg_b" / "b.js").write_text("eval('1');\n", encoding="utf-8")
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                args_scan = argparse.Namespace(path=["pkg_a", "pkg_b"], deep=False, json=True, strict=False)
+                code = diagnose.cmd_scan(args_scan)
+            finally:
+                os.chdir(old_cwd)
+            self.assertEqual(code, 0)
+            cat_file = root / ".diagnostics" / "defect_catalog.json"
+            self.assertTrue(cat_file.is_file())
+            self.assertIn("DEFECT-002", cat_file.read_text(encoding="utf-8"))
 
 class TestMainDispatcher(unittest.TestCase):
     """Test top-level main() entrypoint."""

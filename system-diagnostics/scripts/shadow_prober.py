@@ -284,50 +284,47 @@ def scan_path(target: Path, deep: bool = False) -> list[DefectFinding]:
     return findings
 
 
+def _resolve_scan_targets(raw_path: Any) -> tuple[list[Path], Path]:
+    """Normalize `--path` (None, str, or list[str]) to resolved targets and workspace root."""
+    if not raw_path:
+        cwd = Path.cwd()
+        return [cwd], cwd
+    items = [raw_path] if isinstance(raw_path, (str, Path)) else list(raw_path)
+    targets = [Path(p).resolve() for p in items]
+    if len(targets) == 1:
+        ws = targets[0] if targets[0].is_dir() else targets[0].parent
+    else:
+        ws = Path.cwd()
+    return targets, ws
+
+
 def scan_and_save(
-    target: Path, workspace: Optional[Path] = None, deep: bool = False,
+    target: Path | list[Path], workspace: Optional[Path] = None, deep: bool = False,
     reconcile_scan: bool = True, prune: bool = False,
 ) -> tuple[list[DefectFinding], Path, Path]:
-    """Scan target for defects and persist reconciled results to .diagnostics/ SSOT catalog."""
-    findings = scan_path(target, deep=deep)
-    ws = workspace or (target if target.is_dir() else target.parent)
+    """Scan target path(s) for defects and persist reconciled results to .diagnostics/ SSOT catalog."""
+    targets = list(target) if isinstance(target, list) else [target]
+    findings: list[DefectFinding] = []
+    for t in targets:
+        findings.extend(scan_path(t, deep=deep))
+    for idx, defect in enumerate(findings, start=1):
+        defect.id = f"DEFECT-{idx:03d}"
+    ws = workspace or (targets[0] if len(targets) == 1 and targets[0].is_dir() else Path.cwd())
     json_path, md_path = save_catalog(ws, findings, reconcile_scan=reconcile_scan, prune=prune)
     return findings, json_path, md_path
 
 
 def register_parsers(subparsers: Any) -> tuple[Any, Any]:
-    """Register 'scan', 'scaffold-defect', 'resolve-defect', and 'dismiss-defect' subparsers."""
-    p_scan = subparsers.add_parser("scan", help="Polyglot scan for latent defects, smells, and vulnerabilities")
-    p_scan.add_argument("--path", default=None, help="Root directory or file to scan (default: current directory)")
-    p_scan.add_argument("--deep", action="store_true", help="Include CSS/SCSS and deeper AST rules")
-    p_scan.add_argument("--all", dest="deep", action="store_true", help="Alias for --deep")
-    p_scan.add_argument("--prune", action="store_true", help="Purge obsolete/resolved/dismissed defects not in current scan")
-    p_scan.add_argument("--json", action="store_true", help="Output JSON catalog format")
-    p_scan.add_argument("--strict", action="store_true", help="Exit code 1 if any active defects found")
-
-    p_scaf = subparsers.add_parser("scaffold-defect", help="Unlock and scaffold a defect for remediation")
-    p_scaf.add_argument("--id", required=True, help="Defect ID (e.g. DEFECT-001) or fingerprint")
-    p_scaf.add_argument("--branch", action="store_true", help="Create and checkout micro-branch fix/defect-<id>")
-    p_scaf.add_argument("--elevate", action="store_true", help="Force architectural elevation brief")
-    p_scaf.add_argument("--fix", action="store_true", help="Force tactical test scaffolding")
-    p_scaf.add_argument("--path", default=None, help="Target workspace directory")
-    p_scaf.add_argument("--json", action="store_true", help="Output JSON result")
-
-    for cmd_name, flag, help_msg in (("resolve-defect", "--note", "Mark defect(s) resolved"), ("dismiss-defect", "--reason", "Dismiss defect(s)")):
-        p = subparsers.add_parser(cmd_name, help=help_msg)
-        p.add_argument("--id", required=True, help="Defect ID(s), fingerprint(s), or rule_id (comma-separated)")
-        p.add_argument(flag, default="", help="Resolution or dismissal note")
-        p.add_argument("--path", default=None, help="Target workspace directory")
-        p.add_argument("--json", action="store_true", help="Output JSON result")
-    return p_scan, p_scaf
+    """Delegate scan/defect subparser registration to diagnose_cli (keeps module <350L)."""
+    from diagnose_cli import register_scan_parsers
+    return register_scan_parsers(subparsers)
 
 
 def cmd_scan(args: Any) -> int:
     """CLI handler for `diagnose.py scan`."""
-    target_path = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd()
-    workspace = target_path if target_path.is_dir() else target_path.parent
+    targets, workspace = _resolve_scan_targets(getattr(args, "path", None))
     _, json_path, md_path = scan_and_save(
-        target_path, workspace=workspace, deep=getattr(args, "deep", False),
+        targets, workspace=workspace, deep=getattr(args, "deep", False),
         reconcile_scan=True, prune=getattr(args, "prune", False),
     )
     catalog = load_catalog(workspace)
@@ -336,10 +333,10 @@ def cmd_scan(args: Any) -> int:
     if getattr(args, "json", False):
         print(json.dumps(catalog, indent=2))
         return 1 if (getattr(args, "strict", False) and active) else 0
-
+    label = ", ".join(t.name for t in targets)
     tactical_count = sum(1 for d in active if d.get("track") == "tactical")
     arch_count = sum(1 for d in active if d.get("track") == "architectural")
-    print(f"\n=== Polyglot Latent Defect & Smell Scan ({target_path.name}) ===\nCatalog SSOT: {json_path.name} (Report: {md_path.name})")
+    print(f"\n=== Polyglot Latent Defect & Smell Scan ({label}) ===\nCatalog SSOT: {json_path.name} (Report: {md_path.name})")
     print(f"Active Defects: {len(active)} (Tactical: {tactical_count}, Architectural: {arch_count} | Resolved: {summary.get('resolved', 0)}, Dismissed: {summary.get('dismissed', 0)})")
     for d in active[:5]:
         print(f"  [{d.get('id')}] [{d.get('severity')}] {d.get('rule_id')} -> {d.get('file')}:{d.get('line')} ({d.get('symbol')}) [{d.get('track')}]\n         Fix: {d.get('suggested_fix')}")

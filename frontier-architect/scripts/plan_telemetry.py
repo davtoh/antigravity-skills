@@ -97,7 +97,9 @@ def _build_retrospective_entry(
     milestone_idx: int, tri_scores: dict[str, int], grade: str,
     retries: int | None, steps: int | None, args: argparse.Namespace,
 ) -> dict[str, Any]:
-    """Assemble retrospective telemetry payload with optional retry/step fields."""
+    """Assemble retrospective telemetry payload with optional retry/step/skill fields."""
+    skill_learn = getattr(args, "skill_learn", None)
+    tool_gap = getattr(args, "tool_gap", None)
     entry: dict[str, Any] = {
         "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -106,6 +108,8 @@ def _build_retrospective_entry(
         "hypotheses_tested": args.hypotheses or 1,
         "root_causes_escalated": [args.escalate] if args.escalate else [],
         "learn_candidates": [args.learn] if args.learn else [],
+        "skill_learn_candidates": [skill_learn] if skill_learn else [],
+        "tool_gaps": [tool_gap] if tool_gap else [],
     }
     if retries is not None:
         entry["retries"] = retries
@@ -161,7 +165,11 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     print(f"[plan_engine] Logged retrospective for Milestone {entry['milestone_index']}:")
     print(f"  Token Grade: {entry['token_efficiency_grade']} | TRI: {entry['tool_reliability_scores']}")
     if entry["learn_candidates"]:
-        print(f"  /learn candidate: {entry['learn_candidates'][0]}")
+        print(f"  /learn candidate (project): {entry['learn_candidates'][0]}")
+    if entry["skill_learn_candidates"]:
+        print(f"  /learn candidate (skill): {entry['skill_learn_candidates'][0]}")
+    if entry["tool_gaps"]:
+        print(f"  Tool gap: {entry['tool_gaps'][0]}")
     return 0
 
 

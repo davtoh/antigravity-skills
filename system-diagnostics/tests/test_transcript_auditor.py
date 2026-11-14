@@ -89,6 +89,24 @@ class TestTranscriptAuditor(unittest.TestCase):
         with patch.dict(os.environ, {"AGY_BRAIN_DIR": self._tmp.name}):
             self.assertEqual(ta.default_brain_dir(), Path(self._tmp.name))
 
+    def test_subagent_completion_clears_pending_and_ignores_edited_or_new_reads(self) -> None:
+        _write(self.brain, "sub-1", [_planner(("read_file", {"Path": "already.py"}), ("read_file", {"Path": "edited.py"}))])
+        _write(self.brain, "parent-1", [
+            _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
+            {"type": "GENERIC", "content": '{"conversationId": "sub-1"}', "status": "DONE"},
+            {"type": "SYSTEM_MESSAGE", "content": "[Message] sender=sub-1 content=summary", "status": "DONE"},
+            _planner(
+                ("read_file", {"Path": "fresh.py"}),
+                ("read_file", {"Path": "edited.py"}),
+                ("edit_file", {"Path": "edited.py", "Target": "a", "Replacement": "b"}),
+                ("read_file", {"Path": "already.py"}),
+            ),
+        ])
+        row = ta.audit_conversation(self.brain, "parent-1")
+        self.assertEqual(row["reads_while_pending"], 0)
+        self.assertEqual(row["subagent_overlap_reads"], 1)
+        self.assertEqual(row["reads_after_subagent"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

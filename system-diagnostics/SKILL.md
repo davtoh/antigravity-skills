@@ -91,8 +91,9 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Detect Platform Import Smells** | Source repository | Flags dynamic try..except ladders | `python skills/system-diagnostics/scripts/diagnose.py audit --smells` |
 | **Callable Smoke & Init Check** | Source repository | Checks signatures & constructor TypeErrors | `python skills/system-diagnostics/scripts/diagnose.py audit --callable-smoke` |
 | **Export Static Defect JSON** | Source repository | Full machine-readable audit report | `python skills/system-diagnostics/scripts/diagnose.py audit --json` |
-| **Polyglot Latent Defect Scan** | Source repository | Scans Py, JS/TS, CSS, Dart (SSOT catalog) | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/` |
+| **Polyglot Latent Defect Scan** | Source repository | Scans Py, JS/TS, CSS, Dart across 1+ paths | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/ tests/` |
 | **Deep Scan with CSS & Extended AST** | Source repository | Full polyglot rules + specificity leaks | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/ --deep` |
+| **Audit Conversation Transcripts** | Brain logs | Steps, failures, parallel edits & subagent dupes | `python skills/system-diagnostics/scripts/diagnose.py transcript-audit --latest 1` |
 | **Strict CI Defect Gate** | CI / Pre-commit | Returncode 1 if any defects found | `python skills/system-diagnostics/scripts/diagnose.py scan --strict` |
 | **Unlock Tactical Defect (Test Synthesis)** | Quarantined defect | Generates Red repro in tests/quarantine/ | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
 | **Unlock Tactical Defect + Micro-Branch** | Quarantined defect | Clean git checkout + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
@@ -189,12 +190,21 @@ python skills/system-diagnostics/scripts/diagnose.py audit [OPTIONS]
 ```bash
 python skills/system-diagnostics/scripts/diagnose.py scan [OPTIONS]
 ```
-- `--path <PATH>`: Target file or directory to scan across Python, JS/TS, CSS, and Dart (default: current directory).
+- `--path <PATHS...>`: One or more files/directories to scan across Python, JS/TS, CSS, and Dart (default: current directory).
 - `--deep` / `--all`: Scans extended rules (CSS `!important` specificity overruns, unbounded container growth, blocking loops).
 - `--prune`: Purges closed (`resolved`/`dismissed`) or vanished defects from the catalog during scan reconciliation.
 - `--json`: Outputs machine-readable catalog JSON to stdout.
 - `--strict`: Exits with return code 1 if any active (`quarantined`/`scaffolded`/`elevated`) defects are detected.
 - *Automatic Stateful Catalog Sync*: Reconciles findings by `fingerprint` in `<workspace>/.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`, automatically transitioning fixed defects to `resolved` and preserving `dismissed` items so solved issues are never repeated.
+
+### Subcommand: `transcript-audit`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <IDs...>] [--latest <N>] [--json]
+```
+- `--cids <IDs...>`: Conversation IDs to audit from `<appDataDir>/brain`.
+- `--latest <N>`: Audit the `N` most recently modified conversations (default: `1`).
+- `--brain-dir <DIR>`: Override brain directory (or set `AGY_BRAIN_DIR`).
+- `--json`: Emit JSON instead of markdown table (reports steps, failures, pending/overlap subagent duplicate reads, parallel same-file edits, and rubric grade caps).
 
 ### Subcommand: `resolve-defect` & `dismiss-defect`
 ```bash

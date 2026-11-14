@@ -62,6 +62,13 @@ def _unresolved(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     return learns, escs
 
 
+def _unresolved_skill_items(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """Deduplicated skill /learn candidates and tooling gaps across entries."""
+    skill_learns = list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get("skill_learn_candidates") or []) if str(t).strip()))
+    tool_gaps = list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get("tool_gaps") or []) if str(t).strip().lower() not in _IGNORED_ESCALATIONS))
+    return skill_learns, tool_gaps
+
+
 def _load_auditor(brain_dir: str | None = None) -> tuple[Any, Path] | None:
     """Load transcript_auditor and resolved brain dir, else None in standalone mode."""
     sibling = _SCRIPTS_DIR.parent.parent / "system-diagnostics" / "scripts"
@@ -200,25 +207,30 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     backfilled = backfill_retrospectives(root, ps, cids, brain_dir) if backfill else 0
     entries = _load_entries(root, ps)
     learns, escalations = _unresolved(entries)
+    skill_learns, tool_gaps = _unresolved_skill_items(entries)
     rows = _transcript_rows(cids, brain_dir)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
         "children": [c.get("slug") for c in (ps.get("child_plans") or {}).values()],
         "retro_entries": len(entries), "backfilled_entries": backfilled, "integrity_issues": check_retro_integrity(entries),
-        "learn_candidates": learns, "escalations": escalations, "transcripts": rows, "transcripts_unavailable": rows is None,
-        "next_step": "Run `diagnose.py scan` on touched packages, then propose /learn for the items above.",
+        "learn_candidates": learns, "skill_learn_candidates": skill_learns,
+        "tool_gaps": tool_gaps, "escalations": escalations,
+        "transcripts": rows, "transcripts_unavailable": rows is None,
+        "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
 
 def format_digest(d: dict[str, Any]) -> str:
-    """Render the digest as compact markdown."""
+    """Render the digest as compact dual-axis markdown with user-selectable introspective commands."""
     done = sum(1 for m in d["milestones"] if m["status"] == "completed")
     bf = f" | backfilled: {d['backfilled_entries']}" if d.get("backfilled_entries") else ""
     lines = [f"# Plan Digest: {d['title']} ({d['slug']}) - {d['status']}", f"Milestones: {done}/{len(d['milestones'])} complete | retro entries: {d['retro_entries']}{bf}"]
     lines += [f"- M{m['index']} [{m['status']}] {m['title']}" + (f" ({m['sha']})" if m["sha"] else "") for m in d["milestones"]]
     lines += ["", "## Retrospective integrity"] + ([f"- {i}" for i in d["integrity_issues"]] or ["- OK"])
     lines += ["", "## Unresolved /learn candidates"] + ([f"- {i}" for i in d["learn_candidates"]] or ["- none"])
+    lines += ["", "## Skill & Tooling /learn candidates"] + ([f"- {i}" for i in d.get("skill_learn_candidates", [])] or ["- none"])
+    lines += ["", "## Tooling & Script Gaps"] + ([f"- {i}" for i in d.get("tool_gaps", [])] or ["- none"])
     lines += ["", "## Escalated root causes (/app-debugger)"] + ([f"- {i}" for i in d["escalations"]] or ["- none"])
     if d["transcripts_unavailable"]:
         lines += ["", "## Transcripts", "- system-diagnostics not found; skipped telemetry."]
@@ -226,6 +238,12 @@ def format_digest(d: dict[str, Any]) -> str:
         lines += ["", "## Transcripts"] + [
             f"- {r['cid'][:8]}: " + ("MISSING" if r.get("missing") else f"steps={r['steps']} fails={r['total_failures']} cap={r['suggested_grade_cap']} subagents={len(r['subagents'])}")
             for r in d["transcripts"]]
+    lines += [
+        "", "## Introspective Commands (User Choice)",
+        f"- Digest + Scaffold: `plan_engine.py digest {d['slug']} --backfill --write-scaffold`",
+        "- Transcript Audit: `diagnose.py transcript-audit --latest 1`",
+        "- Persist Lessons: `/learn`",
+    ]
     return "\n".join(lines + ["", f"Next: {d['next_step']}"])
 
 
@@ -235,7 +253,14 @@ def cmd_digest(root: Path, args: argparse.Namespace) -> int:
     if digest is None:
         print("[plan_engine] Error: No plan resolved.")
         return 1
-    print(json.dumps(digest, indent=2) if getattr(args, "json", False) else format_digest(digest))
+    rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_digest(digest)
+    if getattr(args, "write_scaffold", False):
+        scaffold_p = get_frontier_dir(root) / "plans" / digest["slug"] / "LEARNING_SCAFFOLD.md"
+        scaffold_p.parent.mkdir(parents=True, exist_ok=True)
+        scaffold_p.write_bytes((format_digest(digest) + "\n").encode("utf-8"))
+        if not getattr(args, "json", False):
+            rendered += f"\n\n[plan_engine] Wrote learning scaffold: {scaffold_p.relative_to(root).as_posix()}"
+    print(rendered)
     return 0
 
 
@@ -245,4 +270,5 @@ def register_digest_parser(sub: Any, plan_parent: argparse.ArgumentParser) -> No
     p.add_argument("--cids", nargs="+", default=None, help="Conversation ids to include via transcript-audit")
     p.add_argument("--brain-dir", default=None, help="Override brain dir for transcript telemetry")
     p.add_argument("--backfill", action="store_true", help="Backfill missing --steps/--retries and re-cap grades in retrospectives.json from transcripts")
+    p.add_argument("--write-scaffold", action="store_true", help="Write .frontier/plans/<slug>/LEARNING_SCAFFOLD.md")
     p.add_argument("--json", action="store_true", help="Output JSON")

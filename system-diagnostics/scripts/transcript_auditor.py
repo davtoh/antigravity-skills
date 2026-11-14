@@ -17,6 +17,8 @@ from typing import Any, Iterator
 _EXIT_RE = re.compile(r"(?:^|\n)Command exited with code (-?\d+)")
 _MODEL_RE = re.compile(r"Model Selection` from [^\n]+? to ([^\n]+?)\. No need")
 _USER_REQ_RE = re.compile(r"<USER_REQUEST>.*?</USER_REQUEST>", re.DOTALL)
+_SUB_CID_RE = re.compile(r'"conversationId"\s*:\s*"([^"]+)"')
+_SENDER_RE = re.compile(r"sender=([^\s\]>]+)")
 _LOG_REL = Path(".system_generated") / "logs" / "transcript.jsonl"
 
 
@@ -81,6 +83,39 @@ def _classify_result(content: str, status: str) -> str | None:
     return None
 
 
+def _norm_path(raw: str) -> str:
+    """Normalize a file path to forward-slash lowercase for cross-transcript matching."""
+    return raw.strip().replace("\\", "/").lower()
+
+
+def _matches_any(candidate: str, refs: list[str] | set[str]) -> bool:
+    """Return True if normalized ``candidate`` matches or shares a relative tail with ``refs``."""
+    norm = _norm_path(candidate)
+    if not norm:
+        return False
+    for r in refs:
+        rn = _norm_path(r)
+        if rn and (norm == rn or norm.endswith("/" + rn) or rn.endswith("/" + norm)):
+            return True
+    return False
+
+
+def _collect_subagent_reads(brain_dir: Path, sub_cids: list[str]) -> set[str]:
+    """Collect normalized file paths read by spawned subagents when their transcripts exist."""
+    paths: set[str] = set()
+    for scid in sub_cids:
+        sp = brain_dir / scid / _LOG_REL
+        if not sp.is_file():
+            continue
+        for step in _iter_steps(sp):
+            for call in (step.get("tool_calls") or []) if step.get("type") == "PLANNER_RESPONSE" else ():
+                if call.get("name") == "read_file":
+                    raw = str(_tool_args(call).get("Path", ""))
+                    if raw:
+                        paths.add(_norm_path(raw))
+    return paths
+
+
 def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
     """Accumulate per-call statistics for one planner step."""
     same_step_edits: Counter[str] = Counter()
@@ -88,18 +123,44 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
         name, args = call.get("name", ""), _tool_args(call)
         acc["tools"][name] += 1
         if name == "read_file":
-            acc["reads"][str(args.get("Path", ""))] += 1
-            if acc["first_subagent_step"] is not None:
-                acc["reads_after_subagent"] += 1
-        elif name == "edit_file":
-            same_step_edits[str(args.get("Path", ""))] += 1
+            p_str = str(args.get("Path", ""))
+            acc["reads"][p_str] += 1
+            if acc["pending_unnamed"] > 0 or acc["pending_cids"]:
+                acc["reads_while_pending"] += 1
+            elif acc["first_subagent_step"] is not None and p_str:
+                acc["post_dispatch_reads"].append(p_str)
+        elif name in ("edit_file", "write_file"):
+            p_str = str(args.get("Path", ""))
+            if p_str:
+                acc["edited_paths"].add(_norm_path(p_str))
+            if name == "edit_file":
+                same_step_edits[p_str] += 1
         elif name == "invoke_subagent":
             acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
+            acc["pending_unnamed"] += 1
             if acc["first_subagent_step"] is None:
                 acc["first_subagent_step"] = idx
     for path, count in same_step_edits.items():
         if count > 1:
             acc["parallel_same_file_edits"].append({"step": idx, "path": path, "calls": count})
+
+
+def _track_subagent_events(kind: str, content: str, cid: str, acc: dict[str, Any]) -> None:
+    """Track dispatched subagent IDs and completion SYSTEM_MESSAGE arrivals."""
+    if kind == "GENERIC" and "conversationId" in content:
+        for scid in _SUB_CID_RE.findall(content):
+            if scid not in acc["subagent_cids"]:
+                acc["subagent_cids"].append(scid)
+                acc["pending_cids"].add(scid)
+                acc["pending_unnamed"] = max(0, acc["pending_unnamed"] - 1)
+    elif kind == "SYSTEM_MESSAGE":
+        for sender in _SENDER_RE.findall(content):
+            if sender == cid or "/task-" in sender:
+                continue
+            if sender in acc["pending_cids"]:
+                acc["pending_cids"].remove(sender)
+            elif acc["pending_unnamed"] > 0:
+                acc["pending_unnamed"] -= 1
 
 
 def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
@@ -109,7 +170,9 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         return {"cid": cid, "missing": True}
     acc: dict[str, Any] = {
         "tools": Counter(), "reads": Counter(), "subagents": [], "first_subagent_step": None,
-        "reads_after_subagent": 0, "parallel_same_file_edits": [], "failures": Counter(), "models": [],
+        "pending_unnamed": 0, "pending_cids": set(), "subagent_cids": [], "reads_while_pending": 0,
+        "post_dispatch_reads": [], "edited_paths": set(), "parallel_same_file_edits": [],
+        "failures": Counter(), "models": [],
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -121,20 +184,26 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         elif kind == "USER_INPUT":
             acc["models"].extend(_extract_models(content))
         else:
-            fail = _classify_result(content, step.get("status", ""))
-            if fail:
+            _track_subagent_events(kind, content, cid, acc)
+            if fail := _classify_result(content, step.get("status", "")):
                 acc["failures"][fail] += 1
+    sub_reads = _collect_subagent_reads(brain_dir, acc["subagent_cids"])
+    acc["overlap_reads"] = sum(
+        1 for p in acc["post_dispatch_reads"] if _matches_any(p, sub_reads) and not _matches_any(p, acc["edited_paths"])
+    )
     return _summarize(cid, steps, planner, acc)
 
 
 def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[str, Any]:
     """Collapse accumulators into a JSON-friendly report row."""
     repeats = {p: n for p, n in acc["reads"].items() if n > 1 and p}
+    dupes = acc["reads_while_pending"] + acc["overlap_reads"]
     return {
         "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"],
         "tool_calls": dict(acc["tools"]), "failures": dict(acc["failures"]),
         "total_failures": sum(acc["failures"].values()),
-        "subagents": acc["subagents"], "reads_after_subagent": acc["reads_after_subagent"],
+        "subagents": acc["subagents"], "reads_after_subagent": dupes,
+        "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
         "parallel_same_file_edits": acc["parallel_same_file_edits"],
         "suggested_grade_cap": "C" if steps > 100 else ("B" if steps > 60 else "A"),
@@ -152,7 +221,7 @@ def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None) -
 
 def format_markdown(rows: list[dict[str, Any]]) -> str:
     """Render a compact markdown table plus waste flags."""
-    out = ["| cid | steps | fails | subagents | reads after sub | grade cap |", "|---|---:|---:|---:|---:|:--:|"]
+    out = ["| cid | steps | fails | subagents | dup reads | grade cap |", "|---|---:|---:|---:|---:|:--:|"]
     flags: list[str] = []
     for r in rows:
         if r.get("missing"):
@@ -161,7 +230,10 @@ def format_markdown(rows: list[dict[str, Any]]) -> str:
         out.append(f"| {r['cid'][:8]} | {r['steps']} | {r['total_failures']} | {len(r['subagents'])} "
                    f"| {r['reads_after_subagent']} | {r['suggested_grade_cap']} |")
         if r["subagents"] and r["reads_after_subagent"] > 4:
-            flags.append(f"{r['cid'][:8]}: {r['reads_after_subagent']} parent reads after subagent dispatch (duplication)")
+            flags.append(
+                f"{r['cid'][:8]}: {r['reads_after_subagent']} subagent duplicate reads "
+                f"({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)"
+            )
         for e in r["parallel_same_file_edits"]:
             flags.append(f"{r['cid'][:8]}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}")
     return "\n".join(out + [""] + [f"- FLAG {f}" for f in flags])

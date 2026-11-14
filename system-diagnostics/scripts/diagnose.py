@@ -31,6 +31,7 @@ import runtime_runner
 import skill_packager
 import arch_mapper
 import transcript_auditor
+import diagnose_cli
 
 # Configure UTF-8 stdout/stderr across all platforms
 if hasattr(sys.stdout, "reconfigure"):
@@ -93,39 +94,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     if not target_url and not args.list_tabs:
         print("[diagnose ui] Error: No --url provided and no local dev server detected on common ports (8000, 3000, 5000, 8080, 5173).", file=sys.stderr)
         return 2
-
-    cmd = [sys.executable, str(SCRIPTS_DIR / "cdp_inspect.py")]
-    if target_url:
-        cmd.extend(["--url", target_url])
-    if args.list_tabs:
-        cmd.append("--list-tabs")
-    if args.audit_layout:
-        cmd.append("--audit-layout")
-    if args.selectors:
-        cmd.extend(["--selectors", args.selectors])
-    if args.screenshot:
-        cmd.extend(["--screenshot", args.screenshot])
-    if args.eval:
-        cmd.extend(["--eval", args.eval])
-    if getattr(args, "eval_file", None):
-        cmd.extend(["--eval-file", args.eval_file])
-    if args.click:
-        cmd.extend(["--click", args.click])
-    if args.navigate:
-        cmd.append("--navigate")
-    if args.window_size:
-        cmd.extend(["--window-size", args.window_size])
-    if getattr(args, "wait", None) is not None:
-        cmd.extend(["--wait", str(args.wait)])
-    if getattr(args, "port", None) is not None:
-        cmd.extend(["--port", str(args.port)])
-    if getattr(args, "strict", False):
-        cmd.append("--strict")
-    if getattr(args, "fallback_headless", True) is False:
-        cmd.append("--no-fallback-headless")
-    if not getattr(args, "live", False):
-        cmd.append("--headless")
-
+    cmd = diagnose_cli.build_ui_command(SCRIPTS_DIR, target_url, args)
     print(f"=== Diagnose UI: Browser Inspection ({target_url or 'Live Tabs'}) ===")
     res = subprocess.run(cmd)
     return res.returncode
@@ -198,57 +167,7 @@ def cmd_dismiss_defect(args: argparse.Namespace) -> int:
 
 def cmd_all(args: argparse.Namespace) -> int:
     """Execute unified 3-tier diagnostic audit in 1 command."""
-    target_path = Path(args.path).resolve() if args.path else Path.cwd()
-    print("=" * 80 + "\n                    UNIFIED 3-TIER SYSTEM DIAGNOSTIC AUDIT                      \n" + "=" * 80 + "\n")
-
-    # Tier 1: Static Surface & Test Suite Check
-    print("--- Tier 1: Static Surface & Tests ---")
-    cmd_surface(argparse.Namespace(path=str(target_path), json=False, show_ids=False, show_globals=False, show_routes=False))
-
-    tests_dir = target_path / "tests"
-    t1_status = "SKIPPED (no tests/ directory)"
-    if tests_dir.is_dir():
-        t1_code = cmd_tests(argparse.Namespace(path=str(target_path), args=[]))
-        t1_status = "VERIFIED (Passed)" if t1_code == 0 else f"FAILED (Exit Code {t1_code})"
-    else:
-        print(f"\n[Tier 1] Notice: {t1_status}")
-
-    # Tier 2: Docker Container Runtime Check
-    print("\n--- Tier 2: Container Runtime & Resource Audit ---")
-    t2_status = "SKIPPED (Docker inactive or not found)"
-    if shutil.which("docker"):
-        c_name = args.container or probe_docker_container()
-        t2_code = cmd_container(argparse.Namespace(container=c_name, workdir="/app", sync_check=[], lines=50))
-        t2_status = "VERIFIED (Active)" if t2_code == 0 else "UNVERIFIED (Container error)"
-    else:
-        print(f"[Tier 2] Notice: {t2_status}")
-
-    # Tier 3: Browser UI Layout & Exception Check
-    print("\n--- Tier 3: Live Browser UI & Layout Audit ---")
-    url = args.url or probe_local_port()
-    t3_status = "SKIPPED (No web service active on ports 8000/3000/5000/8080)"
-    if url:
-        ui_args = argparse.Namespace(
-            url=url, list_tabs=False, audit_layout=True, selectors=None,
-            screenshot=None, eval=None, click=None, navigate=False,
-            window_size="1440x900", headless=True, live=False,
-            wait=getattr(args, "wait", 1.5),
-            strict=getattr(args, "strict", False)
-        )
-        t3_code = cmd_ui(ui_args)
-        t3_status = "VERIFIED (Layout clean)" if t3_code == 0 else f"FAILED (Layout issue / Code {t3_code})"
-    else:
-        print(f"[Tier 3] Notice: {t3_status}")
-
-    print("\n" + "=" * 80 + "\n                         AXIOM 9 VERIFICATION SUMMARY                           \n" + "=" * 80)
-    print(f"  Tier 1 (Surface & Tests):   {t1_status}")
-    print(f"  Tier 2 (Container Runtime): {t2_status}")
-    print(f"  Tier 3 (Browser UI/Layout): {t3_status}")
-    print("=" * 80 + "\n")
-
-    if args.strict and any("FAILED" in st for st in (t1_status, t2_status, t3_status)):
-        return 1
-    return 0
+    return diagnose_cli.run_all_tiers(sys.modules[__name__], args)
 
 def _print_probe_run_result(result: dict, as_json: bool) -> None:
     """Format and print probe execution result."""
@@ -323,78 +242,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Unified System Diagnostics CLI - Browser, Container, Surface & Test Engine",
     )
     sub = parser.add_subparsers(dest="subcommand", help="Diagnostic domain to run")
-
-    # 1. UI subcommand
-    p_ui = sub.add_parser("ui", help="Browser layout, DOM overflow, and JS exception inspector")
-    p_ui.add_argument("--url", default=None, help="Target URL (auto-probes ports if omitted)")
-    ui_mode = p_ui.add_mutually_exclusive_group()
-    ui_mode.add_argument("--live", action="store_true", help="Inspect visible live Chrome tab")
-    ui_mode.add_argument("--headless", action="store_true", default=None, help="Run headless Chrome (default unless --live)")
-    p_ui.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
-    p_ui.set_defaults(fallback_headless=True)
-    p_ui.add_argument("--audit-layout", action="store_true", help="Audit bounding box overflow")
-    p_ui.add_argument("--selectors", default=None, help="Comma-separated CSS selectors to measure")
-    p_ui.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
-    p_ui.add_argument("--navigate", action="store_true", help="Force fresh page reload")
-    p_ui.add_argument("--eval", default=None, help="Evaluate JS expression and return JSON")
-    p_ui.add_argument("--eval-file", default=None, help="Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page")
-    p_ui.add_argument("--click", default=None, help="CSS selector to click before auditing")
-    p_ui.add_argument("--window-size", default="1440x900", help="Viewport size WxH (default: 1440x900)")
-    p_ui.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection (default: 1.5)")
-    p_ui.add_argument("--port", type=int, default=None, help="Debugging port override")
-    p_ui.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
-    p_ui.add_argument("--list-tabs", action="store_true", help="List active Chrome tabs")
-
-    # 2. Container subcommand
-    p_cnt = sub.add_parser("container", help="Docker CPU, active top processes, and MD5 sync audit")
-    p_cnt.add_argument("--container", default=None, help="Container name (auto-probed if omitted)")
-    p_cnt.add_argument("--workdir", default="/app", help="Container working dir (default: /app)")
-    p_cnt.add_argument("--sync-check", nargs="*", default=[], help="Files to verify host-vs-container MD5 sync")
-    p_cnt.add_argument("--lines", type=int, default=150, help="Log lines to scan for tracebacks")
-
-    # 3. Surface subcommand
-    p_surf = sub.add_parser("surface", help="AST/DOM surface scanner (HTML IDs, JS globals, Python routes)")
-    p_surf.add_argument("--path", default=None, help="Root directory to scan (default: current directory)")
-    p_surf.add_argument("--show-ids", action="store_true", help="List all HTML element IDs")
-    p_surf.add_argument("--show-globals", action="store_true", help="List all window.* JS exports")
-    p_surf.add_argument("--show-routes", action="store_true", help="List all backend Python routes")
-    p_surf.add_argument("--json", action="store_true", help="Output JSON report")
-
-    # 4. Tests subcommand
-    p_test = sub.add_parser("tests", help="Run automated tests using discovered virtualenv")
-    p_test.add_argument("--path", default=None, help="Root directory (default: current directory)")
-    p_test.add_argument("args", nargs="*", default=[], help="Arguments passed to test runner")
-
-    # 5. All subcommand
-    p_all = sub.add_parser("all", help="Unified 3-Tier Diagnostic Audit in 1 command")
-    p_all.add_argument("--path", default=None, help="Root directory (default: current directory)")
-    p_all.add_argument("--url", default=None, help="Explicit web URL")
-    p_all.add_argument("--container", default=None, help="Explicit Docker container name")
-    p_all.add_argument("--wait", type=float, default=1.5, help="Seconds to wait for UI tier settle (default: 1.5)")
-    p_all.add_argument("--strict", action="store_true", help="Exit code 1 if any tier fails")
-
-    # 6. Extensible diagnostic probes
-    probe_runner.register_parser(sub)
-
-    # 7. Static quality, defect, typecheck and code smell audit
-    static_auditor.register_parser(sub)
-
-    # 8. Polyglot defect scan and JIT scaffolder
-    shadow_prober.register_parsers(sub)
-
-    # 9. Unified changelog & auto-archiving engine
-    changelog_manager.register_parser(sub)
-
-    # 10. Runtime trace and crash recorder
-    trace_recorder.register_parser(sub)
-
-    # 11. Zero-code auto-trace runner
-    runtime_runner.register_parser(sub)
-
-    # 12. Standalone skill bundler & architecture mapper
-    skill_packager.register_parser(sub)
-    arch_mapper.register_parser(sub)
-    transcript_auditor.register_parser(sub)
+    diagnose_cli.register_ui_parser(sub)
+    diagnose_cli.register_core_parsers(sub)
+    for mod in (
+        probe_runner, static_auditor, shadow_prober, changelog_manager,
+        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor,
+    ):
+        reg = getattr(mod, "register_parsers", None) or getattr(mod, "register_parser")
+        reg(sub)
     return parser
 
 def main() -> int:

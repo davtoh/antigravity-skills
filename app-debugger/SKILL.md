@@ -127,8 +127,9 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - **Test Job & Daemon Cleanup Invariant**: Before completing Step 4, query active background tasks (`manage_task list`) and API job ledgers (`GET /api/.../jobs`). Terminate test daemons (`manage_task kill`) and cancel any unfinished test jobs so zero orphan tasks survive into subsequent user turns.
    - **Interactive User Gate**: When confidence is partial, physical hardware is involved, or an operation is sensitive/destructive, provide a 1-line verification recipe and prompt the user to confirm live execution before closing the milestone.
    - **Milestone Recording (Single-Generation Echo Protocol)**: When closing a verified bug fix milestone, record it via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
-3. **Report Axiom 9 Honest Verification**:
+3. **Report Axiom 9 Honest Verification & Introspective Options**:
    - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
+   - At task completion, include a 1–2 line **Introspective Options** hint so the user can choose whether to run `python skills/system-diagnostics/scripts/diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist project/skill lessons.
 
 ---
 

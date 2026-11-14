@@ -111,36 +111,20 @@ def _calc_active_milestone(milestones: list[dict[str, Any]]) -> int:
     return milestones[-1]["index"] if milestones else 1
 
 
-def bootstrap_plan(root: Path, plan_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Initialize or synchronize workspace and plan state ledgers."""
-    content = plan_path.read_text(encoding="utf-8")
-    parsed = parse_plan_markdown(content)
-    slug = slugify(plan_path.stem)
-    fdir = get_frontier_dir(root)
-    pdir = fdir / "plans" / slug
-    pdir.mkdir(parents=True, exist_ok=True)
-    (pdir / "artifacts").mkdir(parents=True, exist_ok=True)
-
-    existing = load_json(pdir / "state.json", {})
+def _build_plan_state(
+    slug: str, rel_path: str, parsed: dict[str, Any], existing: dict[str, Any], now_iso: str,
+) -> dict[str, Any]:
+    """Assemble normalized plan state dict preserving parent/child links and commit SHAs."""
     prev_shas = {m.get("index"): m.get("commit_sha", "") for m in existing.get("milestones", [])}
     active_idx = _calc_active_milestone(parsed["milestones"])
     all_done = bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"])
-    now_iso = datetime.now(timezone.utc).isoformat()
-    rel_path = plan_path.relative_to(root).as_posix() if plan_path.is_relative_to(root) else plan_path.as_posix()
-
-    plan_state: dict[str, Any] = {
-        "slug": slug,
-        "title": parsed["title"],
-        "plan_path": rel_path,
-        "active_milestone_index": active_idx,
-        "total_milestones": len(parsed["milestones"]),
-        "status": "completed" if all_done else "in_progress",
-        "updated_at": now_iso,
+    ps: dict[str, Any] = {
+        "slug": slug, "title": parsed["title"], "plan_path": rel_path,
+        "active_milestone_index": active_idx, "total_milestones": len(parsed["milestones"]),
+        "status": "completed" if all_done else "in_progress", "updated_at": now_iso,
         "milestones": [
             {
-                "index": m["index"],
-                "title": m["title"],
-                "total_tasks": len(m["tasks"]),
+                "index": m["index"], "title": m["title"], "total_tasks": len(m["tasks"]),
                 "completed_tasks": sum(1 for t in m["tasks"] if t["checked"]),
                 "status": "completed" if m["is_complete"] else ("active" if m["index"] == active_idx else "pending"),
                 "commit_sha": prev_shas.get(m["index"], ""),
@@ -149,16 +133,25 @@ def bootstrap_plan(root: Path, plan_path: Path) -> tuple[dict[str, Any], dict[st
             for m in parsed["milestones"]
         ],
     }
-    if existing.get("parent_plan"):
-        plan_state["parent_plan"] = existing["parent_plan"]
-    if existing.get("child_plans"):
-        plan_state["child_plans"] = existing["child_plans"]
-    if existing.get("last_advanced_milestone") is not None:
-        plan_state["last_advanced_milestone"] = existing["last_advanced_milestone"]
+    for key in ("parent_plan", "child_plans", "last_advanced_milestone"):
+        if existing.get(key) is not None:
+            ps[key] = existing[key]
+    return ps
+
+
+def bootstrap_plan(root: Path, plan_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Initialize or synchronize workspace and plan state ledgers."""
+    parsed = parse_plan_markdown(plan_path.read_text(encoding="utf-8"))
+    slug = slugify(plan_path.stem)
+    fdir = get_frontier_dir(root)
+    pdir = fdir / "plans" / slug
+    (pdir / "artifacts").mkdir(parents=True, exist_ok=True)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rel_path = plan_path.relative_to(root).as_posix() if plan_path.is_relative_to(root) else plan_path.as_posix()
+    plan_state = _build_plan_state(slug, rel_path, parsed, load_json(pdir / "state.json", {}), now_iso)
     save_json(pdir / "state.json", plan_state)
     if not (pdir / "retrospectives.json").exists():
         save_json(pdir / "retrospectives.json", [])
-
     ws_state = _sync_workspace_state(fdir, slug, plan_state, get_git_sha(root), now_iso)
     return ws_state, plan_state
 

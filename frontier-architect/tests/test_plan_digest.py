@@ -119,6 +119,25 @@ class TestPlanDigest(unittest.TestCase):
         self.assertEqual(saved[0]["token_efficiency_grade"], "C")
         self.assertIn("overall", saved[0]["tool_reliability_scores"])
 
+    def test_digest_dual_axis_and_write_scaffold(self) -> None:
+        self._write_retros([
+            {
+                "milestone_index": 1, "token_efficiency_grade": "A", "steps": 25, "retries": 0,
+                "tool_reliability_scores": {"overall": 5},
+                "learn_candidates": ["Project rule"], "skill_learn_candidates": ["Skill rule"],
+                "tool_gaps": ["CLI flag missing"], "root_causes_escalated": [],
+            },
+        ])
+        ns = argparse.Namespace(plan="demo", cids=None, brain_dir=None, backfill=False, write_scaffold=True, json=False)
+        self.assertEqual(pd.cmd_digest(self.root, ns), 0)
+        scaffold = self.root / ".frontier" / "plans" / "demo" / "LEARNING_SCAFFOLD.md"
+        self.assertTrue(scaffold.is_file())
+        text = scaffold.read_text(encoding="utf-8")
+        self.assertIn("## Skill & Tooling /learn candidates", text)
+        self.assertIn("Skill rule", text)
+        self.assertIn("CLI flag missing", text)
+        self.assertIn("## Introspective Commands (User Choice)", text)
+
 
 if __name__ == "__main__":
     unittest.main()

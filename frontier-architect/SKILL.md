@@ -24,8 +24,8 @@ For exact CLI commands/flags (`plan_engine.py`, `diagnose.py`), consult [`refere
    - Before editing production code, externalize the **Architectural Pre-Flight** (invariants, data flow, edge cases, verifier command) and execute in small, verified vertical slices. *(See [`references/flash-opus-harness.md`](./references/flash-opus-harness.md)).*
 4. **Context Hygiene & Subagent Isolation**:
    - Delegate broad codebase/doc sweeps (`> 3–4` files) to `research` subagents (`Model: 'flash'`) so only distilled summaries enter the main thread. Checkpoint state into `AGENTS.md` or artifacts for clean fresh threads.
-   - **Zero Subagent Duplication, Wakeup Race & Transcript Scraping**: Do NOT re-read files a `research` subagent was dispatched to sweep, never pair `invoke_subagent` with a fast background command and start manual `read_file` sweeps on its early wakeup (wait for the subagent's `SYSTEM_MESSAGE`), never read its `transcript.jsonl`, and never poll `manage_subagents list`, `manage_task status`, or `schedule` timers—let reactive wakeup resume execution.
-   - **Strict 1-Milestone-Per-Turn & Scope Lock**: Never implement multiple milestones in one turn, and never expand beyond a milestone's planned files without amending the child plan first.
+   - **Zero Subagent Duplication, Wakeup Race & Transcript Scraping**: Do NOT re-read files a `research` subagent was dispatched to sweep (unless reading a narrow edit target right before `edit_file`), never pair `invoke_subagent` with a fast background command and start manual `read_file` sweeps on its early wakeup (wait for the subagent's `SYSTEM_MESSAGE`), never read its `transcript.jsonl`, and never poll `manage_subagents list`, `manage_task status`, or `schedule` timers—let reactive wakeup resume execution.
+   - **Strict 1-Milestone-Per-Turn & Scope Lock**: Never implement multiple milestones in one turn, and never expand beyond a milestone's planned files without amending the child plan first. When drafting follow-up prompts for the user, always scope execution to **Milestone 1 only** (`advance` + `retrospective` + stop).
 5. **Plan-First & Atomic Slicing**:
    - Present an implementation plan artifact (`RequestFeedback: true`) or `/plan` before sprawling edits. Sequence slices: `Contracts/Types → Core Logic → State/Service → UI Layout → Styling & Polish`.
 6. **Closed-Loop Empirical Verification (Never Code Blind)**:
@@ -38,6 +38,7 @@ For exact CLI commands/flags (`plan_engine.py`, `diagnose.py`), consult [`refere
    - Only report something as "verified" if you ran the check and saw it pass. State plainly what is unverified (blocked browser/Docker/dependency) and report regressions prominently.
 10. **Respect Explicit User Overrides**:
     - If the user says "just do it", "skip the plan", or "no questions", follow that for reversible parts, state working assumptions in 1–2 lines, and keep Axioms 8 and 9 intact.
+    - *"Plan and implement X"* authorizes **Plan + Milestone 1 only** unless the user explicitly writes *"all milestones in one turn"*.
 
 ---
 
@@ -47,12 +48,19 @@ For exact CLI commands/flags (`plan_engine.py`, `diagnose.py`), consult [`refere
 
 ---
 
-### Phase 0: Context Hygiene & Complexity Triage
+### Phase 0: Context Hygiene, Tool Auto-Pickup & Complexity Triage
 
-Before diving in, protect the context window and classify the task:
+Before diving in, protect the context window, pick up the highest-leverage tools automatically, and classify the task:
 
-1. **Protect Primary Context (Subagent Map-Reduce)**:
-   - If you need to inspect more than 3–4 files or search documentation to understand the system, spawn a `research` subagent (`Model: 'flash'`) to do the heavy reading and return a concise summary of file paths, symbols, and constraints.
+1. **Plan Ledger Check & Goal-to-Tool Auto-Dispatch**:
+   - **Check Prior Plans First**: On any existing repository, run `python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" discover --root .` and `status` before broad exploration so recent completed slices are inherited rather than rediscovered.
+   - **Auto-Pickup High-Leverage Tools by Goal Signal**:
+     - *Architecture / coupling / multi-file change* $\rightarrow$ `diagnose.py arch-map --path .` + `research` subagent (`Model: 'flash'`) for `> 3–4` files.
+     - *Web UI / DOM / routes / CSS / layout* $\rightarrow$ `diagnose.py surface --show-ids --show-routes --show-globals` + `diagnose.py ui` (or `/browser` / `chrome_devtools` MCP).
+     - *Modularity / latent defects / tests* $\rightarrow$ `diagnose.py audit --path <targets>`, `diagnose.py scan --path <targets>`, `diagnose.py tests`.
+     - *Hardware / cameras / DB / external services* $\rightarrow$ `diagnose.py probe list` (or `search_marketplace` for missing MCPs/SDKs).
+     - *Post-task introspection* $\rightarrow$ `plan_engine.py digest <slug> --backfill --write-scaffold`, `diagnose.py transcript-audit --latest 1`.
+   - **Subagent Map-Reduce**: If inspecting more than 3–4 unfamiliar files, spawn a `research` subagent (`Model: 'flash'`) to return a concise summary of file paths, symbols, and constraints.
 2. **Triage the Request**:
    - **Bucket A (Tactical / Single-Step)**: Isolated, deterministic tweak or single-function utility with zero UI/runtime ambiguity. Proceed to a quick Pre-Flight check, implement, and run the local verifier.
    - **Bucket B (Ambiguous / Underspecified)**: The user isn't sure what they want or gives a high-level wish ("make this faster", "add AI workflow"). Go to **Phase 1A**.
@@ -174,7 +182,7 @@ Before modifying production files on any multi-step task:
      - **Scoping Immediate Execution**: Mark Phase 1 as *Active Execution Target* and Phases 2..N as *Deferred to Next Turn / Milestone* (`Proceed` authorizes only the active phase). Record milestones via `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add` and pause.
    - **Workspace Plan Engine Registration (Dual-Write & Master Plan Hierarchy Contract)**:
      - Dual-write every plan: (1) `<appDataDir>/brain/<conversation-id>/<slug>.md` with `ArtifactMetadata` (`RequestFeedback: true`), and (2) exact same content to `<workspace>/.TODO/<slug>.md` (or `.plans/<slug>.md`) without `ArtifactMetadata`, registered via `python "<skill_dir>/scripts/plan_engine.py" init .TODO/<slug>.md`.
-     - **Master Plans of Plans (Hierarchical Roadmaps)**: Register master roadmaps first, then bind per-step plans via `plan_engine.py init .TODO/<step_plan>.md --parent <master_slug> --milestone <N>`. Distill subagent file/line findings into `docs/architecture/`.
+     - **Master Plans of Plans (Automatic Scope Threshold)**: Automatically create a Master Roadmap (`<slug>_master_roadmap.md`) + Step 1 child plan (`--parent <master_slug> --milestone 1`) whenever a roadmap has **`>= 4` milestones**, spans **`>= 3` distinct subsystems/directories** with **`>= 10` tasks**, or requires cross-layer refactoring—never default to a flat plan unless the user explicitly asks for a single-tier plan (`plan_engine.py init` emits `SCOPE RECOMMENDATION (MASTER PLAN)` when this threshold is crossed). Distill subagent file/line findings into `docs/architecture/`.
      - **Master-Step Runtime Wiring Mandate & Frozen-Monolith Signal Adapters**: Any step introducing a new coordinator, mapper, or service MUST pair unit-tested component modules with explicit live runtime constructor/pool/lifecycle wiring (e.g., `PipelineEngine`, `CameraPool`, app startup) in the same step—never leave tested modules disconnected from production entrypoints. When freezing an oversized `WARN`/`HARD` file (e.g., `gallery.py`), explicitly schedule a small extracted signal/helper adapter so upstream producers populate newly introduced downstream attributes rather than leaving duck-typed `getattr(..., 0.0)` stubs that only fire in synthetic unit tests.
      - **Vertical Slice Parity**: Pair implementation updates directly with a targeted unit test covering every milestone's changes rather than deferring testing to a final empty shell.
      - **Changelog Task Formulation Invariant**: NEVER declare milestone tasks targeting raw log files (`MIGRATION_LOG.md`). Always use:
@@ -239,16 +247,16 @@ Execute approved plans in tight, verifiable increments rather than monolithic du
    - **Verification Baseline**: Run `python "<skill_dir>/scripts/plan_engine.py" verify` (auto-extracts verifiers or pass `--command "<cmd>"`) to record test pass counts.
    - **Advance Milestone & Commit Suggestion**: Run `python "<skill_dir>/scripts/plan_engine.py" advance` to patch checkboxes (`- [ ]` $\rightarrow$ `- [x]`), record the current commit SHA, and emit a copy-pasteable `git commit` suggestion. Never execute `git add` or `git commit` without explicit user consent.
       - **Smart Commit Hint Gate**: If `plan_engine.py advance` reports `(None - Milestone was verification/audit only; no application code changes)`, do not present a commit command in your turn-end message; explain that milestone verification succeeded without requiring code commits.
-   - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --retries <n> --steps <step_count> --tri "5,5,5,5" --hypotheses <n> --learn "<candidate>" --escalate "<bug>"` (or named `key=score` pairs). Never inflate grades (`plan_engine.py` enforces rubric caps when `--retries >= 2` or `--steps > 60` / `> 100`).
+   - **4-Dimensional Retrospective (MANDATORY on every advance)**: Log telemetry via `python "<skill_dir>/scripts/plan_engine.py" retrospective --grade <A-F> --retries <n> --steps <step_count> --tri "5,5,5,5" --hypotheses <n> --learn "<project_candidate>" --skill-learn "<skill_or_tool_candidate>" --tool-gap "<gap_or_none>" --escalate "<bug>"` (or named `key=score` pairs). Never inflate grades (`plan_engine.py` enforces rubric caps when `--retries >= 2` or `--steps > 60` / `> 100`).
      - Dimensions (positional `5,5,5,5`): *Token Efficiency (1–5)*, *Hypothesis Accuracy (1–5)* ($\le 2$ attempts), *Tool Reliability Index (TRI 1–5)*, and *Architectural Defense (1–5)* (SSOT & modularity adherence).
      - Grading rubric (honest self-assessment): `A` (0–1 retries, $\le 60$ steps), `B` (2–3 retries or 61–100 steps), `C` (>3 retries or >100 steps), `D/F` (repeated thrash or unverified).
-   - **Deterministic Telemetry**: Take `--steps`/`--retries` from `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <id>` (never estimate); at plan close run `plan_engine.py digest <slug>` instead of a manual post-mortem.
-   - **Continuous Learning Feed**: Propose discovered reusable patterns and bug remediations to `/learn`.
+   - **Deterministic Telemetry**: Take `--steps`/`--retries` from `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <id>` (or pass `--cid <id>` directly to `retrospective`); at plan close run `plan_engine.py digest <slug> --backfill --write-scaffold` instead of a manual post-mortem.
+   - **Continuous Learning Feed & User-Selectable Introspectives**: Propose discovered project/skill candidates to `/learn`, and at the end of any completed task or milestone always present a concise **Introspective Options** block telling the user what they can choose to run (e.g., `plan_engine.py digest <slug> --backfill --write-scaffold`, `diagnose.py transcript-audit --latest 1`, or `/learn`) so they decide without surprise token burn.
    - **Turn-Termination Gate & Interactive User Checkpoint (MANDATORY)**: After advancing an intermediate milestone and logging retrospective telemetry, **STOP calling tools immediately**:
      > *"Milestone [N] is verified and complete. Ready to proceed with Milestone [N+1] ([Milestone Title])? Reply to continue or invoke `/frontier-architect continue`."*
 7. **Final Plan Completion Sign-Off & Pre-Merge Gate (Axiom 8 Safety)**:
-   - **Post-Step Integration & Non-Mocked Branch Gate**: Before ticking a Master Step `[x]`, run `diagnose.py scan --path .` (including `tests/`, not just one subfolder) and exercise unconfigured/empty/fallback branches (`api_key=""`, `None` deps, missing config) without mocks that hide them; then run `plan_engine.py digest <slug> [--cids <ids>]` and resolve or log every integrity issue, `/learn` candidate, and escalation it lists.
-   - When all milestones reach 100% (`- [x]`), run the full regression suite, verify zero `file:///` links or secrets and full 350/500-line budget compliance, record the changelog via `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add`, provide `git diff main...plan/<slug>`, and advise clicking **New Conversation (+)** or `/compact`.
+   - **Post-Step Integration & Non-Mocked Branch Gate**: Before ticking a Master Step `[x]`, run `diagnose.py scan --path .` (including `tests/`, not just one subfolder) and exercise unconfigured/empty/fallback branches (`api_key=""`, `None` deps, missing config) without mocks that hide them; then run `plan_engine.py digest <slug> [--cids <ids>] --backfill --write-scaffold` and resolve or log every integrity issue, project/skill `/learn` candidate, and escalation it lists.
+   - When all milestones reach 100% (`- [x]`), run the full regression suite, verify zero `file:///` links or secrets and full 350/500-line budget compliance, record the changelog via `python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add`, provide `git diff main...plan/<slug>`, include the **Introspective Options** summary for the user, and advise clicking **New Conversation (+)** or `/compact`.
 
 ---
 

@@ -592,6 +592,58 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(retros[-1]["retries"], 2)
         self.assertEqual(retros[-1]["token_efficiency_grade"], "B")
 
+    def test_init_scope_recommendation_and_child_guard(self):
+        big_plan = self.root / ".TODO" / "big_feature_unification.md"
+        big_plan.write_text(
+            "# Big Unification\n\n"
+            "## Milestone 1: A\n- [ ] **api/a.py**: add\n\n"
+            "## Milestone 2: B\n- [ ] **ui/b.js**: add\n\n"
+            "## Milestone 3: C\n- [ ] **core/c.py**: add\n\n"
+            "## Milestone 4: D\n- [ ] **tests/test_d.py**: add\n",
+            encoding="utf-8",
+        )
+        code, out = self._run_cli(["init", ".TODO/big_feature_unification.md"])
+        self.assertEqual(code, 0)
+        self.assertIn("SCOPE RECOMMENDATION (MASTER PLAN)", out)
+
+        master = self.root / ".TODO" / "master_roadmap.md"
+        master.write_text("# Master Roadmap\n\n## Step 1: First\n- [ ] Go\n", encoding="utf-8")
+        self._run_cli(["init", ".TODO/master_roadmap.md"])
+        code_child, out_child = self._run_cli(["init", ".TODO/big_feature_unification.md", "--parent", "master_roadmap", "--milestone", "1"])
+        self.assertEqual(code_child, 0)
+        self.assertNotIn("SCOPE RECOMMENDATION (MASTER PLAN)", out_child)
+
+    def test_slice_tools_auto_pickup_and_retro_reminder(self):
+        ui_plan = self.root / ".TODO" / "ui_slice.md"
+        ui_plan.write_text(
+            "# UI Slice\n\n"
+            "## Milestone 1: Dashboard Panel\n- [ ] **dashboard/static/js/app.js**: Wire modal UI\n\n"
+            "## Milestone 2: Backend Router\n- [ ] **dashboard/routers/rec.py**: Add service\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "ui_slice"])
+        code_next, out_next = self._run_cli(["next", "ui_slice"])
+        self.assertEqual(code_next, 0)
+        self.assertIn("Auto-Selected Slice Tools", out_next)
+        self.assertIn("diagnose.py surface", out_next)
+
+        self._run_cli(["advance", "ui_slice", "--milestone", "1"])
+        code_adv2, out_adv2 = self._run_cli(["advance", "ui_slice", "--milestone", "2"])
+        self.assertEqual(code_adv2, 0)
+        self.assertIn("RETROSPECTIVE REMINDER: Milestone 1", out_adv2)
+        self.assertIn("Introspectives (User Choice):", out_adv2)
+
+    def test_retrospective_skill_learn_and_tool_gap(self):
+        self._run_cli(["init", "sample_plan"])
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--tri", "5,5,5,5",
+            "--learn", "Keep handlers <=25L", "--skill-learn", "Auto-detect >=4 milestones",
+            "--tool-gap", "scan --path lacked nargs=+",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("/learn candidate (skill): Auto-detect >=4 milestones", out)
+        self.assertIn("Tool gap: scan --path lacked nargs=+", out)
+
 
 if __name__ == "__main__":
     unittest.main()
