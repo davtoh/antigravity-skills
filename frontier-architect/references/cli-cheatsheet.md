@@ -18,23 +18,23 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" init <pla
 # Link a child step plan to a Master Roadmap (when >=4 milestones or >=3 subsystems)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" init .TODO/step_1_<slug>.md --parent <master_slug> --milestone 1 --root .
 
-# Inspect visual progress bar, active milestone, and verification baseline
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" status <plan_or_slug> --root .
+# Inspect visual progress bar, active milestone, and verification baseline (omit <plan_or_slug> to auto-resolve .frontier/state.json)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" status [<plan_or_slug>] --root .
 
 # Emit ONLY the active milestone's checklist items and verifiers (Zero-Token Slicer)
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next <plan_or_slug> --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<plan_or_slug>] --root .
 
 # Run verification command (auto-normalizes leading .venv/bin/python on Windows & parses unittest/pytest counts)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" --root .
 
-# Advance completed milestone (patches [ ] -> [x] in-place and emits copy-pasteable git commit snippet)
+# Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-writes LEARNING_SCAFFOLD.md on plan completion)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> --root .
 
-# Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json and retrospectives.json)
+# Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospective <plan_or_slug> \
   --milestone <N> --grade A --cid <conv_id> --tri "5,5,5,5" --hypotheses 1 \
-  --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
+  --went-well "<what worked well>" --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
 
 # Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path <files...> --max-lines 350 --max-fn-lines 40

@@ -158,6 +158,19 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertIn("- REPEAT diag-1: foo.py (2x)", md)
         self.assertIn("- CORRECTION diag-1: step 0: No, fix parser instead", md)
 
+    def test_git_grep_exit_1_not_counted_as_cmd_fail(self) -> None:
+        _write(self.brain, "grep-1", [
+            _planner(("run_command", {"CommandLine": 'git grep -n "missing_sym" src/'})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nNo output from the command.\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": 'git grep -n "[" src/'})),
+            {"type": "GENERIC", "content": "Command exited with code 2.\nfatal: bad pattern\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "pytest tests/"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n1 failed\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "grep-1")
+        self.assertEqual(row["failures"], {"cmd_fail": 2})
+        self.assertEqual(row["total_failures"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

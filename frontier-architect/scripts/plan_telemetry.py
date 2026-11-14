@@ -93,23 +93,31 @@ def _cap_grade_by_rubric(grade: str, retries: int | None, steps: int | None) -> 
     return grade
 
 
+_IGNORED_ITEMS = {"", "none", "n/a", "null"}
+
+
+def _clean_list(val: str | None) -> list[str]:
+    """Return single-item list unless ``val`` is empty or a placeholder ('none', 'N/A', 'null')."""
+    text = str(val).strip() if val is not None else ""
+    return [text] if text and text.lower() not in _IGNORED_ITEMS else []
+
+
 def _build_retrospective_entry(
     milestone_idx: int, tri_scores: dict[str, int], grade: str,
     retries: int | None, steps: int | None, args: argparse.Namespace,
 ) -> dict[str, Any]:
-    """Assemble retrospective telemetry payload with optional retry/step/skill fields."""
-    skill_learn = getattr(args, "skill_learn", None)
-    tool_gap = getattr(args, "tool_gap", None)
+    """Assemble retrospective telemetry payload with optional retry/step/skill/went_well fields."""
     entry: dict[str, Any] = {
         "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "token_efficiency_grade": grade,
         "tool_reliability_scores": tri_scores,
         "hypotheses_tested": args.hypotheses or 1,
-        "root_causes_escalated": [args.escalate] if args.escalate else [],
-        "learn_candidates": [args.learn] if args.learn else [],
-        "skill_learn_candidates": [skill_learn] if skill_learn else [],
-        "tool_gaps": [tool_gap] if tool_gap else [],
+        "root_causes_escalated": _clean_list(args.escalate),
+        "learn_candidates": _clean_list(args.learn),
+        "skill_learn_candidates": _clean_list(getattr(args, "skill_learn", None)),
+        "tool_gaps": _clean_list(getattr(args, "tool_gap", None)),
+        "went_well": _clean_list(getattr(args, "went_well", None)),
     }
     if retries is not None:
         entry["retries"] = retries
@@ -121,20 +129,39 @@ def _build_retrospective_entry(
 def _resolve_cid_telemetry(
     args: argparse.Namespace, steps: int | None, retries: int | None
 ) -> tuple[int | None, int | None, str | None]:
-    """Populate missing steps/retries from --cid transcript audit when available."""
+    """Populate missing steps/retries and canonicalize short CIDs via transcript audit."""
     cid = getattr(args, "cid", None)
     if not cid:
         return steps, retries, None
-    if steps is None or retries is None:
+    if steps is None or retries is None or len(cid) < 36:
         from plan_digest import audit_single_cid
         if row := audit_single_cid(cid, getattr(args, "brain_dir", None)):
+            cid = str(row.get("cid") or cid)
             steps = row["steps"] if steps is None else steps
             retries = row["total_failures"] if retries is None else retries
     return steps, retries, cid
 
 
+def _upsert_retro(entries: list[dict[str, Any]], entry: dict[str, Any], slug: str | None = None) -> None:
+    """Replace an incomplete or same-CID entry for the same milestone instead of appending duplicates."""
+    m_idx = entry.get("milestone_index")
+    new_cid = str(entry.get("cid") or "").lower()
+    for i, old in enumerate(entries):
+        if not isinstance(old, dict) or old.get("milestone_index") != m_idx:
+            continue
+        if slug and old.get("_slug") and old.get("_slug") != slug:
+            continue
+        old_cid = str(old.get("cid") or "").lower()
+        cid_match = bool(old_cid and new_cid and (old_cid.startswith(new_cid) or new_cid.startswith(old_cid)))
+        incomplete_retry = bool(old_cid and old.get("steps") is None and new_cid)
+        if cid_match or incomplete_retry:
+            entries[i] = entry
+            return
+    entries.append(entry)
+
+
 def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
-    """Record Token Efficiency Grade, TRI, and /learn candidate proposals."""
+    """Record Token Efficiency Grade, TRI, /learn candidates, and refresh LEARNING_SCAFFOLD.md."""
     plan_p = resolve_plan_path(root, args.plan)
     if not plan_p:
         print("[plan_engine] Error: No plan resolved.")
@@ -143,7 +170,6 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     fdir = get_frontier_dir(root)
     retro_path = fdir / "plans" / ps["slug"] / "retrospectives.json"
     retros = load_json(retro_path, [])
-
     milestone_idx = args.milestone if args.milestone is not None else ps.get("last_advanced_milestone", ps["active_milestone_index"])
     tri_scores = _parse_tri(args.tri)
     if args.tri and not tri_scores:
@@ -156,20 +182,20 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
     if cid:
         entry["cid"] = cid
-    retros.append(entry)
+    _upsert_retro(retros, entry)
     save_json(retro_path, retros)
-
     ws = load_json(fdir / "state.json", {})
-    ws.setdefault("retrospectives", []).append(entry)
+    _upsert_retro(ws.setdefault("retrospectives", []), entry)
     save_json(fdir / "state.json", ws)
+    from plan_digest import write_learning_scaffold
+    scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
     print(f"[plan_engine] Logged retrospective for Milestone {entry['milestone_index']}:")
     print(f"  Token Grade: {entry['token_efficiency_grade']} | TRI: {entry['tool_reliability_scores']}")
-    if entry["learn_candidates"]:
-        print(f"  /learn candidate (project): {entry['learn_candidates'][0]}")
-    if entry["skill_learn_candidates"]:
-        print(f"  /learn candidate (skill): {entry['skill_learn_candidates'][0]}")
-    if entry["tool_gaps"]:
-        print(f"  Tool gap: {entry['tool_gaps'][0]}")
+    for label, key in (("/learn candidate (project)", "learn_candidates"), ("/learn candidate (skill)", "skill_learn_candidates"), ("Tool gap", "tool_gaps"), ("Went well", "went_well")):
+        if entry.get(key):
+            print(f"  {label}: {entry[key][0]}")
+    if scaffold_rel:
+        print(f"  Learning scaffold: {scaffold_rel}")
     return 0
 
 
@@ -296,16 +322,10 @@ def cmd_verify(root: Path, args: argparse.Namespace) -> int:
         if parsed["verification_commands"]:
             cmd = parsed["verification_commands"][0]
     if not cmd:
-        ws_existing = load_json(get_frontier_dir(root) / "state.json", {})
-        cmd = ws_existing.get("verification_baseline", {}).get("command")
-
+        cmd = load_json(get_frontier_dir(root) / "state.json", {}).get("verification_baseline", {}).get("command")
     if not cmd:
-        print(
-            "[plan_engine] Error: No verification command specified or found in plan. "
-            'Pass --command "<cmd>" or include runnable commands in code blocks / Scenario Matrix tables.'
-        )
+        print("[plan_engine] Error: No verification command specified or found in plan. Pass --command \"<cmd>\" or include runnable commands in code blocks / Scenario Matrix tables.")
         return 1
-
     extra_env, stripped_cmd = _extract_leading_env(cmd)
     exec_cmd = _normalize_verify_cmd(stripped_cmd, root)
     run_env = {**os.environ, **extra_env} if extra_env else None
@@ -313,17 +333,12 @@ def cmd_verify(root: Path, args: argparse.Namespace) -> int:
     proc = subprocess.run(exec_cmd, shell=True, cwd=root, env=run_env, capture_output=True, text=True, encoding="utf-8", errors="replace")
     output = (proc.stdout or "") + (proc.stderr or "")
     print(output)
-
     passed, failed = _parse_test_counts(output)
-
     fdir = get_frontier_dir(root)
     ws = load_json(fdir / "state.json", {})
     ws["verification_baseline"] = {
-        "command": cmd,
-        "last_exit_code": proc.returncode,
-        "passed_tests": passed,
-        "failed_tests": failed,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "command": cmd, "last_exit_code": proc.returncode,
+        "passed_tests": passed, "failed_tests": failed, "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     save_json(fdir / "state.json", ws)
     return proc.returncode

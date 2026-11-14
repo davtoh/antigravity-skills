@@ -676,6 +676,53 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertIn("diagnose.py probe list", out)
         self.assertIn("diagnose.py scan --path .", out)
 
+    def test_retrospective_went_well_upsert_short_cid_and_auto_scaffold(self):
+        self._run_cli(["init", "sample_plan"])
+        brain = self.root / "brain"
+        log_dir = brain / "conv-abcd1234-full" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        rows = [{"type": "GENERIC", "content": "Command exited with code 1\n"}] + [
+            {"type": "GENERIC", "content": "ok"} for _ in range(69)
+        ]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8"))
+
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--milestone", "1", "--grade", "A",
+            "--cid", "conv-abcd1234", "--brain-dir", str(brain),
+            "--went-well", "Strict TDD slicing", "--skill-learn", "none",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Token Grade: B", out)
+        self.assertIn("Went well: Strict TDD slicing", out)
+        self.assertIn("Learning scaffold: .frontier/plans/sample_plan/LEARNING_SCAFFOLD.md", out)
+
+        # Re-running same milestone & canonical/prefix CID updates in-place instead of duplicating
+        code2, _ = self._run_cli([
+            "retrospective", "sample_plan", "--milestone", "1", "--grade", "A",
+            "--cid", "conv-abcd1234-full", "--brain-dir", str(brain),
+            "--went-well", "Updated note", "--skill-learn", "N/A",
+        ])
+        self.assertEqual(code2, 0)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(len(retros), 1)
+        self.assertEqual(retros[0]["cid"], "conv-abcd1234-full")
+        self.assertEqual(retros[0]["went_well"], ["Updated note"])
+        self.assertEqual(retros[0]["skill_learn_candidates"], [])
+        scaffold_text = (get_frontier_dir(self.root) / "plans" / "sample_plan" / "LEARNING_SCAFFOLD.md").read_text(encoding="utf-8")
+        self.assertIn("## What Went Well", scaffold_text)
+        self.assertIn("Updated note", scaffold_text)
+
+    def test_advance_prompts_slug_and_final_writes_scaffold(self):
+        self._run_cli(["init", "sample_plan"])
+        code1, out1 = self._run_cli(["advance", "sample_plan", "--milestone", "1"])
+        self.assertEqual(code1, 0)
+        self.assertIn("/frontier-architect continue sample_plan", out1)
+
+        code2, out2 = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
+        self.assertEqual(code2, 0)
+        self.assertIn("Learning Scaffold: .frontier/plans/sample_plan/LEARNING_SCAFFOLD.md", out2)
+        self.assertTrue((get_frontier_dir(self.root) / "plans" / "sample_plan" / "LEARNING_SCAFFOLD.md").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

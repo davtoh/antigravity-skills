@@ -162,6 +162,42 @@ class TestPlanDigest(unittest.TestCase):
         self.assertEqual(digest["cids"], ["20aa8189-94b2-4ab5"])
         self.assertIn("transcript-audit --cids 20aa8189-94b2-4ab5", pd.format_digest(digest))
 
+    def test_unresolved_filters_none_and_renders_went_well(self) -> None:
+        self._write_retros([
+            {
+                "milestone_index": 1, "token_efficiency_grade": "A", "steps": 20, "retries": 0,
+                "tool_reliability_scores": {"overall": 5},
+                "learn_candidates": ["none", "Real project rule"],
+                "skill_learn_candidates": ["none", "N/A", "Real skill rule"],
+                "went_well": ["Fast isolated tests", "none"],
+            },
+        ])
+        digest = pd.build_digest(self.root, "demo")
+        self.assertEqual(digest["learn_candidates"], ["Real project rule"])
+        self.assertEqual(digest["skill_learn_candidates"], ["Real skill rule"])
+        self.assertEqual(digest["went_well"], ["Fast isolated tests"])
+        md = pd.format_digest(digest)
+        self.assertIn("## What Went Well", md)
+        self.assertIn("- Fast isolated tests", md)
+
+    def test_backfill_resolves_short_cid_and_dedupes_incomplete_duplicate_rows(self) -> None:
+        brain = Path(self._tmp.name) / "brain"
+        log_dir = brain / "dbc7d48f-f0ba-4569-b8a5-cf91d55ffddc" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        steps = [{"type": "GENERIC", "content": "ok"} for _ in range(65)]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in steps) + "\n").encode("utf-8"))
+        self._write_retros([
+            {"milestone_index": 1, "cid": "dbc7d48f", "token_efficiency_grade": "A", "tool_reliability_scores": {}},
+            {"milestone_index": 1, "cid": "dbc7d48f-f0ba-4569-b8a5-cf91d55ffddc", "steps": 65, "retries": 0,
+             "token_efficiency_grade": "B", "tool_reliability_scores": {"overall": 5}},
+        ])
+        digest = pd.build_digest(self.root, "demo", brain_dir=str(brain), backfill=True)
+        self.assertEqual(digest["integrity_issues"], [])
+        self.assertEqual(digest["retro_entries"], 1)
+        saved = json.loads((self.root / ".frontier" / "plans" / "demo" / "retrospectives.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["cid"], "dbc7d48f-f0ba-4569-b8a5-cf91d55ffddc")
+
 
 if __name__ == "__main__":
     unittest.main()

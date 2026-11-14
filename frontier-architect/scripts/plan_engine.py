@@ -27,7 +27,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body
-from plan_digest import cmd_digest, register_digest_parser
+from plan_digest import cmd_digest, register_digest_parser, write_learning_scaffold
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
@@ -137,9 +137,12 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     all_done = ps["status"] == "completed" or (bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"]))
     if all_done or not target_m:
         if args.json:
-            print(json.dumps({"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns}, indent=2))
+            payload = {"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, **({"parent_plan": ps["parent_plan"]} if ps.get("parent_plan") else {})}
+            print(json.dumps(payload, indent=2))
         else:
             print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
+            if p := ps.get("parent_plan"):
+                print(f"[plan_engine] Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']}) -> Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then 'plan_engine.py next {p['slug']}'.")
         return 0
     if args.json:
         print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns}, indent=2))
@@ -241,7 +244,8 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         if (target_idx - 1) not in logged:
             missing_prior_retro = target_idx - 1
 
-    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro)
+    scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if ps["status"] == "completed" else None
+    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel)
     return 0
 
 

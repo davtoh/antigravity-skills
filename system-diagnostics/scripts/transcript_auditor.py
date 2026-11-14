@@ -69,13 +69,16 @@ def _unquote(value: Any) -> Any:
     return value
 
 
-def _classify_result(content: str, status: str) -> str | None:
+def _classify_result(content: str, status: str, last_cmd: str = "") -> str | None:
     """Classify a tool-result step as cmd_fail / edit_fail / read_fail, else None."""
     head = content[:400]
     is_read_output = "Showing lines " in content[:220] or "Partial read " in content[:220]
     match = _EXIT_RE.search(head)
     if match and not is_read_output:
-        return "cmd_fail" if int(match.group(1)) != 0 else None
+        code = int(match.group(1))
+        if code == 1 and re.search(r"\bgit\s+grep\b", last_cmd) and "fatal:" not in content.lower():
+            return None
+        return "cmd_fail" if code != 0 else None
     if status == "ERROR":
         if "target content not found" in content:
             return "edit_fail"
@@ -141,6 +144,7 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
                 same_step_edits[p_str] += 1
         elif name == "run_command":
             cmd_line = str(args.get("CommandLine", "")).strip()
+            acc["last_cmd"] = cmd_line
             acc["last_target"] = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
             acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
@@ -205,7 +209,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "tools": Counter(), "reads": Counter(), "subagents": [], "first_subagent_step": None,
         "pending_unnamed": 0, "pending_cids": set(), "subagent_cids": [], "reads_while_pending": 0,
         "post_dispatch_reads": [], "edited_paths": set(), "parallel_same_file_edits": [],
-        "failures": Counter(), "failure_samples": [], "user_corrections": [], "last_target": "", "models": [],
+        "failures": Counter(), "failure_samples": [], "user_corrections": [], "last_target": "", "last_cmd": "", "models": [],
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -219,7 +223,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             _extract_user_correction(content, idx, acc)
         else:
             _track_subagent_events(kind, content, cid, acc)
-            if fail := _classify_result(content, step.get("status", "")):
+            if fail := _classify_result(content, step.get("status", ""), acc.get("last_cmd", "")):
                 acc["failures"][fail] += 1
                 if len(acc["failure_samples"]) < 5:
                     target = acc["last_target"] or "tool"

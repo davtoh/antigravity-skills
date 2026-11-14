@@ -55,18 +55,24 @@ def check_retro_integrity(entries: list[dict[str, Any]]) -> list[str]:
     return issues
 
 
+def _clean_items(entries: list[dict[str, Any]], key: str) -> list[str]:
+    """Return deduplicated non-placeholder strings for ``key`` across retrospective entries."""
+    return list(dict.fromkeys(
+        str(t).strip()
+        for e in entries
+        for t in (e.get(key) or [])
+        if str(t).strip().lower() not in _IGNORED_ESCALATIONS
+    ))
+
+
 def _unresolved(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     """Deduplicated /learn candidates and meaningful escalations across entries."""
-    learns = list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get("learn_candidates") or []) if str(t).strip()))
-    escs = list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get("root_causes_escalated") or []) if str(t).strip().lower() not in _IGNORED_ESCALATIONS))
-    return learns, escs
+    return _clean_items(entries, "learn_candidates"), _clean_items(entries, "root_causes_escalated")
 
 
 def _unresolved_skill_items(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     """Deduplicated skill /learn candidates and tooling gaps across entries."""
-    skill_learns = list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get("skill_learn_candidates") or []) if str(t).strip()))
-    tool_gaps = list(dict.fromkeys(str(t).strip() for e in entries for t in (e.get("tool_gaps") or []) if str(t).strip().lower() not in _IGNORED_ESCALATIONS))
-    return skill_learns, tool_gaps
+    return _clean_items(entries, "skill_learn_candidates"), _clean_items(entries, "tool_gaps")
 
 
 def _load_auditor(brain_dir: str | None = None) -> tuple[Any, Path] | None:
@@ -81,10 +87,23 @@ def _load_auditor(brain_dir: str | None = None) -> tuple[Any, Path] | None:
     return None
 
 
+def _resolve_one_cid(brain: Path, cid: str) -> str:
+    """Resolve an exact or unique 6+ char conversation ID prefix in ``brain``."""
+    rel = Path(".system_generated") / "logs" / "transcript.jsonl"
+    if (brain / cid / rel).is_file() or len(cid) < 6 or not brain.is_dir():
+        return cid
+    low = cid.lower()
+    hits = [d.name for d in brain.iterdir() if d.is_dir() and d.name.lower().startswith(low) and (d / rel).is_file()]
+    return hits[0] if len(hits) == 1 else cid
+
+
 def audit_single_cid(cid: str, brain_dir: str | None = None) -> dict[str, Any] | None:
-    """Audit one conversation ID via transcript_auditor, or None if unavailable/missing."""
+    """Audit one conversation ID (exact or unique prefix), or None if unavailable/missing."""
     loaded = _load_auditor(brain_dir)
-    row = loaded[0].audit_conversation(loaded[1], cid) if loaded else None
+    if not loaded:
+        return None
+    resolved = _resolve_one_cid(loaded[1], cid)
+    row = loaded[0].audit_conversation(loaded[1], resolved)
     return None if not row or row.get("missing") else row
 
 
@@ -93,7 +112,9 @@ def _transcript_rows(cids: list[str] | None, brain_dir: str | None) -> list[dict
     if not cids:
         return []
     loaded = _load_auditor(brain_dir)
-    return [loaded[0].audit_conversation(loaded[1], c) for c in cids] if loaded else None
+    if not loaded:
+        return None
+    return [loaded[0].audit_conversation(loaded[1], _resolve_one_cid(loaded[1], c)) for c in cids]
 
 
 def _parse_iso(ts: str) -> datetime | None:
@@ -122,9 +143,11 @@ def _index_conversation(cid: str, log_path: Path, ta: Any) -> dict[str, Any]:
 
 
 def _match_entry_cid(e: dict[str, Any], idx_rows: list[dict[str, Any]], cids: list[str] | None, pos: int) -> str | None:
-    """Resolve matching conversation ID by explicit cid, learn text, timestamp, or cids position."""
-    if e.get("cid"):
-        return str(e["cid"])
+    """Resolve matching conversation ID by explicit/prefix cid, learn text, timestamp, or position."""
+    if raw_cid := str(e.get("cid") or "").strip():
+        low = raw_cid.lower()
+        hits = [r["cid"] for r in idx_rows if r["cid"].lower().startswith(low)]
+        return hits[0] if len(hits) == 1 else raw_cid
     lc = str((e.get("learn_candidates") or [""])[0]).strip()[:40]
     for field in ("retro", "cmds") if len(lc) >= 8 else ():
         if hits := [r["cid"] for r in idx_rows if lc in r[field]]:
@@ -156,6 +179,31 @@ def _apply_backfill_row(e: dict[str, Any], row: dict[str, Any] | None) -> bool:
     return e != before
 
 
+def _dedupe_retro_rows(rows: list[Any]) -> tuple[list[Any], int]:
+    """Drop incomplete or duplicate-CID retrospective entries when a complete entry exists."""
+    complete_ms = {e.get("milestone_index") for e in rows if isinstance(e, dict) and e.get("steps") is not None}
+    kept_rev: list[Any] = []
+    seen_pairs: set[tuple[Any, str]] = set()
+    removed = 0
+    for e in reversed(rows):
+        if not isinstance(e, dict):
+            kept_rev.append(e)
+            continue
+        m_idx = e.get("milestone_index")
+        cid = str(e.get("cid") or "").lower()
+        if e.get("steps") is None and m_idx in complete_ms:
+            removed += 1
+            continue
+        if cid and (m_idx, cid) in seen_pairs:
+            removed += 1
+            continue
+        if cid:
+            seen_pairs.add((m_idx, cid))
+        kept_rev.append(e)
+    kept_rev.reverse()
+    return kept_rev, removed
+
+
 def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | None = None, brain_dir: str | None = None) -> int:
     """Match retrospective entries missing telemetry to transcripts and persist updates."""
     loaded = _load_auditor(brain_dir)
@@ -163,7 +211,7 @@ def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | No
         return 0
     ta, brain = loaded
     rel = Path(".system_generated") / "logs" / "transcript.jsonl"
-    dirs = [brain / c for c in cids] if cids else (list(brain.iterdir()) if brain.is_dir() else [])
+    dirs = [brain / _resolve_one_cid(brain, c) for c in cids] if cids else (list(brain.iterdir()) if brain.is_dir() else [])
     idx_rows = [_index_conversation(d.name, d / rel, ta) for d in dirs if (d / rel).is_file()]
     slugs = [ps["slug"]] + [c.get("slug") for c in (ps.get("child_plans") or {}).values() if c.get("slug")]
     cache, updated, pos = {}, 0, 0
@@ -183,6 +231,9 @@ def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | No
                 pos += 1
             if _apply_backfill_row(e, row):
                 dirty, updated = True, updated + 1
+        rows, dropped = _dedupe_retro_rows(rows)
+        if dropped:
+            dirty, updated = True, updated + dropped
         if dirty:
             save_json(rpath, rows)
     return updated
@@ -208,6 +259,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     entries = _load_entries(root, ps)
     learns, escalations = _unresolved(entries)
     skill_learns, tool_gaps = _unresolved_skill_items(entries)
+    went_well = _clean_items(entries, "went_well")
     entry_cids = list(dict.fromkeys(str(e["cid"]) for e in entries if e.get("cid")))
     rows = _transcript_rows(cids, brain_dir)
     return {
@@ -215,7 +267,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
         "children": [c.get("slug") for c in (ps.get("child_plans") or {}).values()],
         "retro_entries": len(entries), "backfilled_entries": backfilled, "integrity_issues": check_retro_integrity(entries),
-        "learn_candidates": learns, "skill_learn_candidates": skill_learns,
+        "went_well": went_well, "learn_candidates": learns, "skill_learn_candidates": skill_learns,
         "tool_gaps": tool_gaps, "escalations": escalations,
         "cids": entry_cids, "transcripts": rows, "transcripts_unavailable": rows is None,
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
@@ -229,6 +281,7 @@ def format_digest(d: dict[str, Any]) -> str:
     lines = [f"# Plan Digest: {d['title']} ({d['slug']}) - {d['status']}", f"Milestones: {done}/{len(d['milestones'])} complete | retro entries: {d['retro_entries']}{bf}"]
     lines += [f"- M{m['index']} [{m['status']}] {m['title']}" + (f" ({m['sha']})" if m["sha"] else "") for m in d["milestones"]]
     lines += ["", "## Retrospective integrity"] + ([f"- {i}" for i in d["integrity_issues"]] or ["- OK"])
+    lines += ["", "## What Went Well"] + ([f"- {i}" for i in d.get("went_well", [])] or ["- none"])
     lines += ["", "## Unresolved /learn candidates"] + ([f"- {i}" for i in d["learn_candidates"]] or ["- none"])
     lines += ["", "## Skill & Tooling /learn candidates"] + ([f"- {i}" for i in d.get("skill_learn_candidates", [])] or ["- none"])
     lines += ["", "## Tooling & Script Gaps"] + ([f"- {i}" for i in d.get("tool_gaps", [])] or ["- none"])
@@ -252,6 +305,25 @@ def format_digest(d: dict[str, Any]) -> str:
     return "\n".join(lines + ["", f"Next: {d['next_step']}"])
 
 
+def _write_scaffold_file(root: Path, digest: dict[str, Any]) -> str:
+    """Persist ``LEARNING_SCAFFOLD.md`` under ``.frontier/plans/<slug>/`` and return POSIX path."""
+    scaffold_p = get_frontier_dir(root) / "plans" / digest["slug"] / "LEARNING_SCAFFOLD.md"
+    scaffold_p.parent.mkdir(parents=True, exist_ok=True)
+    scaffold_p.write_bytes((format_digest(digest) + "\n").encode("utf-8"))
+    return scaffold_p.relative_to(root).as_posix()
+
+
+def write_learning_scaffold(
+    root: Path, slug: str, backfill: bool = False, brain_dir: str | None = None
+) -> str | None:
+    """Generate/refresh ``LEARNING_SCAFFOLD.md`` for ``slug``; safe no-op if plan fails to resolve."""
+    try:
+        digest = build_digest(root, slug, brain_dir=brain_dir, backfill=backfill)
+        return _write_scaffold_file(root, digest) if digest else None
+    except Exception:
+        return None
+
+
 def cmd_digest(root: Path, args: argparse.Namespace) -> int:
     """CLI handler for ``plan_engine.py digest``."""
     digest = build_digest(root, args.plan, getattr(args, "cids", None), getattr(args, "brain_dir", None), getattr(args, "backfill", False))
@@ -260,11 +332,9 @@ def cmd_digest(root: Path, args: argparse.Namespace) -> int:
         return 1
     rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_digest(digest)
     if getattr(args, "write_scaffold", False):
-        scaffold_p = get_frontier_dir(root) / "plans" / digest["slug"] / "LEARNING_SCAFFOLD.md"
-        scaffold_p.parent.mkdir(parents=True, exist_ok=True)
-        scaffold_p.write_bytes((format_digest(digest) + "\n").encode("utf-8"))
+        rel_path = _write_scaffold_file(root, digest)
         if not getattr(args, "json", False):
-            rendered += f"\n\n[plan_engine] Wrote learning scaffold: {scaffold_p.relative_to(root).as_posix()}"
+            rendered += f"\n\n[plan_engine] Wrote learning scaffold: {rel_path}"
     print(rendered)
     return 0
 
