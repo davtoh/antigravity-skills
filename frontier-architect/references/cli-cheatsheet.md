@@ -25,7 +25,7 @@ python skills/frontier-architect/scripts/plan_engine.py advance <plan_or_slug> -
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json and retrospectives.json)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
 python skills/frontier-architect/scripts/plan_engine.py retrospective <plan_or_slug> \
-  --milestone <N> --grade A --retries 0 --tri "5,5,5,5" --hypotheses 1 \
+  --milestone <N> --grade A --retries 0 --steps 25 --tri "5,5,5,5" --hypotheses 1 \
   --learn "<reusable insight>" --escalate "none" --root .
 
 # Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)

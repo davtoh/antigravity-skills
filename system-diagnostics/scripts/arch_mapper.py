@@ -129,39 +129,74 @@ def _collect_used_names(tree: ast.Module, all_exports: list[str]) -> set[str]:
     return used
 
 
-def _walk_python_ast(tree: ast.Module, stats: ModuleStats, local_pkgs: set[str]) -> list[tuple[str, str]]:
+def _is_import_probe_handler(handler: ast.ExceptHandler) -> bool:
+    """Return True if an except clause handles ImportError or ModuleNotFoundError."""
+    exc = handler.type
+    if exc is None:
+        return False
+    names = exc.elts if isinstance(exc, ast.Tuple) else [exc]
+    return any(isinstance(n, ast.Name) and n.id in ("ImportError", "ModuleNotFoundError") for n in names)
+
+
+def _collect_probe_import_ids(tree: ast.Module) -> set[int]:
+    """Return node ids of direct imports inside ``try...except ImportError`` probes."""
+    probe_ids: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try) and any(_is_import_probe_handler(h) for h in node.handlers):
+            for stmt in node.body:
+                if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+                    probe_ids.add(id(stmt))
+    return probe_ids
+
+
+def _record_ast_import(
+    node: ast.Import | ast.ImportFrom,
+    stats: ModuleStats,
+    local_pkgs: set[str],
+    probes: set[int],
+    imported_locals: list[tuple[str, str, bool]],
+) -> None:
+    """Record module coupling edges and bound names for a Python import node."""
+    is_probe = id(node) in probes
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            top = alias.name.split(".")[0]
+            if top in local_pkgs:
+                stats.internal_imports.append(alias.name)
+            imported_locals.append((alias.asname or top, alias.name, is_probe))
+        return
+    if not node.module:
+        return
+    if node.module.split(".")[0] in local_pkgs:
+        stats.internal_imports.append(node.module)
+    if node.module != "__future__":
+        for alias in node.names:
+            if alias.name != "*":
+                imported_locals.append((alias.asname or alias.name, f"{node.module}.{alias.name}", is_probe))
+
+
+def _walk_python_ast(
+    tree: ast.Module, stats: ModuleStats, local_pkgs: set[str], probe_ids: set[int] | None = None,
+) -> list[tuple[str, str, bool]]:
     """Populate classes, long functions, CLI flags, and import edges from AST."""
-    imported_locals: list[tuple[str, str]] = []
+    imported_locals: list[tuple[str, str, bool]] = []
+    probes = probe_ids or set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
             bases = [ast.unparse(b) for b in node.bases] if hasattr(ast, "unparse") else []
-            span = (node.end_lineno or node.lineno) - node.lineno + 1
-            stats.classes.append({"name": node.name, "methods": len(methods), "lines": span, "bases": bases})
+            stats.classes.append({"name": node.name, "methods": len(methods), "lines": (node.end_lineno or node.lineno) - node.lineno + 1, "bases": bases})
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             span = (node.end_lineno or node.lineno) - node.lineno + 1
             if span > 40:
                 stats.long_functions.append({"name": node.name, "lines": span, "line": node.lineno})
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in ("add_argument", "add_parser") and node.args:
-                arg0 = node.args[0]
-                if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
-                    target = stats.cli_flags if node.func.attr == "add_argument" else stats.cli_subcommands
-                    target.append(arg0.value)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                top = alias.name.split(".")[0]
-                if top in local_pkgs:
-                    stats.internal_imports.append(alias.name)
-                imported_locals.append((alias.asname or top, alias.name))
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            top = node.module.split(".")[0]
-            if top in local_pkgs:
-                stats.internal_imports.append(node.module)
-            if node.module != "__future__":
-                for alias in node.names:
-                    if alias.name != "*":
-                        imported_locals.append((alias.asname or alias.name, f"{node.module}.{alias.name}"))
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("add_argument", "add_parser") and node.args:
+            arg0 = node.args[0]
+            if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
+                target = stats.cli_flags if node.func.attr == "add_argument" else stats.cli_subcommands
+                target.append(arg0.value)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            _record_ast_import(node, stats, local_pkgs, probes, imported_locals)
     return imported_locals
 
 
@@ -176,11 +211,12 @@ def _analyze_python_file(path: Path, rel_path: str, text: str, local_pkgs: set[s
     py_surf = surface_scanners.scan_python_surface(text, rel_path=rel_path)
     stats.routes = _apply_router_prefix(py_surf.routes, _find_router_prefix(tree))
     used_names = _collect_used_names(tree, py_surf.all_exports)
-    imported_locals = _walk_python_ast(tree, stats, local_pkgs)
+    probe_ids = _collect_probe_import_ids(tree)
+    imported_locals = _walk_python_ast(tree, stats, local_pkgs, probe_ids)
 
     if path.name != "__init__.py":
         stats.unused_imports = sorted({
-            full for bound, full in imported_locals if bound not in used_names
+            full for bound, full, is_probe in imported_locals if not is_probe and bound not in used_names
         })
     stats.internal_imports = sorted(set(stats.internal_imports))
     return stats

@@ -551,6 +551,25 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(retros[-1]["token_efficiency_grade"], "C")
         self.assertEqual(retros[-1]["retries"], 5)
 
+    def test_retrospective_steps_rubric_guard(self):
+        self._run_cli(["init", "sample_plan"])
+        code_b, out_b = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--steps", "65", "--tri", "4,5,5,5",
+        ])
+        self.assertEqual(code_b, 0)
+        self.assertIn("Token Grade: B", out_b)
+
+        code_c, out_c = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--steps", "120", "--tri", "3,4,5,5",
+        ])
+        self.assertEqual(code_c, 0)
+        self.assertIn("Token Grade: C", out_c)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-2]["token_efficiency_grade"], "B")
+        self.assertEqual(retros[-2]["steps"], 65)
+        self.assertEqual(retros[-1]["token_efficiency_grade"], "C")
+        self.assertEqual(retros[-1]["steps"], 120)
+
 
 if __name__ == "__main__":
     unittest.main()

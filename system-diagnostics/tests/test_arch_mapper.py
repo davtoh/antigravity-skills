@@ -159,6 +159,32 @@ class TestArchMapper(unittest.TestCase):
             self.assertIn("pkg_b", parsed["directories"])
             self.assertNotIn("pkg_c", parsed["directories"])
 
+    def test_unused_imports_ignores_importerror_availability_probes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "probes.py").write_text(
+                "import unused_top\n"
+                "try:\n"
+                "    import zlib\n"
+                "    HAS_ZLIB = True\n"
+                "except ImportError:\n"
+                "    HAS_ZLIB = False\n"
+                "try:\n"
+                "    from scipy.optimize import linear_sum_assignment\n"
+                "except (ModuleNotFoundError, OSError):\n"
+                "    linear_sum_assignment = None\n"
+                "try:\n"
+                "    import unused_non_import_try\n"
+                "except Exception:\n"
+                "    pass\n"
+                "def check():\n"
+                "    return HAS_ZLIB\n",
+                encoding="utf-8",
+            )
+            report = arch_mapper.scan_architecture(root)
+            unused = {u["file"]: u["symbols"] for u in report["unused_internal_or_module_imports"]}
+            self.assertEqual(unused["probes.py"], ["unused_non_import_try", "unused_top"])
+
 
 if __name__ == "__main__":
     unittest.main()

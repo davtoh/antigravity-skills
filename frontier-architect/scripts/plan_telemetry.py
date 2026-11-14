@@ -74,28 +74,8 @@ def get_prior_learn_candidates(root: Path, slug: str) -> list[str]:
     return ordered
 
 
-def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
-    """Record Token Efficiency Grade, TRI, and /learn candidate proposals."""
-    plan_p = resolve_plan_path(root, args.plan)
-    if not plan_p:
-        print("[plan_engine] Error: No plan resolved.")
-        return 1
-    _ws, ps = bootstrap_plan(root, plan_p)
-    fdir = get_frontier_dir(root)
-    retro_path = fdir / "plans" / ps["slug"] / "retrospectives.json"
-    retros = load_json(retro_path, [])
-
-    milestone_idx = (
-        args.milestone
-        if args.milestone is not None
-        else ps.get("last_advanced_milestone", ps["active_milestone_index"])
-    )
-    tri_scores = _parse_tri(args.tri)
-    if args.tri and not tri_scores:
-        print(f"[plan_engine] Warning: Could not parse --tri '{args.tri}'. Use 'k=5,k2=4' or '5,5,5,5'.")
-    grade = (args.grade or "A").upper()
-    raw_retries = getattr(args, "retries", None)
-    retries = raw_retries if isinstance(raw_retries, int) and not isinstance(raw_retries, bool) else None
+def _cap_grade_by_rubric(grade: str, retries: int | None, steps: int | None) -> str:
+    """Cap retrospective Token Efficiency Grade against --retries and --steps thresholds."""
     if retries is not None:
         if retries > 3 and grade in ("A", "B"):
             print(f"[plan_engine] Rubric Guard: {retries} retries > 3 -> capping Token Grade '{grade}' to 'C'.")
@@ -103,6 +83,21 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
         elif retries >= 2 and grade == "A":
             print(f"[plan_engine] Rubric Guard: {retries} retries >= 2 -> capping Token Grade 'A' to 'B'.")
             grade = "B"
+    if steps is not None:
+        if steps > 100 and grade in ("A", "B"):
+            print(f"[plan_engine] Rubric Guard: {steps} steps > 100 -> capping Token Grade '{grade}' to 'C'.")
+            grade = "C"
+        elif steps > 60 and grade == "A":
+            print(f"[plan_engine] Rubric Guard: {steps} steps > 60 -> capping Token Grade 'A' to 'B'.")
+            grade = "B"
+    return grade
+
+
+def _build_retrospective_entry(
+    milestone_idx: int, tri_scores: dict[str, int], grade: str,
+    retries: int | None, steps: int | None, args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Assemble retrospective telemetry payload with optional retry/step fields."""
     entry: dict[str, Any] = {
         "milestone_index": milestone_idx,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -114,13 +109,37 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     }
     if retries is not None:
         entry["retries"] = retries
+    if steps is not None:
+        entry["steps"] = steps
+    return entry
+
+
+def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
+    """Record Token Efficiency Grade, TRI, and /learn candidate proposals."""
+    plan_p = resolve_plan_path(root, args.plan)
+    if not plan_p:
+        print("[plan_engine] Error: No plan resolved.")
+        return 1
+    _ws, ps = bootstrap_plan(root, plan_p)
+    fdir = get_frontier_dir(root)
+    retro_path = fdir / "plans" / ps["slug"] / "retrospectives.json"
+    retros = load_json(retro_path, [])
+
+    milestone_idx = args.milestone if args.milestone is not None else ps.get("last_advanced_milestone", ps["active_milestone_index"])
+    tri_scores = _parse_tri(args.tri)
+    if args.tri and not tri_scores:
+        print(f"[plan_engine] Warning: Could not parse --tri '{args.tri}'. Use 'k=5,k2=4' or '5,5,5,5'.")
+    raw_retries, raw_steps = getattr(args, "retries", None), getattr(args, "steps", None)
+    retries = raw_retries if isinstance(raw_retries, int) and not isinstance(raw_retries, bool) else None
+    steps = raw_steps if isinstance(raw_steps, int) and not isinstance(raw_steps, bool) else None
+    grade = _cap_grade_by_rubric((args.grade or "A").upper(), retries, steps)
+    entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
     retros.append(entry)
     save_json(retro_path, retros)
 
     ws = load_json(fdir / "state.json", {})
     ws.setdefault("retrospectives", []).append(entry)
     save_json(fdir / "state.json", ws)
-
     print(f"[plan_engine] Logged retrospective for Milestone {entry['milestone_index']}:")
     print(f"  Token Grade: {entry['token_efficiency_grade']} | TRI: {entry['tool_reliability_scores']}")
     if entry["learn_candidates"]:
