@@ -91,6 +91,34 @@ class TestPlanDigest(unittest.TestCase):
         self.assertEqual(digest["learn_candidates"], ["child rule"])
         self.assertIn("child:M1: grade A exceeds rubric cap C", "\n".join(digest["integrity_issues"]))
 
+    def test_digest_backfill_persists_steps_retries_and_caps_inflated_grade(self) -> None:
+        brain = Path(self._tmp.name) / "brain"
+        log_dir = brain / "conv-123" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        steps = [
+            {"type": "USER_INPUT", "created_at": "2026-11-14T00:00:00Z", "content": "hi"},
+            {"type": "PLANNER_RESPONSE", "created_at": "2026-11-14T00:01:00Z", "tool_calls": [
+                {"name": "run_command", "args": {"CommandLine": "plan_engine.py retrospective demo --learn \"Unique backfill lesson\""}},
+            ]},
+        ] + [{"type": "GENERIC", "created_at": "2026-11-14T00:02:00Z", "content": "Command exited with code 1\n", "status": "DONE"} for _ in range(4)] + [
+            {"type": "GENERIC", "created_at": "2026-11-14T00:03:00Z", "content": "ok"} for _ in range(100)
+        ]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in steps) + "\n").encode("utf-8"))
+        self._write_retros([
+            {"milestone_index": 1, "timestamp": "2026-11-14T00:02:30+00:00", "token_efficiency_grade": "A",
+             "tool_reliability_scores": {}, "learn_candidates": ["Unique backfill lesson"], "root_causes_escalated": []},
+        ])
+
+        digest = pd.build_digest(self.root, "demo", brain_dir=str(brain), backfill=True)
+        self.assertEqual(digest["backfilled_entries"], 1)
+        self.assertEqual(digest["integrity_issues"], [])
+        saved = json.loads((self.root / ".frontier" / "plans" / "demo" / "retrospectives.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved[0]["cid"], "conv-123")
+        self.assertEqual(saved[0]["steps"], 106)
+        self.assertEqual(saved[0]["retries"], 4)
+        self.assertEqual(saved[0]["token_efficiency_grade"], "C")
+        self.assertIn("overall", saved[0]["tool_reliability_scores"])
+
 
 if __name__ == "__main__":
     unittest.main()

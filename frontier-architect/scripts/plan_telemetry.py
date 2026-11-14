@@ -114,6 +114,21 @@ def _build_retrospective_entry(
     return entry
 
 
+def _resolve_cid_telemetry(
+    args: argparse.Namespace, steps: int | None, retries: int | None
+) -> tuple[int | None, int | None, str | None]:
+    """Populate missing steps/retries from --cid transcript audit when available."""
+    cid = getattr(args, "cid", None)
+    if not cid:
+        return steps, retries, None
+    if steps is None or retries is None:
+        from plan_digest import audit_single_cid
+        if row := audit_single_cid(cid, getattr(args, "brain_dir", None)):
+            steps = row["steps"] if steps is None else steps
+            retries = row["total_failures"] if retries is None else retries
+    return steps, retries, cid
+
+
 def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     """Record Token Efficiency Grade, TRI, and /learn candidate proposals."""
     plan_p = resolve_plan_path(root, args.plan)
@@ -132,8 +147,11 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     raw_retries, raw_steps = getattr(args, "retries", None), getattr(args, "steps", None)
     retries = raw_retries if isinstance(raw_retries, int) and not isinstance(raw_retries, bool) else None
     steps = raw_steps if isinstance(raw_steps, int) and not isinstance(raw_steps, bool) else None
+    steps, retries, cid = _resolve_cid_telemetry(args, steps, retries)
     grade = _cap_grade_by_rubric((args.grade or "A").upper(), retries, steps)
     entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
+    if cid:
+        entry["cid"] = cid
     retros.append(entry)
     save_json(retro_path, retros)
 

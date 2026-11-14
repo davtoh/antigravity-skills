@@ -570,6 +570,28 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(retros[-1]["token_efficiency_grade"], "C")
         self.assertEqual(retros[-1]["steps"], 120)
 
+    def test_retrospective_cid_auto_populates_steps_retries_and_caps_grade(self):
+        self._run_cli(["init", "sample_plan"])
+        brain = self.root / "brain"
+        log_dir = brain / "cid-auto-1" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        rows = [{"type": "GENERIC", "content": "Command exited with code 1\n"} for _ in range(2)] + [
+            {"type": "GENERIC", "content": "ok"} for _ in range(62)
+        ]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8"))
+
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--tri", "5,5,5,5",
+            "--cid", "cid-auto-1", "--brain-dir", str(brain),
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Token Grade: B", out)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-1]["cid"], "cid-auto-1")
+        self.assertEqual(retros[-1]["steps"], 64)
+        self.assertEqual(retros[-1]["retries"], 2)
+        self.assertEqual(retros[-1]["token_efficiency_grade"], "B")
+
 
 if __name__ == "__main__":
     unittest.main()

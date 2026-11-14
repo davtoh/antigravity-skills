@@ -236,6 +236,21 @@ class TestSubcommandsExecution(unittest.TestCase):
                 self.assertIn("-m", called_cmd)
                 self.assertIn("unittest", called_cmd)
 
+    def test_cmd_tests_auto_discovers_tests_subdir_or_dot(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            tests_dir = root / "tests"
+            tests_dir.mkdir()
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                self.assertEqual(diagnose.cmd_tests(argparse.Namespace(path=str(root), args=[])), 0)
+                cmd_root = mock_run.call_args[0][0]
+                self.assertEqual(cmd_root[-4:], ["-s", "tests", "-p", "test_*.py"])
+
+                self.assertEqual(diagnose.cmd_tests(argparse.Namespace(path=str(tests_dir), args=[])), 0)
+                cmd_sub = mock_run.call_args[0][0]
+                self.assertEqual(cmd_sub[-4:], ["-s", ".", "-p", "test_*.py"])
+
     def test_cmd_scan_and_scaffold_execution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

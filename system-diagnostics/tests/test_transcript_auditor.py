@@ -35,9 +35,17 @@ class TestTranscriptAuditor(unittest.TestCase):
 
     def test_failures_models_and_subagent_duplication(self) -> None:
         _write(self.brain, "c1", [
-            {"type": "USER_INPUT", "content": "Model Selection` from None to Gemini X. No need to comment"},
+            {
+                "type": "USER_INPUT",
+                "content": (
+                    "<USER_REQUEST>\nModel Selection` from A to Fake In User Prompt. No need\n</USER_REQUEST>\n"
+                    "<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to "
+                    "Claude Sonnet 5.5 (Medium). No need to comment\n</USER_SETTINGS_CHANGE>"
+                ),
+            },
             _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
             _planner(("read_file", {"Path": "a.py"}), ("read_file", {"Path": "a.py"})),
+            {"type": "GENERIC", "content": "Showing lines 1-5\nModel Selection` from X to Fake Read. No need\n", "status": "DONE"},
             {"type": "GENERIC", "content": "Created At: x\nCommand exited with code 1.\n", "status": "DONE"},
             {"type": "GENERIC", "content": "Showing lines 1-3\nCommand exited with code 1", "status": "DONE"},
             {"type": "GENERIC", "content": "target content not found", "status": "ERROR"},
@@ -46,7 +54,7 @@ class TestTranscriptAuditor(unittest.TestCase):
         ])
         row = ta.audit_conversation(self.brain, "c1")
         self.assertEqual(row["failures"], {"cmd_fail": 1, "edit_fail": 1, "read_fail": 1})
-        self.assertEqual(row["models"], ["Gemini X"])
+        self.assertEqual(row["models"], ["Claude Sonnet 5.5 (Medium)"])
         self.assertEqual(row["reads_after_subagent"], 2)
         self.assertEqual(row["repeated_reads"], {"a.py": 2})
         self.assertEqual(row["suggested_grade_cap"], "A")

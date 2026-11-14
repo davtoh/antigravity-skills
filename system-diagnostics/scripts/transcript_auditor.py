@@ -15,8 +15,15 @@ from pathlib import Path
 from typing import Any, Iterator
 
 _EXIT_RE = re.compile(r"(?:^|\n)Command exited with code (-?\d+)")
-_MODEL_RE = re.compile(r"Model Selection` from .*? to ([^.]+?)\. No need")
+_MODEL_RE = re.compile(r"Model Selection` from [^\n]+? to ([^\n]+?)\. No need")
+_USER_REQ_RE = re.compile(r"<USER_REQUEST>.*?</USER_REQUEST>", re.DOTALL)
 _LOG_REL = Path(".system_generated") / "logs" / "transcript.jsonl"
+
+
+def _extract_models(content: str) -> list[str]:
+    """Extract model switches from USER_INPUT metadata outside <USER_REQUEST> blocks."""
+    cleaned = _USER_REQ_RE.sub("", content)
+    return _MODEL_RE.findall(cleaned)
 
 
 def default_brain_dir() -> Path:
@@ -111,11 +118,12 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         if kind == "PLANNER_RESPONSE":
             planner += 1
             _record_calls(step, idx, acc)
-        elif kind != "USER_INPUT":
+        elif kind == "USER_INPUT":
+            acc["models"].extend(_extract_models(content))
+        else:
             fail = _classify_result(content, step.get("status", ""))
             if fail:
                 acc["failures"][fail] += 1
-        acc["models"].extend(_MODEL_RE.findall(content))
     return _summarize(cid, steps, planner, acc)
 
 

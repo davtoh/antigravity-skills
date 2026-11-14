@@ -160,7 +160,8 @@ def cmd_tests(args: argparse.Namespace) -> int:
     """Execute automated test runner using virtualenv Python if available."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
     py_bin = find_virtualenv_python(target_path)
-    test_args = args.args if args.args else ["discover", "-s", "tests", "-p", "test_*.py"]
+    start_dir = "tests" if (target_path / "tests").is_dir() else "."
+    test_args = args.args if args.args else ["discover", "-s", start_dir, "-p", "test_*.py"]
     cmd = [py_bin, "-m", "unittest", *test_args]
 
     print(f"=== Diagnose Tests: Test Suite Runner (Interpreter: {py_bin}) ===")

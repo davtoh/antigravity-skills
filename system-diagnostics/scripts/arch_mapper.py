@@ -31,9 +31,7 @@ except ImportError:
 @dataclass
 class ModuleStats:
     """Static architectural summary for a single source file."""
-    path: str
-    ext: str
-    lines: int
+    path: str; ext: str; lines: int
     classes: list[dict[str, Any]] = field(default_factory=list)
     routes: list[dict[str, Any]] = field(default_factory=list)
     cli_flags: list[str] = field(default_factory=list)
@@ -46,9 +44,7 @@ class ModuleStats:
 
 def _iter_source_files(root: Path, include_tests: bool = False) -> list[Path]:
     """Reuse surface_scanners.walk_source_files to collect sorted repo source files."""
-    grouped = surface_scanners.walk_source_files(root, include_tests=include_tests)
-    combined = [p for paths in grouped.values() for p in paths]
-    return sorted(combined)
+    return sorted(p for paths in surface_scanners.walk_source_files(root, include_tests=include_tests).values() for p in paths)
 
 
 def _resolve_scan_base(root: Path) -> Path:
@@ -61,15 +57,12 @@ def _resolve_scan_base(root: Path) -> Path:
 
 def _detect_local_packages(root: Path) -> set[str]:
     """Identify top-level Python package names in the repository."""
-    pkgs: set[str] = set()
     scan_dir = _resolve_scan_base(root)
     if not scan_dir.is_dir():
-        return pkgs
-    for child in scan_dir.iterdir():
-        if child.is_dir() and not child.name.startswith(".") and child.name not in IGNORED_DIRS:
-            if (child / "__init__.py").is_file() or any(child.glob("*.py")):
-                pkgs.add(child.name)
-    return pkgs
+        return set()
+    return {c.name for c in scan_dir.iterdir()
+            if c.is_dir() and not c.name.startswith(".") and c.name not in IGNORED_DIRS
+            and ((c / "__init__.py").is_file() or any(c.glob("*.py")))}
 
 
 def _find_router_prefix(tree: ast.Module) -> str:
@@ -77,8 +70,7 @@ def _find_router_prefix(tree: ast.Module) -> str:
     for node in tree.body:
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
             fn = node.value.func
-            fn_name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", "")
-            if fn_name == "APIRouter":
+            if (fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", "")) == "APIRouter":
                 for kw in node.value.keywords:
                     if kw.arg == "prefix" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
                         return kw.value.value
@@ -87,35 +79,28 @@ def _find_router_prefix(tree: ast.Module) -> str:
 
 def _apply_router_prefix(routes: list[dict[str, Any]], prefix: str) -> list[dict[str, Any]]:
     """Prepend APIRouter prefix to routes extracted by surface_scanners."""
-    normalized: list[dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for r in routes:
-        path_arg = r.get("path", "")
-        full_path = f"{prefix.rstrip('/')}/{path_arg.lstrip('/')}" if prefix else path_arg
-        if full_path and not full_path.startswith("/"):
-            full_path = "/" + full_path
-        normalized.append({**r, "path": full_path or "/"})
-    return normalized
+        full = f"{prefix.rstrip('/')}/{r.get('path', '').lstrip('/')}" if prefix else r.get("path", "")
+        if full and not full.startswith("/"):
+            full = "/" + full
+        out.append({**r, "path": full or "/"})
+    return out
 
 
 def _collect_annotation_strings(node: ast.AST, used: set[str]) -> None:
     """Collect stringified type names inside annotations without matching docstrings."""
-    ann_nodes: list[ast.AST | None] = []
     if isinstance(node, ast.AnnAssign):
-        ann_nodes.append(node.annotation)
-    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        ann_nodes.append(node.returns)
-        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
-            ann_nodes.append(arg.annotation)
-        if node.args.vararg:
-            ann_nodes.append(node.args.vararg.annotation)
-        if node.args.kwarg:
-            ann_nodes.append(node.args.kwarg.annotation)
+        ann_nodes: list[ast.AST | None] = [node.annotation]
+    else:
+        args = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        ann_nodes = [node.returns, *(a.annotation for a in args),
+                     node.args.vararg.annotation if node.args.vararg else None,
+                     node.args.kwarg.annotation if node.args.kwarg else None]
     for ann in ann_nodes:
-        if ann is None:
-            continue
-        for sub in ast.walk(ann):
-            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                used.add(sub.value.split(".")[0].split("[")[0].strip())
+        if ann is not None:
+            used.update(sub.value.split(".")[0].split("[")[0].strip()
+                        for sub in ast.walk(ann) if isinstance(sub, ast.Constant) and isinstance(sub.value, str))
 
 
 def _collect_used_names(tree: ast.Module, all_exports: list[str]) -> set[str]:
@@ -129,32 +114,21 @@ def _collect_used_names(tree: ast.Module, all_exports: list[str]) -> set[str]:
     return used
 
 
-def _is_import_probe_handler(handler: ast.ExceptHandler) -> bool:
-    """Return True if an except clause handles ImportError or ModuleNotFoundError."""
-    exc = handler.type
-    if exc is None:
-        return False
-    names = exc.elts if isinstance(exc, ast.Tuple) else [exc]
-    return any(isinstance(n, ast.Name) and n.id in ("ImportError", "ModuleNotFoundError") for n in names)
-
-
 def _collect_probe_import_ids(tree: ast.Module) -> set[int]:
     """Return node ids of direct imports inside ``try...except ImportError`` probes."""
     probe_ids: set[int] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Try) and any(_is_import_probe_handler(h) for h in node.handlers):
-            for stmt in node.body:
-                if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-                    probe_ids.add(id(stmt))
+        if isinstance(node, ast.Try):
+            handlers = [h.type for h in node.handlers if h.type is not None]
+            names = [n for exc in handlers for n in (exc.elts if isinstance(exc, ast.Tuple) else [exc])]
+            if any(isinstance(n, ast.Name) and n.id in ("ImportError", "ModuleNotFoundError") for n in names):
+                probe_ids.update(id(s) for s in node.body if isinstance(s, (ast.Import, ast.ImportFrom)))
     return probe_ids
 
 
 def _record_ast_import(
-    node: ast.Import | ast.ImportFrom,
-    stats: ModuleStats,
-    local_pkgs: set[str],
-    probes: set[int],
-    imported_locals: list[tuple[str, str, bool]],
+    node: ast.Import | ast.ImportFrom, stats: ModuleStats, local_pkgs: set[str],
+    probes: set[int], imported_locals: list[tuple[str, str, bool]],
 ) -> None:
     """Record module coupling edges and bound names for a Python import node."""
     is_probe = id(node) in probes
@@ -164,15 +138,12 @@ def _record_ast_import(
             if top in local_pkgs:
                 stats.internal_imports.append(alias.name)
             imported_locals.append((alias.asname or top, alias.name, is_probe))
-        return
-    if not node.module:
-        return
-    if node.module.split(".")[0] in local_pkgs:
-        stats.internal_imports.append(node.module)
-    if node.module != "__future__":
-        for alias in node.names:
-            if alias.name != "*":
-                imported_locals.append((alias.asname or alias.name, f"{node.module}.{alias.name}", is_probe))
+    elif node.module:
+        if node.module.split(".")[0] in local_pkgs:
+            stats.internal_imports.append(node.module)
+        if node.module != "__future__":
+            imported_locals.extend((a.asname or a.name, f"{node.module}.{a.name}", is_probe)
+                                   for a in node.names if a.name != "*")
 
 
 def _walk_python_ast(
@@ -187,14 +158,11 @@ def _walk_python_ast(
             bases = [ast.unparse(b) for b in node.bases] if hasattr(ast, "unparse") else []
             stats.classes.append({"name": node.name, "methods": len(methods), "lines": (node.end_lineno or node.lineno) - node.lineno + 1, "bases": bases})
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            span = (node.end_lineno or node.lineno) - node.lineno + 1
-            if span > 40:
+            if (span := (node.end_lineno or node.lineno) - node.lineno + 1) > 40:
                 stats.long_functions.append({"name": node.name, "lines": span, "line": node.lineno})
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("add_argument", "add_parser") and node.args:
-            arg0 = node.args[0]
-            if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
-                target = stats.cli_flags if node.func.attr == "add_argument" else stats.cli_subcommands
-                target.append(arg0.value)
+            if isinstance(arg0 := node.args[0], ast.Constant) and isinstance(arg0.value, str):
+                (stats.cli_flags if node.func.attr == "add_argument" else stats.cli_subcommands).append(arg0.value)
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             _record_ast_import(node, stats, local_pkgs, probes, imported_locals)
     return imported_locals
@@ -207,27 +175,14 @@ def _analyze_python_file(path: Path, rel_path: str, text: str, local_pkgs: set[s
         tree = ast.parse(text, filename=rel_path)
     except SyntaxError:
         return stats
-
     py_surf = surface_scanners.scan_python_surface(text, rel_path=rel_path)
     stats.routes = _apply_router_prefix(py_surf.routes, _find_router_prefix(tree))
     used_names = _collect_used_names(tree, py_surf.all_exports)
-    probe_ids = _collect_probe_import_ids(tree)
-    imported_locals = _walk_python_ast(tree, stats, local_pkgs, probe_ids)
-
+    imported_locals = _walk_python_ast(tree, stats, local_pkgs, _collect_probe_import_ids(tree))
     if path.name != "__init__.py":
-        stats.unused_imports = sorted({
-            full for bound, full, is_probe in imported_locals if not is_probe and bound not in used_names
-        })
+        stats.unused_imports = sorted({full for bound, full, is_probe in imported_locals if not is_probe and bound not in used_names})
     stats.internal_imports = sorted(set(stats.internal_imports))
     return stats
-
-
-def _group_by_file(routes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """Group route dictionaries by source file path."""
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in routes:
-        grouped[r["file"]].append({"method": r["method"], "path": r["path"], "handler": r["handler"]})
-    return dict(sorted(grouped.items()))
 
 
 def _build_report_dict(
@@ -236,13 +191,13 @@ def _build_report_dict(
 ) -> dict[str, Any]:
     """Assemble structured architecture report dictionary from scanned modules."""
     routes = [{"file": m.path, **r} for m in modules for r in m.routes]
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in routes:
+        grouped[r["file"]].append({"method": r["method"], "path": r["path"], "handler": r["handler"]})
     long_fns = [{"path": m.path, **fn} for m in modules for fn in m.long_functions]
     return {
-        "workspace": root.name,
-        "total_files": len(modules),
-        "total_lines": sum(m.lines for m in modules),
-        "local_packages": sorted(local_pkgs),
-        "directories": dict(sorted(dir_summary.items())),
+        "workspace": root.name, "total_files": len(modules), "total_lines": sum(m.lines for m in modules),
+        "local_packages": sorted(local_pkgs), "directories": dict(sorted(dir_summary.items())),
         "modularity_violations": {
             "files_over_500": sorted([{"path": m.path, "lines": m.lines} for m in modules if m.lines >= 500], key=lambda x: -x["lines"]),
             "files_350_to_499": sorted([{"path": m.path, "lines": m.lines} for m in modules if 350 <= m.lines < 500], key=lambda x: -x["lines"]),
@@ -250,8 +205,7 @@ def _build_report_dict(
             "functions_over_40": sorted(long_fns, key=lambda x: -x["lines"]),
             "css_important_files": [{"path": m.path, "count": m.css_important} for m in modules if m.css_important > 0],
         },
-        "routes_count": len(routes),
-        "routes_by_file": _group_by_file(routes),
+        "routes_count": len(routes), "routes_by_file": dict(sorted(grouped.items())),
         "cli_surfaces": [{"file": m.path, "subcommands": m.cli_subcommands, "flags": sorted(set(m.cli_flags))} for m in modules if m.cli_subcommands or m.cli_flags],
         "cross_package_coupling": {k: sorted(v) for k, v in sorted(pkg_edges.items())},
         "unused_internal_or_module_imports": [{"file": m.path, "symbols": m.unused_imports} for m in modules if m.unused_imports],
@@ -264,9 +218,8 @@ def _resolve_targets(root: Path | list[Path], include_tests: bool) -> tuple[Path
     if len(targets) == 1:
         t0 = targets[0]
         return t0, (_resolve_scan_base(t0) if t0.is_file() else t0), _iter_source_files(t0, include_tests=include_tests)
-    dirs = [str(t if t.is_dir() else t.parent) for t in targets]
     try:
-        common = Path(os.path.commonpath(dirs))
+        common = Path(os.path.commonpath([str(t if t.is_dir() else t.parent) for t in targets]))
     except ValueError:
         common = Path.cwd()
     base_dir = _resolve_scan_base(common)
@@ -280,7 +233,6 @@ def scan_architecture(root: Path | list[Path], include_tests: bool = False) -> d
     modules: list[ModuleStats] = []
     dir_summary: dict[str, dict[str, int]] = defaultdict(lambda: {"files": 0, "lines": 0})
     pkg_edges: dict[str, set[str]] = defaultdict(set)
-
     for fp in files:
         rel = fp.relative_to(base_dir).as_posix()
         text = fp.read_text(encoding="utf-8", errors="replace")
@@ -288,7 +240,6 @@ def scan_architecture(root: Path | list[Path], include_tests: bool = False) -> d
         top_dir = rel.split("/", 1)[0] if "/" in rel else "."
         dir_summary[top_dir]["files"] += 1
         dir_summary[top_dir]["lines"] += line_count
-
         if fp.suffix == ".py":
             mod = _analyze_python_file(fp, rel, text, local_pkgs)
             for imp in mod.internal_imports:
@@ -298,14 +249,12 @@ def scan_architecture(root: Path | list[Path], include_tests: bool = False) -> d
             imp_cnt = surface_scanners.scan_css_surface(text).important_count if fp.suffix.lower() in (".css", ".scss") else 0
             mod = ModuleStats(path=rel, ext=fp.suffix.lower(), lines=line_count, css_important=imp_cnt)
         modules.append(mod)
-
     return _build_report_dict(workspace_root, local_pkgs, modules, dir_summary, pkg_edges)
 
 
 def _append_capped(lines: list[str], items: list[Any], limit: int, fmt, label: str, full: bool) -> None:
     """Append formatted items up to ``limit`` unless ``full`` is True."""
-    for item in (items if full else items[:limit]):
-        lines.append(fmt(item))
+    lines.extend(fmt(item) for item in (items if full else items[:limit]))
     if not full and len(items) > limit:
         lines.append(f"- *... and {len(items) - limit} more {label} omitted (pass `--full` to view all).*")
 
@@ -328,13 +277,10 @@ def _format_surfaces_section(report: dict[str, Any], full: bool) -> list[str]:
         shown = targets if full else targets[:12]
         suffix = f" (+{len(targets) - 12} more)" if not full and len(targets) > 12 else ""
         lines.append(f"- `{src}` -> {', '.join(f'`{t}`' for t in shown)}{suffix}")
-
     lines.extend(["", "## Unused Imports (Potential Disconnected Modules)"])
     _append_capped(lines, report["unused_internal_or_module_imports"], 30, lambda u: f"- `{u['file']}`: {', '.join(f'`{s}`' for s in u['symbols'])}", "file(s)", full)
-
     lines.extend(["", "## CLI Surfaces"])
     lines.extend(f"- `{c['file']}`: subcommands={c['subcommands']} | flags={len(c['flags'])}" for c in report["cli_surfaces"])
-
     lines.extend(["", f"## API Routes ({report['routes_count']} total)"])
     for rfile, rlist in report["routes_by_file"].items():
         lines.append(f"- `{rfile}`: {len(rlist)} routes")
