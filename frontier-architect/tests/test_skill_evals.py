@@ -197,6 +197,28 @@ class TestSkillEvals(unittest.TestCase):
         self.assertGreater(curr_rate, base_rate)
         self.assertGreaterEqual(curr_rate, 0.95)
 
+    def test_skill_reference_links_and_tool_effectivity_invariants(self):
+        """Pre-refactor invariant: all reference links resolve and core CLI/gate anchors remain in SKILL.md."""
+        refs = re.findall(r"\(\./(references/[^)#\s]+)", self.skill_text)
+        self.assertGreaterEqual(len(refs), 5)
+        for rel in refs:
+            self.assertTrue((SKILL_DIR / rel).is_file(), f"Broken reference link in SKILL.md: {rel}")
+
+        required_anchors = [
+            "## Core Operational Axioms",
+            "### Phase 0:", "### Phase 1A:", "### Phase 1B:",
+            "### Phase 2:", "### Phase 3:", "### Phase 4:", "### Phase 5:", "### Phase 6:",
+            "plan_engine.py", "discover", "init", "status", "next", "verify", "advance",
+            "retrospective", "digest", "lookup", "--no-sync-parent", "--cid", "--backfill --write-scaffold",
+            "diagnose.py", "arch-map", "surface", "audit", "scan", "changelog add", "transcript-audit",
+            "docker_audit.py", "cdp_inspect.py",
+            "MASTER STEP PRE-PLAN GATE", "Smart Commit Hint Gate", "Second-Check Verification Gate",
+            "In-Flight Tool Elevation Protocol", "Zero-Dangling-Question Invariant",
+            "Anti-Thrash Stop-Loss", "Non-Mocked Branch Gate",
+        ]
+        missing = [a for a in required_anchors if a not in self.skill_text]
+        self.assertEqual(missing, [], f"Missing critical tool/gate anchors in SKILL.md: {missing}")
+
 
 if __name__ == "__main__":
     unittest.main()
