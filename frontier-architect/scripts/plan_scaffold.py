@@ -74,3 +74,66 @@ def write_learning_scaffold(root: Path, slug: str, backfill: bool = False, brain
         return _write_scaffold_file(root, digest) if digest else None
     except Exception:
         return None
+
+
+def _cap_section(title: str, items: list[str], limit: int = 12) -> list[str]:
+    """Render a capped markdown bullet section so aggregate scaffolds stay under 80 lines."""
+    shown = [f"- {i}" for i in items[:limit]] or ["- none"]
+    if len(items) > limit:
+        shown.append(f"- ... (+{len(items) - limit} more; see per-plan LEARNING_SCAFFOLD.md)")
+    return ["", f"## {title}"] + shown
+
+
+def format_workspace_digest(d: dict[str, Any]) -> str:
+    """Render a compact multi-plan workspace digest & LEARN_QUEUE.md (< 80 lines)."""
+    lines = [
+        f"# Workspace Learning Queue ({len(d['plans'])} plan(s))",
+        "| Plan | Status | Milestones | Retro | Issues |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for p in d["plans"][:15]:
+        lines.append(f"| {p['slug']} | {p['status']} | {p['done']}/{p['total']} | {p['retro_entries']} | {p['integrity_issues']} |")
+    lines += _cap_section("Unresolved Project /learn Candidates", d.get("learn_candidates", []), 12)
+    lines += _cap_section("Skill & Tooling /learn Candidates", d.get("skill_learn_candidates", []), 10)
+    lines += _cap_section("Tooling & Script Gaps", d.get("tool_gaps", []), 10)
+    lines += _cap_section("Escalated Root Causes (/app-debugger)", d.get("escalations", []), 8)
+    lines += ["", "Next: Invoke `/learn` with user choice to promote queue items, or inspect `.frontier/plans/<slug>/LEARNING_SCAFFOLD.md`."]
+    return "\n".join(lines[:78])
+
+
+def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bool, build_digest_fn: Any) -> dict[str, Any]:
+    """Aggregate active and completed plans across the workspace into one /learn queue."""
+    from plan_parser import discover_plans, slugify
+    from plan_state import load_json
+    candidates = list(discover_plans(root))
+    seen_paths = {p.resolve() for p in candidates}
+    for sp in sorted((get_frontier_dir(root) / "plans").glob("*/state.json")):
+        rel_p = load_json(sp, {}).get("plan_path", "")
+        if rel_p and (rp := (root / rel_p).resolve()).is_file() and rp not in seen_paths:
+            seen_paths.add(rp)
+            candidates.append(rp)
+    seen_slugs: set[str] = set()
+    plans, learns, skill_learns, gaps, escs = [], [], [], [], []
+    for p in candidates:
+        slug = slugify(p.stem)
+        if slug in seen_slugs or not (d := build_digest_fn(root, str(p), None, brain_dir, backfill)):
+            continue
+        seen_slugs.add(d["slug"])
+        done = sum(1 for m in d["milestones"] if m["status"] == "completed")
+        plans.append({"slug": d["slug"], "title": d["title"], "status": d["status"], "done": done, "total": len(d["milestones"]), "retro_entries": d["retro_entries"], "integrity_issues": len(d["integrity_issues"])})
+        learns += d["learn_candidates"]
+        skill_learns += d["skill_learn_candidates"]
+        gaps += d["tool_gaps"]
+        escs += d["escalations"]
+    return {
+        "plans": plans, "learn_candidates": list(dict.fromkeys(learns)),
+        "skill_learn_candidates": list(dict.fromkeys(skill_learns)),
+        "tool_gaps": list(dict.fromkeys(gaps)), "escalations": list(dict.fromkeys(escs)),
+    }
+
+
+def write_workspace_scaffold(root: Path, digest: dict[str, Any]) -> str:
+    """Persist ``.frontier/LEARN_QUEUE.md`` and return its workspace-relative POSIX path."""
+    queue_p = get_frontier_dir(root) / "LEARN_QUEUE.md"
+    queue_p.write_bytes((format_workspace_digest(digest) + "\n").encode("utf-8"))
+    return queue_p.relative_to(root).as_posix()

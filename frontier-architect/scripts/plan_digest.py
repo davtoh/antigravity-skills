@@ -278,17 +278,39 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     }
 
 
-from plan_scaffold import _write_scaffold_file, format_digest, write_learning_scaffold
+from plan_scaffold import (
+    _build_workspace_digest_core,
+    _write_scaffold_file,
+    format_digest,
+    format_workspace_digest,
+    write_learning_scaffold,
+    write_workspace_scaffold,
+)
+
+
+def build_workspace_digest(root: Path, brain_dir: str | None = None, backfill: bool = False) -> dict[str, Any]:
+    """Aggregate active and completed plans across the workspace into one /learn queue."""
+    return _build_workspace_digest_core(root, brain_dir, backfill, build_digest)
 
 
 def cmd_digest(root: Path, args: argparse.Namespace) -> int:
     """CLI handler for ``plan_engine.py digest``."""
-    digest = build_digest(root, args.plan, getattr(args, "cids", None), getattr(args, "brain_dir", None), getattr(args, "backfill", False))
+    backfill, write_scaf = getattr(args, "backfill", False), getattr(args, "write_scaffold", False)
+    if getattr(args, "all", False):
+        digest = build_workspace_digest(root, getattr(args, "brain_dir", None), backfill)
+        rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_workspace_digest(digest)
+        if write_scaf:
+            rel = write_workspace_scaffold(root, digest)
+            if not getattr(args, "json", False):
+                rendered += f"\n\n[plan_engine] Wrote workspace queue: {rel}"
+        print(rendered)
+        return 0
+    digest = build_digest(root, args.plan, getattr(args, "cids", None), getattr(args, "brain_dir", None), backfill)
     if digest is None:
         print("[plan_engine] Error: No plan resolved.")
         return 1
     rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_digest(digest)
-    if getattr(args, "write_scaffold", False):
+    if write_scaf:
         rel_path = _write_scaffold_file(root, digest)
         if not getattr(args, "json", False):
             rendered += f"\n\n[plan_engine] Wrote learning scaffold: {rel_path}"
@@ -299,8 +321,9 @@ def cmd_digest(root: Path, args: argparse.Namespace) -> int:
 def register_digest_parser(sub: Any, plan_parent: argparse.ArgumentParser) -> None:
     """Register the ``digest`` subcommand on plan_engine's subparsers."""
     p = sub.add_parser("digest", parents=[plan_parent], help="End-of-plan retrospective digest (integrity, /learn candidates, telemetry)")
+    p.add_argument("--all", action="store_true", help="Aggregate all workspace plans into one summary / .frontier/LEARN_QUEUE.md")
     p.add_argument("--cids", nargs="+", default=None, help="Conversation ids to include via transcript-audit")
     p.add_argument("--brain-dir", default=None, help="Override brain dir for transcript telemetry")
     p.add_argument("--backfill", action="store_true", help="Backfill missing --steps/--retries and re-cap grades in retrospectives.json from transcripts")
-    p.add_argument("--write-scaffold", action="store_true", help="Write .frontier/plans/<slug>/LEARNING_SCAFFOLD.md")
+    p.add_argument("--write-scaffold", action="store_true", help="Write .frontier/plans/<slug>/LEARNING_SCAFFOLD.md (or .frontier/LEARN_QUEUE.md with --all)")
     p.add_argument("--json", action="store_true", help="Output JSON")

@@ -62,10 +62,9 @@ def _parse_tri(tri_arg: str | None) -> dict[str, Any]:
     return scores
 
 
-def get_prior_learn_candidates(root: Path, slug: str) -> list[str]:
-    """Return deduplicated learn_candidates recorded in prior milestones for ``slug``."""
-    retro_path = get_frontier_dir(root) / "plans" / slug / "retrospectives.json"
-    entries = load_json(retro_path, [])
+def _collect_prior_retro_field(root: Path, slug: str, field: str) -> list[str]:
+    """Return deduplicated non-empty strings from ``field`` across prior milestones for ``slug``."""
+    entries = load_json(get_frontier_dir(root) / "plans" / slug / "retrospectives.json", [])
     if not isinstance(entries, list):
         return []
     seen: set[str] = set()
@@ -73,12 +72,22 @@ def get_prior_learn_candidates(root: Path, slug: str) -> list[str]:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        for item in entry.get("learn_candidates", []) or []:
+        for item in entry.get(field, []) or []:
             text = str(item).strip()
             if text and text not in seen:
                 seen.add(text)
                 ordered.append(text)
     return ordered
+
+
+def get_prior_learn_candidates(root: Path, slug: str) -> list[str]:
+    """Return deduplicated learn_candidates recorded in prior milestones for ``slug``."""
+    return _collect_prior_retro_field(root, slug, "learn_candidates")
+
+
+def get_prior_tool_gaps(root: Path, slug: str) -> list[str]:
+    """Return deduplicated tool_gaps recorded in prior milestones for ``slug``."""
+    return _collect_prior_retro_field(root, slug, "tool_gaps")
 
 
 def _cap_grade_by_rubric(grade: str, retries: int | None, steps: int | None) -> str:

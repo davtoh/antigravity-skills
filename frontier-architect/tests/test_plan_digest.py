@@ -275,6 +275,33 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         self.assertEqual(merged["went_well"], ["A", "B"])
         self.assertEqual(merged["notes"], "Verified")
 
+    def test_next_surfaces_prior_tool_gaps_and_digest_all_writes_queue(self) -> None:
+        second = self.root / ".TODO" / "second_plan.md"
+        second.write_text("# Plan: Second\n\n## Milestones\n- [ ] **Milestone 1: Only**\n  - [ ] Task\n\n## Verification Commands\n- echo ok\n", encoding="utf-8")
+        self._write_retros([{
+            "milestone_index": 1, "token_efficiency_grade": "A", "steps": 12, "retries": 0,
+            "tool_reliability_scores": {"overall": 5}, "learn_candidates": ["Proj Rule 1"],
+            "tool_gaps": ["static_auditor skips LazySettings"],
+        }])
+        from plan_engine import main as engine_main
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = engine_main(["next", "demo", "--json"], root=self.root)
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["prior_tool_gaps"], ["static_auditor skips LazySettings"])
+
+        rc_all = engine_main(["digest", "--all", "--write-scaffold"], root=self.root)
+        self.assertEqual(rc_all, 0)
+        queue_p = self.root / ".frontier" / "LEARN_QUEUE.md"
+        self.assertTrue(queue_p.is_file())
+        content = queue_p.read_text(encoding="utf-8")
+        self.assertLess(len(content.splitlines()), 80)
+        self.assertIn("Proj Rule 1", content)
+        self.assertIn("static_auditor skips LazySettings", content)
+        self.assertIn("| second_plan |", content)
+
 
 if __name__ == "__main__":
     unittest.main()

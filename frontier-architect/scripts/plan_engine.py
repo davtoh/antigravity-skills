@@ -43,6 +43,7 @@ from plan_telemetry import (
     cmd_retrospective,
     cmd_verify,
     get_prior_learn_candidates,
+    get_prior_tool_gaps,
 )
 
 
@@ -142,12 +143,12 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     parsed = parse_plan_markdown(plan_p.read_text(encoding="utf-8"))
     active_idx = ps["active_milestone_index"]
     target_m = next((m for m in parsed["milestones"] if m["index"] == active_idx), None)
-    prior_learns = get_prior_learn_candidates(root, ps["slug"])
+    prior_learns, prior_gaps = get_prior_learn_candidates(root, ps["slug"]), get_prior_tool_gaps(root, ps["slug"])
 
     all_done = ps["status"] == "completed" or (bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"]))
     if all_done or not target_m:
         if args.json:
-            payload = {"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, **({"parent_plan": ps["parent_plan"]} if ps.get("parent_plan") else {})}
+            payload = {"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, "prior_tool_gaps": prior_gaps, **({"parent_plan": ps["parent_plan"]} if ps.get("parent_plan") else {})}
             print(json.dumps(payload, indent=2))
         else:
             print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
@@ -155,22 +156,19 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
                 print(f"[plan_engine] Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']}) -> Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then 'plan_engine.py next {p['slug']}'.")
         return 0
     if args.json:
-        print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns}, indent=2))
+        print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, "prior_tool_gaps": prior_gaps}, indent=2))
         return 0
 
     print(f"=== Active Milestone: {target_m['index']} - {target_m['title']} ===")
-    if ps.get("parent_plan"):
-        p = ps["parent_plan"]
+    if p := ps.get("parent_plan"):
         print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']}) -> {p['plan_path']}")
     c_info = ps.get("child_plans", {}).get(str(active_idx))
     if c_info:
-        if c_info.get("status") == "completed":
-            print(f"Linked Child Plan: {c_info['slug']} [completed] -> MASTER STEP SYNC GATE: Run 'plan_engine.py advance {ps['slug']} --milestone {active_idx}' to advance Master Milestone.")
-        else:
-            print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
+        msg = f"[completed] -> MASTER STEP SYNC GATE: Run 'plan_engine.py advance {ps['slug']} --milestone {active_idx}' to advance Master Milestone." if c_info.get("status") == "completed" else f"[{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'"
+        print(f"Linked Child Plan: {c_info['slug']} {msg}")
     else:
         print_master_gate(ps, active_idx, target_m.get("child_plan"))
-    print_milestone_body(target_m, parsed, prior_learns)
+    print_milestone_body(target_m, parsed, prior_learns, prior_gaps)
     return 0
 
 

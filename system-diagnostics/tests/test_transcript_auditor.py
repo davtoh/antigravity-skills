@@ -197,6 +197,28 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertEqual(row["audit_catches"], 1)
         self.assertEqual(row["failures"], {"cmd_fail": 2})
 
+    def test_background_task_attribution_beyond_400_chars(self) -> None:
+        long_pad = "INFO line\n" * 50
+        _write(self.brain, "bg-1", [
+            _planner(("run_command", {"CommandLine": "pytest tests/test_slow.py"})),
+            {"type": "GENERIC", "content": "Command running in the background with task id: task-1", "status": "DONE"},
+            _planner(("edit_file", {"Path": "src/other.py"})),
+            {"type": "GENERIC", "content": "Applied edit", "status": "DONE"},
+            {"type": "SYSTEM_MESSAGE", "content": f"<SYSTEM_MESSAGE>\nsender=bg-1/task-1\n{long_pad}Command exited with code 1.\nAssertionError: bg fail\n</SYSTEM_MESSAGE>", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "bg-1")
+        self.assertEqual(row["failures"], {"cmd_fail": 1})
+        self.assertIn("pytest tests/test_slow.py", row["failure_samples"][0])
+        self.assertNotIn("other.py", row["failure_samples"][0])
+
+    def test_step0_spec_prose_with_instead_not_flagged_as_correction(self) -> None:
+        _write(self.brain, "spec-1", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nImplement Wagtail hybrid CMS instead of duplicating JSON tables, and do not break existing routes.\n</USER_REQUEST>"},
+            _planner(("read_file", {"Path": "app.py"})),
+        ])
+        row = ta.audit_conversation(self.brain, "spec-1")
+        self.assertEqual(row["user_corrections"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

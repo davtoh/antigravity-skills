@@ -48,84 +48,76 @@ def _find_py_files(target: Path) -> list[Path]:
     ]
 
 
+_LIFECYCLE_TOKENS = ("pool", "manager", "source", "capture", "thread", "worker", "loop", "server", "stream", "watcher", "app", "lifecycle")
+
+
+def _smoke_check_class(name: str, obj: Any, p: Path) -> dict[str, Any] | None:
+    """Validate class signature and parameterless instantiation unless lifecycle/abstract."""
+    if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum)):
+        return None
+    try:
+        sig = inspect.signature(obj)
+    except (ValueError, TypeError) as se:
+        return {"type": "invalid_signature", "file": str(p), "line": 1, "message": f"Invalid class signature {name}: {se}"}
+    req = [prm for prm in sig.parameters.values() if prm.default is inspect.Parameter.empty and prm.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]
+    has_lc = any(hasattr(obj, a) for a in ("stop", "close", "start", "run", "shutdown"))
+    if req or has_lc or any(t in name.lower() for t in _LIFECYCLE_TOKENS):
+        return None
+    try:
+        obj()
+    except TypeError as te:
+        try:
+            _, lineno = inspect.getsourcelines(obj)
+        except (OSError, TypeError):
+            lineno = 1
+        return {"type": "initialization_type_error", "file": str(p), "line": lineno, "message": f"Initialization TypeError in {name}(): {te}"}
+    except Exception:
+        pass
+    return None
+
+
+def _smoke_check_member(mod_name: str, name: str, obj: Any, p: Path) -> dict[str, Any] | None:
+    """Safely inspect one module member; skip lazy proxies (e.g., Django LazySettings)."""
+    try:
+        is_cls = inspect.isclass(obj)
+        owner = getattr(obj, "__module__", None)
+        is_fn = not is_cls and inspect.isfunction(obj)
+    except Exception:
+        return None
+    if owner != mod_name:
+        return None
+    if is_cls:
+        return _smoke_check_class(name, obj, p)
+    if is_fn:
+        try:
+            inspect.signature(obj)
+        except (ValueError, TypeError) as se:
+            return {"type": "invalid_signature", "file": str(p), "line": 1, "message": f"Invalid function signature {name}: {se}"}
+    return None
+
+
 def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
     """Inspect Python signatures and instantiate parameterless classes to detect TypeErrors."""
-    py_files = _find_py_files(target)
     issues: list[dict[str, Any]] = []
     root = target if target.is_dir() else target.parent
     while (root / "__init__.py").is_file() and root.parent != root:
         root = root.parent
-    root_str = str(root.resolve())
-    if root_str not in sys.path:
+    if (root_str := str(root.resolve())) not in sys.path:
         sys.path.insert(0, root_str)
-
-    for p in py_files:
+    for p in _find_py_files(target):
         try:
-            code = p.read_text(encoding="utf-8", errors="replace")
-            ast.parse(code, filename=str(p))
+            ast.parse(p.read_text(encoding="utf-8", errors="replace"), filename=str(p))
         except SyntaxError as err:
-            issues.append({
-                "type": "syntax_error",
-                "file": str(p),
-                "line": err.lineno or 1,
-                "message": f"SyntaxError: {err.msg}",
-            })
+            issues.append({"type": "syntax_error", "file": str(p), "line": err.lineno or 1, "message": f"SyntaxError: {err.msg}"})
             continue
-
         try:
-            rel_parts = p.relative_to(root).with_suffix("").parts
-            rel_mod = ".".join(rel_parts)
-            mod = importlib.import_module(rel_mod)
+            mod = importlib.import_module(".".join(p.relative_to(root).with_suffix("").parts))
+            members = list(vars(mod).items())
         except Exception:
             continue
-
-        for name, obj in inspect.getmembers(mod):
-            if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:
-                if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum)):
-                    continue
-                try:
-                    sig = inspect.signature(obj)
-                    req_params = [
-                        param for param in sig.parameters.values()
-                        if param.default is inspect.Parameter.empty
-                        and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-                    ]
-                    name_lower = name.lower()
-                    has_lifecycle_attr = any(hasattr(obj, attr) for attr in ("stop", "close", "start", "run", "shutdown"))
-                    is_lifecycle_name = any(token in name_lower for token in ("pool", "manager", "source", "capture", "thread", "worker", "loop", "server", "stream", "watcher", "app", "lifecycle"))
-                    if not req_params and not has_lifecycle_attr and not is_lifecycle_name:
-                        try:
-                            obj()
-                        except TypeError as te:
-                            try:
-                                _, lineno = inspect.getsourcelines(obj)
-                            except (OSError, TypeError):
-                                lineno = 1
-                            issues.append({
-                                "type": "initialization_type_error",
-                                "file": str(p),
-                                "line": lineno,
-                                "message": f"Initialization TypeError in {name}(): {te}",
-                            })
-                        except Exception:
-                            pass
-                except (ValueError, TypeError) as se:
-                    issues.append({
-                        "type": "invalid_signature",
-                        "file": str(p),
-                        "line": 1,
-                        "message": f"Invalid class signature {name}: {se}",
-                    })
-            elif inspect.isfunction(obj) and getattr(obj, "__module__", None) == mod.__name__:
-                try:
-                    inspect.signature(obj)
-                except (ValueError, TypeError) as se:
-                    issues.append({
-                        "type": "invalid_signature",
-                        "file": str(p),
-                        "line": 1,
-                        "message": f"Invalid function signature {name}: {se}",
-                    })
+        for name, obj in members:
+            if issue := _smoke_check_member(mod.__name__, name, obj, p):
+                issues.append(issue)
     return issues
 
 
@@ -169,56 +161,40 @@ def audit_platform_smells(target: Path) -> list[dict[str, Any]]:
     return smells
 
 
+def _run_linter(py_bin: str, mod: str, args: list[str], cwd: Path, match_fn: Any, label: str) -> tuple[bool, int, list[str]]:
+    """Run one optional linter/typechecker module and return (ran, exit_code, logs)."""
+    try:
+        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, capture_output=True, text=True, check=False).returncode != 0:
+            return False, 0, []
+        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, capture_output=True, text=True, check=False)
+    except Exception:
+        return False, 0, []
+    if proc.returncode == 0:
+        return True, 0, [f"[{mod}] PASS: 0 {label} found in {cwd.name if cwd.is_dir() else ''}{'' if cwd.is_dir() else ''}".rstrip() + ("." if cwd.is_dir() else "")]
+    lines = [ln for ln in proc.stdout.splitlines() if match_fn(ln)]
+    logs = [f"[{mod}] Flagged {len(lines)} {label}(s) (top 5 shown):"] + [f"  {ln}" for ln in lines[:5]]
+    if len(lines) > 5:
+        logs.append(f"  ... and {len(lines) - 5} more issues omitted to conserve tokens.")
+    return True, 1, logs
+
+
 def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
     """Execute ruff, mypy, or pyright on target with token-capped output."""
+    cwd = target if target.is_dir() else target.parent
+    t_str = str(target)
     logs: list[str] = []
-    target_str = str(target)
-    has_run = False
-    exit_code = 0
-
-    # 1. Ruff check
-    try:
-        ruff_v = subprocess.run([py_bin, "-m", "ruff", "--version"], cwd=target if target.is_dir() else target.parent, capture_output=True, text=True, check=False)
-        if ruff_v.returncode == 0:
+    has_run, exit_code = False, 0
+    for mod, args, fn, lbl in (
+        ("ruff", ["check", "--select", "E,F,W", t_str], lambda l: bool(l.strip()), "lint issue"),
+        ("mypy", ["--no-error-summary", "--ignore-missing-imports", t_str], lambda l: "error:" in l, "type error"),
+    ):
+        ran, rc, m_logs = _run_linter(py_bin, mod, args, cwd, fn, lbl)
+        if ran:
             has_run = True
-            cmd = [py_bin, "-m", "ruff", "check", "--select", "E,F,W", target_str]
-            proc = subprocess.run(cmd, cwd=target if target.is_dir() else target.parent, capture_output=True, text=True, check=False)
-            if proc.returncode == 0:
-                logs.append(f"[ruff] PASS: 0 lint issues found in {target.name}.")
-            else:
-                lines = [l for l in proc.stdout.splitlines() if l.strip()]
-                exit_code = max(exit_code, 1)
-                logs.append(f"[ruff] Flagged {len(lines)} issue(s) (top 5 shown):")
-                for l in lines[:5]:
-                    logs.append(f"  {l}")
-                if len(lines) > 5:
-                    logs.append(f"  ... and {len(lines) - 5} more issues omitted to conserve tokens.")
-    except Exception:
-        pass
-
-    # 2. Mypy check
-    try:
-        mypy_v = subprocess.run([py_bin, "-m", "mypy", "--version"], cwd=target if target.is_dir() else target.parent, capture_output=True, text=True, check=False)
-        if mypy_v.returncode == 0:
-            has_run = True
-            cmd = [py_bin, "-m", "mypy", "--no-error-summary", "--ignore-missing-imports", target_str]
-            proc = subprocess.run(cmd, cwd=target if target.is_dir() else target.parent, capture_output=True, text=True, check=False)
-            if proc.returncode == 0:
-                logs.append(f"[mypy] PASS: 0 type errors found in {target.name}.")
-            else:
-                lines = [l for l in proc.stdout.splitlines() if "error:" in l]
-                exit_code = max(exit_code, 1)
-                logs.append(f"[mypy] Flagged {len(lines)} type error(s) (top 5 shown):")
-                for l in lines[:5]:
-                    logs.append(f"  {l}")
-                if len(lines) > 5:
-                    logs.append(f"  ... and {len(lines) - 5} more errors omitted to conserve tokens.")
-    except Exception:
-        pass
-
+            exit_code = max(exit_code, rc)
+            logs.extend([f"[{mod}] PASS: 0 {lbl}s found in {target.name}." if rc == 0 else m_logs[0], *([] if rc == 0 else m_logs[1:])])
     if not has_run:
         logs.append(f"[typecheck] SKIPPED: No ruff/mypy installed in {py_bin}.")
-
     return exit_code, logs
 
 
@@ -258,72 +234,14 @@ def audit_modularity_budgets(
     return issues
 
 
-def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
-    """Entrypoint for `diagnose.py audit` subcommand."""
-    do_all = not (getattr(args, "callable_smoke", False) or getattr(args, "smells", False) or getattr(args, "typecheck", False))
-    results: dict[str, Any] = {
-        "target": str(target),
-        "issues": [],
-        "typecheck_logs": [],
-        "status": "PASS",
-    }
-    line_cnt: int | None = None
-    overall_code = 0
-    if not target.exists():
-        results["issues"].append({"type": "missing_file", "file": str(target), "line": 0, "message": "Target path does not exist."})
-        results["status"] = "DEFECTS_FOUND"
-        overall_code = 1
-    elif target.is_file():
-        line_cnt = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
-        results["line_count"] = line_cnt
-
-    # 1. Typecheck & Linters
-    if target.exists() and (do_all or getattr(args, "typecheck", False)):
-        tc_code, tc_logs = run_static_typecheckers(target, py_bin)
-        results["typecheck_logs"] = tc_logs
-        if tc_code != 0:
-            overall_code = max(overall_code, tc_code)
-            results["status"] = "DEFECTS_FOUND"
-
-    # 2. Platform Import Smells
-    if do_all or getattr(args, "smells", False):
-        smells = audit_platform_smells(target)
-        results["issues"].extend(smells)
-        if smells:
-            results["status"] = "DEFECTS_FOUND"
-            if getattr(args, "strict", False):
-                overall_code = max(overall_code, 1)
-
-    # 3. Callable & Constructor Smoke Testing
-    if do_all or getattr(args, "callable_smoke", False):
-        smoke_issues = audit_callable_smoke(target)
-        results["issues"].extend(smoke_issues)
-        if smoke_issues:
-            results["status"] = "DEFECTS_FOUND"
-            overall_code = max(overall_code, 1)
-
-    # 4. Modularity & Function Length Budgets
-    max_l = _opt_int(args, "max_lines")
-    max_fn = _opt_int(args, "max_fn_lines")
-    if do_all or max_l is not None or max_fn is not None:
-        budget_issues = audit_modularity_budgets(target, max_lines=max_l or 350, max_fn_lines=max_fn or 40)
-        results["issues"].extend(budget_issues)
-        if budget_issues:
-            results["status"] = "DEFECTS_FOUND"
-            if getattr(args, "strict", False) or max_l is not None or max_fn is not None:
-                overall_code = max(overall_code, 1)
-
-    if getattr(args, "json", False):
-        print(json.dumps(results, indent=2))
-        return overall_code
-
+def _print_audit_report(target: Path, results: dict[str, Any], line_cnt: int | None) -> None:
+    """Render token-capped console summary for cmd_audit."""
     print(f"\n=== Static Quality & Defect Audit ({target.name}) ===")
     if line_cnt is not None:
-        budget_tag = "HARD >=500L" if line_cnt >= 500 else ("WARN >=350L" if line_cnt >= 350 else "OK <350L")
-        print(f"  [lines] {target.name}: {line_cnt} lines ({budget_tag})")
+        tag = "HARD >=500L" if line_cnt >= 500 else ("WARN >=350L" if line_cnt >= 350 else "OK <350L")
+        print(f"  [lines] {target.name}: {line_cnt} lines ({tag})")
     for log in results["typecheck_logs"]:
         print(f"  {log}")
-
     if results["issues"]:
         print(f"\n[Latent Defects & Smells Flagged: {len(results['issues'])}]")
         for issue in results["issues"][:5]:
@@ -333,8 +251,39 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
             print(f"  ... and {len(results['issues']) - 5} more issue(s) omitted to conserve tokens (use --json for full list).")
     else:
         print("  ✓ Zero latent defects or platform smells detected.")
-
     print(f"\nAudit Result: {results['status']}\n")
+
+
+def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
+    """Entrypoint for `diagnose.py audit` subcommand."""
+    do_all = not (getattr(args, "callable_smoke", False) or getattr(args, "smells", False) or getattr(args, "typecheck", False))
+    results: dict[str, Any] = {"target": str(target), "issues": [], "typecheck_logs": [], "status": "PASS"}
+    line_cnt = len(target.read_text(encoding="utf-8", errors="replace").splitlines()) if target.is_file() else None
+    if line_cnt is not None:
+        results["line_count"] = line_cnt
+    overall_code = 0
+    if not target.exists():
+        results["issues"].append({"type": "missing_file", "file": str(target), "line": 0, "message": "Target path does not exist."})
+        results["status"], overall_code = "DEFECTS_FOUND", 1
+    elif do_all or getattr(args, "typecheck", False):
+        tc_code, results["typecheck_logs"] = run_static_typecheckers(target, py_bin)
+        if tc_code != 0:
+            overall_code, results["status"] = max(overall_code, tc_code), "DEFECTS_FOUND"
+    max_l, max_fn = _opt_int(args, "max_lines"), _opt_int(args, "max_fn_lines")
+    checks = (
+        (do_all or getattr(args, "smells", False), audit_platform_smells(target), getattr(args, "strict", False)),
+        (do_all or getattr(args, "callable_smoke", False), audit_callable_smoke(target), True),
+        (do_all or max_l is not None or max_fn is not None, audit_modularity_budgets(target, max_lines=max_l or 350, max_fn_lines=max_fn or 40), getattr(args, "strict", False) or max_l is not None or max_fn is not None),
+    )
+    for enabled, found, fail_on in checks:
+        if enabled and found:
+            results["issues"].extend(found)
+            results["status"] = "DEFECTS_FOUND"
+            overall_code = max(overall_code, 1) if fail_on else overall_code
+    if getattr(args, "json", False):
+        print(json.dumps(results, indent=2))
+        return overall_code
+    _print_audit_report(target, results, line_cnt)
     return overall_code
 
 

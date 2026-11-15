@@ -67,8 +67,13 @@ def print_master_gate(ps: dict[str, Any], active_idx: int, declared_child: str |
         print("=" * 72)
 
 
-def print_milestone_body(target_m: dict[str, Any], parsed: dict[str, Any], prior_learns: list[str]) -> None:
-    """Print the active slice's tasks, verifiers, prior /learn guards and the pre-flight critic gate."""
+def print_milestone_body(
+    target_m: dict[str, Any],
+    parsed: dict[str, Any],
+    prior_learns: list[str],
+    prior_tool_gaps: list[str] | None = None,
+) -> None:
+    """Print the active slice's tasks, verifiers, prior /learn & tool-gap guards, and pre-flight gate."""
     print("Tasks to implement in this vertical slice:")
     for t in target_m["tasks"]:
         chk = "[x]" if t["checked"] else "[ ]"
@@ -83,6 +88,11 @@ def print_milestone_body(target_m: dict[str, Any], parsed: dict[str, Any], prior
         print("\nPrior Milestone /learn Guards (Do Not Repeat):")
         for lc in prior_learns:
             print(f"  [!] {lc}")
+
+    if prior_tool_gaps:
+        print("\nPrior Milestone Tool Gaps / Workarounds (Apply Until Fixed):")
+        for tg in prior_tool_gaps:
+            print(f"  [~] {tg}")
 
     if slice_tools := _suggest_slice_tools(target_m):
         print("\nAuto-Selected Slice Tools (Use First):")

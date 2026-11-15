@@ -45,8 +45,9 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path 
 # Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .
 
-# End-of-plan digest: retro integrity, dual-axis /learn candidates, optional transcript backfill & LEARNING_SCAFFOLD.md
+# End-of-plan digest: retro integrity, dual-axis /learn candidates, optional transcript backfill & LEARNING_SCAFFOLD.md (use --all for workspace LEARN_QUEUE.md)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest <plan_or_slug> --cids <conv_id...> --backfill --write-scaffold --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest --all --backfill --write-scaffold --root .
 
 # Deterministic transcript audit (steps, failures, repeated reads, corrections, parallel edits); --cids accepts 8-char prefixes or comma-separated IDs
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <conv_id...> [--json] [--brain-dir <dir>]
