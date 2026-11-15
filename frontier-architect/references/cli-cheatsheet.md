@@ -27,8 +27,8 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<pl
 # Run verification command (auto-normalizes leading .venv/bin/python on Windows & parses unittest/pytest counts)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" --root .
 
-# Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-writes LEARNING_SCAFFOLD.md on plan completion)
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> --root .
+# Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--no-sync-parent] --root .
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)

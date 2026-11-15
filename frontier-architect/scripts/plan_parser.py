@@ -11,7 +11,7 @@ import re
 
 M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase|Step)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
 STATUS_TAG_REGEX = re.compile(
-    r"\s*(?:(?:—|--|-)\s*)?\*?\(?\s*(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Pending|In Progress)\s*\)?\*?\s*$",
+    r"\s*(?:(?:—|--|-)\s*)?[*(\s]*(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Pending|In Progress)[*)\s]*$",
     re.IGNORECASE,
 )
 TASK_REGEX = re.compile(r"^(\s*[-*]\s*\[)([ xX])(\]\s*(.*))$")

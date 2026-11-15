@@ -468,14 +468,15 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Linked Child Plan: sample_plan", next_out)
 
-        # Complete all milestones in child plan and verify parent sync + hint
+        # Complete all milestones in child plan and verify auto parent sync
         self._run_cli(["advance", "sample_plan", "--milestone", "1"])
         code, adv_out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
         self.assertEqual(code, 0)
-        self.assertIn("Master Sync: Run 'plan_engine.py advance master_roadmap --milestone 1'", adv_out)
+        self.assertIn("Master Sync (Auto): Marked parent 'master_roadmap' Milestone 1 complete", adv_out)
 
         parent_state = load_json(get_frontier_dir(self.root) / "plans" / "master_roadmap" / "state.json")
         self.assertEqual(parent_state["child_plans"]["1"]["status"], "completed")
+        self.assertEqual(parent_state["milestones"][0]["status"], "completed")
 
     def test_retrospective_after_advance_logs_completed_milestone_and_4d_tri(self):
         self._run_cli(["init", "sample_plan"])
@@ -733,6 +734,52 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code2, 0)
         self.assertIn("Learning Scaffold: .frontier/plans/sample_plan/LEARNING_SCAFFOLD.md", out2)
         self.assertTrue((get_frontier_dir(self.root) / "plans" / "sample_plan" / "LEARNING_SCAFFOLD.md").is_file())
+
+    def test_no_sync_parent_next_gate_portability_status_tag_and_pytest_venv(self):
+        # 1. Status tag (**ACTIVE EXECUTION TARGET**) stripped in commit suggestion & ledger
+        tagged = self.root / ".TODO" / "tagged.md"
+        tagged.write_text("# Tagged\n## Step 1: Core (**ACTIVE EXECUTION TARGET**)\n- [ ] Build core\n", encoding="utf-8")
+        self._run_cli(["init", ".TODO/tagged.md"])
+        c_tag, out_tag = self._run_cli(["advance", "tagged", "--commit", "cafe1234"])
+        self.assertEqual(c_tag, 0)
+        self.assertNotIn("active execution target", out_tag.lower())
+        self.assertIn("feat(tagged): core", out_tag)
+
+        # 2. Portability warning on machine-local paths in init
+        local_plan = self.root / ".TODO" / "local_paths.md"
+        local_plan.write_text("# Local\n## Milestone 1: A\n- [ ] Check file:///C:/Users/demo/x.py\n", encoding="utf-8")
+        c_init, out_init = self._run_cli(["init", ".TODO/local_paths.md"])
+        self.assertEqual(c_init, 0)
+        self.assertIn("PORTABILITY WARNING", out_init)
+
+        # 3. Bare pytest normalizes to venv python -m pytest
+        from plan_verify import _normalize_verify_cmd
+        venv_rel = ".venv\\Scripts\\python.exe" if os.name == "nt" else ".venv/bin/python"
+        venv_py = self.root / venv_rel.replace("\\", "/")
+        venv_py.parent.mkdir(parents=True, exist_ok=True)
+        venv_py.write_text("", encoding="utf-8")
+        self.assertEqual(_normalize_verify_cmd("pytest tests/ -q", self.root), f"{venv_rel} -m pytest tests/ -q")
+
+        # 4. --no-sync-parent keeps parent milestone active and triggers cmd_next Master Step Sync Gate
+        master_p = self.root / ".TODO" / "master_nosync.md"
+        master_p.write_text("# Master\n## Step 1: Sub\n- [ ] Complete sub\n## Step 2: Finish\n- [ ] Done\n", encoding="utf-8")
+        child_p = self.root / ".TODO" / "child_nosync.md"
+        child_p.write_text("# Child\n## Milestone 1: Work\n- [ ] Do work\n", encoding="utf-8")
+        self._run_cli(["init", ".TODO/master_nosync.md"])
+        self._run_cli(["init", ".TODO/child_nosync.md", "--parent", "master_nosync", "--milestone", "1"])
+        c_adv, out_adv = self._run_cli(["advance", "child_nosync", "--milestone", "1", "--no-sync-parent"])
+        self.assertEqual(c_adv, 0)
+        self.assertIn("Master Sync: Run 'plan_engine.py advance master_nosync --milestone 1'", out_adv)
+        c_next, out_next = self._run_cli(["next", "master_nosync"])
+        self.assertEqual(c_next, 0)
+        self.assertIn("MASTER STEP SYNC GATE", out_next)
+
+        # 5. Child retrospective refreshes parent rollup + scaffold
+        c_ret, _ = self._run_cli(["retrospective", "child_nosync", "--milestone", "1", "--steps", "18", "--retries", "0", "--learn", "Child lesson"])
+        self.assertEqual(c_ret, 0)
+        master_retros = load_json(get_frontier_dir(self.root) / "plans" / "master_nosync" / "retrospectives.json")
+        self.assertEqual(master_retros[0]["steps"], 18)
+        self.assertEqual(master_retros[0]["learn_candidates"], ["Child lesson"])
 
 
 if __name__ == "__main__":

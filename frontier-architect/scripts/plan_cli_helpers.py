@@ -98,7 +98,7 @@ def print_milestone_body(target_m: dict[str, Any], parsed: dict[str, Any], prior
 def print_advance_summary(
     ps: dict[str, Any], target_idx: int, sha: str | None, commit_hint: str,
     has_code_diff: bool, patched: int, missing_prior_retro: int | None = None,
-    scaffold_rel: str | None = None,
+    scaffold_rel: str | None = None, parent_synced: tuple[str, int] | None = None,
 ) -> None:
     """Print the milestone-advance result, turn gate, and user-selectable introspective commands."""
     plan_ref = ps.get("plan_path") or ps.get("slug", "plan")
@@ -113,7 +113,10 @@ def print_advance_summary(
             print(f"[plan_engine] Learning Scaffold: {scaffold_rel}")
         if ps.get("parent_plan"):
             p = ps["parent_plan"]
-            print(f"[plan_engine] Master Sync: Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then prompt '/frontier-architect continue {p['slug']}'.")
+            if parent_synced:
+                print(f"[plan_engine] Master Sync (Auto): Marked parent '{parent_synced[0]}' Milestone {parent_synced[1]} complete -> continue with '/frontier-architect continue {parent_synced[0]}'.")
+            else:
+                print(f"[plan_engine] Master Sync: Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then prompt '/frontier-architect continue {p['slug']}'.")
         print(f"[plan_engine] Introspectives (User Choice): Review `{scaffold_rel or 'LEARNING_SCAFFOLD.md'}` -> run `/learn` to persist lessons | optional: `plan_engine.py digest {ps['slug']} --backfill --write-scaffold`")
     else:
         print(f"  Status: in_progress | Next Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")

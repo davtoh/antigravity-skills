@@ -15,8 +15,14 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from plan_cli_helpers import print_retrospective_summary
-from plan_parser import parse_plan_markdown
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
+from plan_verify import (
+    _extract_leading_env,
+    _normalize_verify_cmd,
+    _parse_test_counts,
+    _resolve_venv_python,
+    cmd_verify,
+)
 
 
 def _clamp_tri_score(val: int) -> int:
@@ -160,22 +166,13 @@ def _resolve_cid_telemetry(
     return steps, retries, cid
 
 
-def _upsert_retro(entries: list[dict[str, Any]], entry: dict[str, Any], slug: str | None = None) -> None:
-    """Replace an incomplete or same-CID entry for the same milestone instead of appending duplicates."""
-    m_idx = entry.get("milestone_index")
-    new_cid = str(entry.get("cid") or "").lower()
-    for i, old in enumerate(entries):
-        if not isinstance(old, dict) or old.get("milestone_index") != m_idx:
-            continue
-        if slug and old.get("_slug") != slug:
-            continue
-        old_cid = str(old.get("cid") or "").lower()
-        cid_match = bool(old_cid and new_cid and (old_cid.startswith(new_cid) or new_cid.startswith(old_cid)))
-        incomplete_retry = bool(old.get("steps") is None and (new_cid or entry.get("steps") is not None))
-        if cid_match or incomplete_retry:
-            entries[i] = entry
-            return
-    entries.append(entry)
+from plan_rollup import (
+    _merge_list_unique,
+    _merge_master_child_entry,
+    _refresh_parent_rollup,
+    _upsert_retro,
+    rollup_child_retrospective,
+)
 
 
 def _enrich_entry_from_audit(entry: dict[str, Any], cid: str | None, brain_dir: str | None) -> None:
@@ -205,44 +202,6 @@ def _enrich_entry_from_audit(entry: dict[str, Any], cid: str | None, brain_dir: 
         msg = f"Transcript audit: repeated file reads (>=3x): {', '.join(heavy_repeats)}"
         if msg not in cands:
             cands.append(msg)
-
-
-def rollup_child_retrospective(root: Path, ps: dict[str, Any], milestone_idx: int) -> bool:
-    """Synthesize a master milestone retrospective from its linked child plan if none exists yet."""
-    c_info = (ps.get("child_plans") or {}).get(str(milestone_idx))
-    c_slug = c_info.get("slug") if isinstance(c_info, dict) else None
-    if not c_slug:
-        return False
-    fdir = get_frontier_dir(root)
-    master_retro_p = fdir / "plans" / ps["slug"] / "retrospectives.json"
-    master_retros = load_json(master_retro_p, [])
-    if any(isinstance(r, dict) and r.get("milestone_index") == milestone_idx for r in master_retros):
-        return False
-    child_retros = [r for r in load_json(fdir / "plans" / c_slug / "retrospectives.json", []) if isinstance(r, dict)]
-    if not child_retros:
-        return False
-    grades = [str(r.get("token_efficiency_grade") or "A").upper() for r in child_retros]
-    worst_grade = max(grades, key=lambda g: {"A": 1, "B": 2, "C": 3, "D": 4, "F": 5}.get(g, 0))
-    total_steps = sum(int(r.get("steps") or 0) for r in child_retros)
-    total_retries = sum(int(r.get("retries") or 0) for r in child_retros)
-    def _collect(key: str) -> list[str]:
-        return list(dict.fromkeys(str(x) for r in child_retros for x in (r.get(key) or []) if str(x).strip()))
-
-    entry: dict[str, Any] = {
-        "milestone_index": milestone_idx, "timestamp": datetime.now(timezone.utc).isoformat(),
-        "token_efficiency_grade": worst_grade,
-        "tool_reliability_scores": {"overall": child_retros[-1].get("tool_reliability_scores", {}).get("overall", 5)},
-        "hypotheses_tested": sum(int(r.get("hypotheses_tested") or 1) for r in child_retros),
-        "root_causes_escalated": _collect("root_causes_escalated"), "learn_candidates": _collect("learn_candidates"),
-        "skill_learn_candidates": _collect("skill_learn_candidates"), "tool_gaps": _collect("tool_gaps"),
-        "went_well": _collect("went_well"), "retries": total_retries, "steps": total_steps, "child_slug": c_slug,
-    }
-    master_retros.append(entry)
-    save_json(master_retro_p, master_retros)
-    ws = load_json(fdir / "state.json", {})
-    _upsert_retro(ws.setdefault("retrospectives", []), {**entry, "_slug": ps["slug"]}, slug=ps["slug"])
-    save_json(fdir / "state.json", ws)
-    return True
 
 
 def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
@@ -276,6 +235,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     save_json(fdir / "state.json", ws)
     from plan_digest import write_learning_scaffold
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
+    _refresh_parent_rollup(root, ps, getattr(args, "brain_dir", None))
     print_retrospective_summary(entry, ps["slug"], scaffold_rel)
     return 0
 
@@ -319,107 +279,3 @@ def cmd_lookup(root: Path, args: argparse.Namespace) -> int:
             print(f"  [RETRO] Plan: {r['plan']} M{r['retro'].get('milestone_index')}: Learn={r['retro'].get('learn_candidates')}")
     return 0
 
-
-def _extract_leading_env(cmd: str) -> tuple[dict[str, str], str]:
-    """Extract leading POSIX VAR=VAL assignments so Windows shell=True runs cleanly."""
-    extra_env: dict[str, str] = {}
-    rest = cmd.lstrip()
-    while True:
-        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=([^\s'\"]+)\s+(.+)$", rest)
-        if not m:
-            break
-        extra_env[m.group(1)] = m.group(2)
-        rest = m.group(3).lstrip()
-    return extra_env, rest
-
-
-def _resolve_venv_python(root: Path) -> str | None:
-    """Return relative virtualenv python path if .venv/venv/env exists under root."""
-    rel_candidates = (
-        (".venv\\Scripts\\python.exe", "venv\\Scripts\\python.exe", "env\\Scripts\\python.exe")
-        if os.name == "nt"
-        else (".venv/bin/python", "venv/bin/python", "env/bin/python")
-    )
-    for rel in rel_candidates:
-        if (root / rel.replace("\\", "/")).is_file():
-            return rel
-    return None
-
-
-def _normalize_verify_cmd(cmd: str, root: Path) -> str:
-    """Normalize leading python/venv paths for the host OS while preserving arguments."""
-    if not cmd.strip():
-        return cmd
-    stripped = cmd.lstrip()
-    quote = stripped[0] if stripped[0] in ('"', "'") else ""
-    if quote:
-        end_idx = stripped.find(quote, 1)
-        if end_idx == -1:
-            return cmd
-        first_token, rest = stripped[1:end_idx], stripped[end_idx + 1 :]
-    else:
-        parts = stripped.split(None, 1)
-        first_token, rest = parts[0], (" " + parts[1] if len(parts) > 1 else "")
-    if first_token in ("python", "python3"):
-        venv_py = _resolve_venv_python(root)
-        return f"{venv_py}{rest}" if venv_py else cmd
-    if os.name != "nt" or "/" not in first_token:
-        return cmd
-    clean = first_token.removeprefix("./")
-    if clean in (".venv/bin/python", "venv/bin/python", "env/bin/python"):
-        win_py = root / clean.split("/")[0] / "Scripts" / "python.exe"
-        if win_py.is_file():
-            first_token = first_token.replace("/bin/python", "\\Scripts\\python.exe").replace("/", "\\")
-    elif clean.startswith((".venv/", "venv/", "env/")) or (root / clean.replace("/", "\\")).exists():
-        first_token = first_token.replace("/", "\\")
-    return f"{quote}{first_token}{quote}{rest}"
-
-
-def _parse_test_counts(output: str) -> tuple[int, int]:
-    """Extract passed and failed test counts from unittest or pytest output."""
-    passed, failed = 0, 0
-    ok_match = re.search(r"Ran (\d+) tests?.*?\n\nOK", output)
-    if ok_match:
-        passed = int(ok_match.group(1))
-    fail_match = re.search(r"FAILED \((?:failures=(\d+))?(?:, )?(?:errors=(\d+))?\)", output)
-    if fail_match:
-        failed = sum(int(x) for x in fail_match.groups() if x)
-    if passed == 0 and failed == 0:
-        pt_pass = re.search(r"(\d+)\s+passed", output)
-        pt_fail = re.search(r"(\d+)\s+failed", output)
-        pt_err = re.search(r"(\d+)\s+errors?", output)
-        if pt_pass or pt_fail or pt_err:
-            passed = int(pt_pass.group(1)) if pt_pass else 0
-            failed = (int(pt_fail.group(1)) if pt_fail else 0) + (int(pt_err.group(1)) if pt_err else 0)
-    return passed, failed
-
-
-def cmd_verify(root: Path, args: argparse.Namespace) -> int:
-    """Run verification command and update baseline ledger."""
-    cmd = args.command
-    plan_p = resolve_plan_path(root, args.plan)
-    if not cmd and plan_p:
-        parsed = parse_plan_markdown(plan_p.read_text(encoding="utf-8"))
-        if parsed["verification_commands"]:
-            cmd = parsed["verification_commands"][0]
-    if not cmd:
-        cmd = load_json(get_frontier_dir(root) / "state.json", {}).get("verification_baseline", {}).get("command")
-    if not cmd:
-        print("[plan_engine] Error: No verification command specified or found in plan. Pass --command \"<cmd>\" or include runnable commands in code blocks / Scenario Matrix tables.")
-        return 1
-    extra_env, stripped_cmd = _extract_leading_env(cmd)
-    exec_cmd = _normalize_verify_cmd(stripped_cmd, root)
-    run_env = {**os.environ, **extra_env} if extra_env else None
-    print(f"[plan_engine] Running verifier: {exec_cmd}")
-    proc = subprocess.run(exec_cmd, shell=True, cwd=root, env=run_env, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    output = (proc.stdout or "") + (proc.stderr or "")
-    print(output)
-    passed, failed = _parse_test_counts(output)
-    fdir = get_frontier_dir(root)
-    ws = load_json(fdir / "state.json", {})
-    ws["verification_baseline"] = {
-        "command": cmd, "last_exit_code": proc.returncode,
-        "passed_tests": passed, "failed_tests": failed, "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    save_json(fdir / "state.json", ws)
-    return proc.returncode

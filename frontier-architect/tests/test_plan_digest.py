@@ -230,6 +230,37 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         self.assertEqual(rolled[0]["token_efficiency_grade"], "B")
         self.assertEqual(rolled[0]["learn_candidates"], ["L1"])
 
+    def test_child_rollup_exempt_from_single_turn_cap_and_merges_manual_master_retro(self) -> None:
+        import plan_telemetry as pt
+        retros = [
+            {"milestone_index": 1, "child_slug": "step_1", "token_efficiency_grade": "A", "steps": 140, "retries": 3, "tool_reliability_scores": {"overall": 5}},
+        ]
+        self.assertEqual(pd.check_retro_integrity(retros), [])
+        pt._upsert_retro(retros, {"milestone_index": 1, "cid": "master-cid", "steps": 12, "retries": 0, "token_efficiency_grade": "A", "went_well": ["Synced smoothly"], "learn_candidates": ["Keep rule"]})
+        self.assertEqual(len(retros), 1)
+        self.assertEqual(retros[0]["child_slug"], "step_1")
+        self.assertEqual(retros[0]["master_cid"], "master-cid")
+        self.assertEqual(retros[0]["went_well"], ["Synced smoothly"])
+        self.assertEqual(retros[0]["learn_candidates"], ["Keep rule"])
+
+    def test_completed_plan_digest_ignores_unrelated_ad_hoc_cids_and_shows_readiness(self) -> None:
+        self._write_retros([
+            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 20, "retries": 0,
+             "tool_reliability_scores": {"overall": 5}, "cid": "11111111-1111", "learn_candidates": ["Rule A"]},
+            {"milestone_index": 2, "token_efficiency_grade": "A", "steps": 15, "retries": 0,
+             "tool_reliability_scores": {"overall": 5}, "cid": "22222222-2222"},
+        ])
+        from plan_engine import main as engine_main
+        self.assertEqual(engine_main(["advance", "demo", "--milestone", "1"], root=self.root), 0)
+        self.assertEqual(engine_main(["advance", "demo", "--milestone", "2"], root=self.root), 0)
+        digest = pd.build_digest(self.root, "demo", cids=["99999999-extra"])
+        self.assertEqual(digest["status"], "completed")
+        self.assertEqual(digest["cids"], ["11111111-1111", "22222222-2222"])
+        self.assertEqual([r["cid"] for r in digest["transcripts"]], ["11111111-1111", "22222222-2222"])
+        md = pd.format_digest(digest)
+        self.assertIn("## /learn Readiness", md)
+        self.assertIn("Candidates: 1 project", md)
+
 
 if __name__ == "__main__":
     unittest.main()

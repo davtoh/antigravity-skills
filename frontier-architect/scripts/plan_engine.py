@@ -59,6 +59,13 @@ def cmd_discover(root: Path, _args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_plan_portability(text: str) -> str | None:
+    """Warn if a plan embeds machine-local paths or file:/// URIs."""
+    if re.search(r"(file:///|[A-Za-z]:[/\\]Users[/\\]|\.venv[/\\]Scripts)", text):
+        return "[plan_engine] PORTABILITY WARNING: Machine-local paths/URIs detected; prefer POSIX repo-relative paths and portable commands."
+    return None
+
+
 def cmd_init(root: Path, args: argparse.Namespace) -> int:
     """Explicitly bind or auto-initialize a plan ledger."""
     target = resolve_plan_path(root, args.plan)
@@ -77,9 +84,12 @@ def cmd_init(root: Path, args: argparse.Namespace) -> int:
     if ps.get("parent_plan"):
         p = ps["parent_plan"]
         print(f"  Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']})")
-    parsed = parse_plan_markdown(target.read_text(encoding="utf-8"))
+    raw_text = target.read_text(encoding="utf-8")
+    parsed = parse_plan_markdown(raw_text)
     if scope_msg := assess_plan_scope(parsed, ps, parent_arg):
         print(scope_msg)
+    if port_msg := _check_plan_portability(raw_text):
+        print(port_msg)
     return 0
 
 
@@ -154,7 +164,10 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
         print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']}) -> {p['plan_path']}")
     c_info = ps.get("child_plans", {}).get(str(active_idx))
     if c_info:
-        print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
+        if c_info.get("status") == "completed":
+            print(f"Linked Child Plan: {c_info['slug']} [completed] -> MASTER STEP SYNC GATE: Run 'plan_engine.py advance {ps['slug']} --milestone {active_idx}' to advance Master Milestone.")
+        else:
+            print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
     else:
         print_master_gate(ps, active_idx, target_m.get("child_plan"))
     print_milestone_body(target_m, parsed, prior_learns)
@@ -213,6 +226,26 @@ def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
     return f'git commit -m "feat({clean_scope}): {clean_title}"'
 
 
+def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: str, no_sync: bool) -> tuple[str, int] | None:
+    """Auto-advance the linked parent Master Milestone when a child plan completes."""
+    if no_sync or ps.get("status") != "completed" or not isinstance(ps.get("parent_plan"), dict):
+        return None
+    p = ps["parent_plan"]
+    parent_p = resolve_plan_path(root, p.get("slug"))
+    p_idx = p.get("milestone")
+    if not parent_p or p_idx is None:
+        return None
+    _ws, parent_ps = bootstrap_plan(root, parent_p)
+    if any(m.get("index") == p_idx and m.get("status") == "completed" for m in parent_ps.get("milestones", [])):
+        return None
+    patch_milestone_checkboxes(parent_p, int(p_idx))
+    parent_ps = record_milestone_advance(get_frontier_dir(root), parent_ps, int(p_idx), sha, now_iso)
+    from plan_telemetry import rollup_child_retrospective
+    rollup_child_retrospective(root, parent_ps, int(p_idx), refresh=True)
+    write_learning_scaffold(root, parent_ps["slug"], backfill=False)
+    return parent_ps["slug"], int(p_idx)
+
+
 def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     """In-place patch markdown checklist, record commit SHA, and advance milestone."""
     plan_p = resolve_plan_path(root, args.plan)
@@ -246,7 +279,8 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
             missing_prior_retro = target_idx - 1
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
-    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel)
+    parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
+    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced)
     return 0
 
 
@@ -275,6 +309,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_adv = sub.add_parser("advance", parents=[plan_parent], help="Check off tasks and advance milestone")
     p_adv.add_argument("--milestone", type=int, help="Milestone number to complete")
     p_adv.add_argument("--commit", help="Commit SHA to record")
+    p_adv.add_argument("--no-sync-parent", action="store_true", help="Skip auto-advancing parent master milestone when child plan completes")
     add_retrospective_parser(sub, plan_parent)
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")

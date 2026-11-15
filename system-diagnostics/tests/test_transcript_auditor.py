@@ -171,6 +171,20 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertEqual(row["failures"], {"cmd_fail": 2})
         self.assertEqual(row["total_failures"], 2)
 
+    def test_parallel_call_target_attribution_and_audit_catch_exclusion(self) -> None:
+        _write(self.brain, "fifo-1", [
+            _planner(("read_file", {"Path": "missing.py"}), ("run_command", {"CommandLine": "git status -s"})),
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+            {"type": "GENERIC", "content": "Command exited with code 0.\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python skills/system-diagnostics/scripts/diagnose.py audit --path a.py"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n[audit] DEFECTS_FOUND\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "fifo-1")
+        self.assertEqual(row["failures"], {"read_fail": 1})
+        self.assertEqual(row["total_failures"], 1)
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertIn("read_fail (missing.py)", row["failure_samples"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

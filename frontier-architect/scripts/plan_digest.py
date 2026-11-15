@@ -50,7 +50,7 @@ def check_retro_integrity(entries: list[dict[str, Any]]) -> list[str]:
             issues.append(f"{tag}: --retries missing")
         if not e.get("tool_reliability_scores"):
             issues.append(f"{tag}: empty tool_reliability_scores (unparsed --tri)")
-        if _worse(str(e.get("token_efficiency_grade", "A")), _grade_cap(steps, retries)):
+        if not e.get("child_slug") and _worse(str(e.get("token_efficiency_grade", "A")), _grade_cap(steps, retries)):
             issues.append(f"{tag}: grade {e.get('token_efficiency_grade')} exceeds rubric cap {_grade_cap(steps, retries)}")
     return issues
 
@@ -263,7 +263,9 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     skill_learns, tool_gaps = _unresolved_skill_items(entries)
     went_well = _clean_items(entries, "went_well")
     entry_cids = _dedupe_cids([str(e["cid"]) for e in entries if e.get("cid")])
-    rows = _transcript_rows(_dedupe_cids([*entry_cids, *(cids or [])]), brain_dir)
+    all_recorded = bool(entries) and all(e.get("cid") or e.get("child_slug") for e in entries)
+    extra_cids = [] if (ps["status"] == "completed" and all_recorded) else (cids or [])
+    rows = _transcript_rows(_dedupe_cids([*entry_cids, *extra_cids]), brain_dir)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
@@ -275,53 +277,8 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
-def format_digest(d: dict[str, Any]) -> str:
-    """Render the digest as compact dual-axis markdown with user-selectable introspective commands."""
-    done = sum(1 for m in d["milestones"] if m["status"] == "completed")
-    bf = f" | backfilled: {d['backfilled_entries']}" if d.get("backfilled_entries") else ""
-    lines = [f"# Plan Digest: {d['title']} ({d['slug']}) - {d['status']}", f"Milestones: {done}/{len(d['milestones'])} complete | retro entries: {d['retro_entries']}{bf}"]
-    lines += [f"- M{m['index']} [{m['status']}] {m['title']}" + (f" ({m['sha']})" if m["sha"] else "") for m in d["milestones"]]
-    lines += ["", "## Retrospective integrity"] + ([f"- {i}" for i in d["integrity_issues"]] or ["- OK"])
-    alerts = [f"Grade cap {r['suggested_grade_cap']} on {r['cid'][:8]} (steps={r['steps']}, fails={r['total_failures']})" for r in (d.get("transcripts") or []) if not r.get("missing") and r.get("suggested_grade_cap") in ("C", "D", "F")]
-    alerts += [f"{r['cid'][:8]}: {len(r['parallel_same_file_edits'])} parallel same-file edit(s)" for r in (d.get("transcripts") or []) if r.get("parallel_same_file_edits")]
-    alerts += [f"{r['cid'][:8]}: {r.get('reads_while_pending', 0) + r.get('subagent_overlap_reads', 0)} subagent dup reads" for r in (d.get("transcripts") or []) if r.get("reads_while_pending", 0) + r.get("subagent_overlap_reads", 0) > 5]
-    if alerts or d["escalations"]:
-        lines += ["", "## Health Alerts"] + [f"- {a}" for a in alerts] + [f"- Escalated: {e}" for e in d["escalations"]]
-    lines += ["", "## What Went Well"] + ([f"- {i}" for i in d.get("went_well", [])] or ["- none"])
-    lines += ["", "## Unresolved /learn candidates"] + ([f"- {i}" for i in d["learn_candidates"]] or ["- none"])
-    lines += ["", "## Skill & Tooling /learn candidates"] + ([f"- {i}" for i in d.get("skill_learn_candidates", [])] or ["- none"])
-    lines += ["", "## Tooling & Script Gaps"] + ([f"- {i}" for i in d.get("tool_gaps", [])] or ["- none"])
-    lines += ["", "## Escalated root causes (/app-debugger)"] + ([f"- {i}" for i in d["escalations"]] or ["- none"])
-    if d["transcripts_unavailable"]:
-        lines += ["", "## Transcripts", "- system-diagnostics not found; skipped telemetry."]
-    elif d["transcripts"]:
-        lines += ["", "## Transcripts"] + [
-            f"- {r['cid'][:8]}: " + ("MISSING" if r.get("missing") else f"steps={r['steps']} fails={r['total_failures']} cap={r['suggested_grade_cap']} subagents={len(r['subagents'])}")
-            for r in d["transcripts"]]
-    ta_cmd = f"`diagnose.py transcript-audit --cids {' '.join(d['cids'])}` (or `--latest 1`)" if d.get("cids") else "`diagnose.py transcript-audit --latest 1`"
-    lines += [
-        "", "## Introspective Commands (User Choice)",
-        f"- Digest + Scaffold: `plan_engine.py digest {d['slug']} --backfill --write-scaffold`",
-        f"- Transcript Audit: {ta_cmd}",
-        "- Persist Lessons: `/learn`",
-    ]
-    return "\n".join(lines + ["", f"Next: {d['next_step']}"])
 
-def _write_scaffold_file(root: Path, digest: dict[str, Any]) -> str:
-    """Persist ``LEARNING_SCAFFOLD.md`` under ``.frontier/plans/<slug>/`` and return POSIX path."""
-    scaffold_p = get_frontier_dir(root) / "plans" / digest["slug"] / "LEARNING_SCAFFOLD.md"
-    scaffold_p.parent.mkdir(parents=True, exist_ok=True)
-    scaffold_p.write_bytes((format_digest(digest) + "\n").encode("utf-8"))
-    return scaffold_p.relative_to(root).as_posix()
-
-
-def write_learning_scaffold(root: Path, slug: str, backfill: bool = False, brain_dir: str | None = None) -> str | None:
-    """Generate/refresh ``LEARNING_SCAFFOLD.md`` for ``slug``; safe no-op if plan fails to resolve."""
-    try:
-        digest = build_digest(root, slug, brain_dir=brain_dir, backfill=backfill)
-        return _write_scaffold_file(root, digest) if digest else None
-    except Exception:
-        return None
+from plan_scaffold import _write_scaffold_file, format_digest, write_learning_scaffold
 
 
 def cmd_digest(root: Path, args: argparse.Namespace) -> int:
