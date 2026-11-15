@@ -202,6 +202,34 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         self.assertEqual(len(saved), 1)
         self.assertEqual(saved[0]["cid"], "dbc7d48f-f0ba-4569-b8a5-cf91d55ffddc")
 
+    def test_enrich_entry_from_audit_and_master_rollup(self) -> None:
+        import plan_telemetry as pt
+        brain = Path(self._tmp.name) / "brain_flags"
+        log_dir = brain / "abc12345-0000-0000-0000-000000000001" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        steps = [
+            {"type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "edit_file", "args": {"Path": "foo.py"}},
+                {"name": "edit_file", "args": {"Path": "foo.py"}},
+            ]},
+            {"type": "PLANNER_RESPONSE", "tool_calls": [{"name": "read_file", "args": {"Path": "bar.py"}}]},
+            {"type": "PLANNER_RESPONSE", "tool_calls": [{"name": "read_file", "args": {"Path": "bar.py"}}]},
+            {"type": "PLANNER_RESPONSE", "tool_calls": [{"name": "read_file", "args": {"Path": "bar.py"}}]},
+        ]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in steps) + "\n").encode("utf-8"))
+        entry = {"skill_learn_candidates": []}
+        pt._enrich_entry_from_audit(entry, "abc12345-0000-0000-0000-000000000001", str(brain))
+        joined = " | ".join(entry["skill_learn_candidates"])
+        self.assertIn("parallel edits", joined)
+        self.assertIn("bar.py (3x)", joined)
+
+        self._write_retros([{"milestone_index": 1, "token_efficiency_grade": "B", "steps": 50, "retries": 2, "learn_candidates": ["L1"]}])
+        master_ps = {"slug": "master", "child_plans": {"1": {"slug": "demo"}}}
+        self.assertTrue(pt.rollup_child_retrospective(self.root, master_ps, 1))
+        rolled = json.loads((self.root / ".frontier" / "plans" / "master" / "retrospectives.json").read_text(encoding="utf-8"))
+        self.assertEqual(rolled[0]["token_efficiency_grade"], "B")
+        self.assertEqual(rolled[0]["learn_candidates"], ["L1"])
+
 
 if __name__ == "__main__":
     unittest.main()

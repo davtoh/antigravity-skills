@@ -164,6 +164,70 @@ def _upsert_retro(entries: list[dict[str, Any]], entry: dict[str, Any], slug: st
     entries.append(entry)
 
 
+def _enrich_entry_from_audit(entry: dict[str, Any], cid: str | None, brain_dir: str | None) -> None:
+    """Auto-surface transcript-audit flags and high repeat reads into skill_learn_candidates."""
+    if not cid:
+        return
+    try:
+        from plan_digest import audit_single_cid
+        row = audit_single_cid(cid, brain_dir)
+    except Exception:
+        return
+    if not row:
+        return
+    cands = entry.setdefault("skill_learn_candidates", [])
+    for item in row.get("parallel_same_file_edits") or []:
+        if isinstance(item, dict):
+            msg = f"Transcript audit: step {item.get('step')} issued {item.get('count')} parallel edits on {item.get('file')}"
+        else:
+            msg = f"Transcript audit: {item}"
+        if msg not in cands:
+            cands.append(msg)
+    heavy_repeats = [f"{k} ({v}x)" for k, v in (row.get("repeated_reads") or {}).items() if int(v) >= 3]
+    if heavy_repeats:
+        msg = f"Transcript audit: repeated file reads (>=3x): {', '.join(heavy_repeats)}"
+        if msg not in cands:
+            cands.append(msg)
+
+
+def rollup_child_retrospective(root: Path, ps: dict[str, Any], milestone_idx: int) -> bool:
+    """Synthesize a master milestone retrospective from its linked child plan if none exists yet."""
+    c_info = (ps.get("child_plans") or {}).get(str(milestone_idx))
+    c_slug = c_info.get("slug") if isinstance(c_info, dict) else None
+    if not c_slug:
+        return False
+    fdir = get_frontier_dir(root)
+    master_retro_p = fdir / "plans" / ps["slug"] / "retrospectives.json"
+    master_retros = load_json(master_retro_p, [])
+    if any(isinstance(r, dict) and r.get("milestone_index") == milestone_idx for r in master_retros):
+        return False
+    child_retros = [r for r in load_json(fdir / "plans" / c_slug / "retrospectives.json", []) if isinstance(r, dict)]
+    if not child_retros:
+        return False
+    grades = [str(r.get("token_efficiency_grade") or "A").upper() for r in child_retros]
+    worst_grade = max(grades, key=lambda g: {"A": 1, "B": 2, "C": 3, "D": 4, "F": 5}.get(g, 0))
+    total_steps = sum(int(r.get("steps") or 0) for r in child_retros)
+    total_retries = sum(int(r.get("retries") or 0) for r in child_retros)
+    def _collect(key: str) -> list[str]:
+        return list(dict.fromkeys(str(x) for r in child_retros for x in (r.get(key) or []) if str(x).strip()))
+
+    entry: dict[str, Any] = {
+        "milestone_index": milestone_idx, "timestamp": datetime.now(timezone.utc).isoformat(),
+        "token_efficiency_grade": worst_grade,
+        "tool_reliability_scores": {"overall": child_retros[-1].get("tool_reliability_scores", {}).get("overall", 5)},
+        "hypotheses_tested": sum(int(r.get("hypotheses_tested") or 1) for r in child_retros),
+        "root_causes_escalated": _collect("root_causes_escalated"), "learn_candidates": _collect("learn_candidates"),
+        "skill_learn_candidates": _collect("skill_learn_candidates"), "tool_gaps": _collect("tool_gaps"),
+        "went_well": _collect("went_well"), "retries": total_retries, "steps": total_steps, "child_slug": c_slug,
+    }
+    master_retros.append(entry)
+    save_json(master_retro_p, master_retros)
+    ws = load_json(fdir / "state.json", {})
+    _upsert_retro(ws.setdefault("retrospectives", []), {**entry, "_slug": ps["slug"]}, slug=ps["slug"])
+    save_json(fdir / "state.json", ws)
+    return True
+
+
 def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     """Record Token Efficiency Grade, TRI, /learn candidates, and refresh LEARNING_SCAFFOLD.md."""
     plan_p = resolve_plan_path(root, args.plan)
@@ -186,6 +250,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
     if cid:
         entry["cid"] = cid
+        _enrich_entry_from_audit(entry, cid, getattr(args, "brain_dir", None))
     _upsert_retro(retros, entry)
     save_json(retro_path, retros)
     ws = load_json(fdir / "state.json", {})

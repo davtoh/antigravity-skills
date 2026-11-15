@@ -267,13 +267,17 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
         "status": "PASS",
     }
     line_cnt: int | None = None
-    if target.is_file() and target.exists():
+    overall_code = 0
+    if not target.exists():
+        results["issues"].append({"type": "missing_file", "file": str(target), "line": 0, "message": "Target path does not exist."})
+        results["status"] = "DEFECTS_FOUND"
+        overall_code = 1
+    elif target.is_file():
         line_cnt = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
         results["line_count"] = line_cnt
-    overall_code = 0
 
     # 1. Typecheck & Linters
-    if do_all or getattr(args, "typecheck", False):
+    if target.exists() and (do_all or getattr(args, "typecheck", False)):
         tc_code, tc_logs = run_static_typecheckers(target, py_bin)
         results["typecheck_logs"] = tc_logs
         if tc_code != 0:

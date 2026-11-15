@@ -235,6 +235,9 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     else:
         commit_hint = _build_commit_suggestion(ps, target_idx)
 
+    from plan_telemetry import rollup_child_retrospective
+    rollup_child_retrospective(root, ps, target_idx)
+
     missing_prior_retro = None
     if target_idx > 1:
         retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
@@ -242,7 +245,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         if (target_idx - 1) not in logged:
             missing_prior_retro = target_idx - 1
 
-    scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if ps["status"] == "completed" else None
+    scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
     print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel)
     return 0
 

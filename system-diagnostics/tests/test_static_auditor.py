@@ -223,6 +223,17 @@ class TestStaticAuditor(unittest.TestCase):
             code = static_auditor.cmd_audit(f, "python", args)
             self.assertEqual(code, 1)
 
+    def test_cmd_audit_missing_path_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing = Path(tmpdir) / "does_not_exist.py"
+            args = MagicMock(callable_smoke=False, smells=False, typecheck=False, json=True, strict=False, max_lines=None, max_fn_lines=None)
+            with patch("builtins.print") as mock_print:
+                code = static_auditor.cmd_audit(missing, "python", args)
+                self.assertEqual(code, 1)
+                data = json.loads(mock_print.call_args[0][0])
+                self.assertEqual(data["status"], "DEFECTS_FOUND")
+                self.assertEqual(data["issues"][0]["type"], "missing_file")
+
 
 if __name__ == "__main__":
     unittest.main()
