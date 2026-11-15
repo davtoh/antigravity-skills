@@ -104,6 +104,44 @@ class TestFrontierRegressions(unittest.TestCase):
             self.assertIn("- **`/learn` candidate (skill)**: Echo turn-end summary", out)
             self.assertIn("- **Introspective Options**: Review `.frontier/plans/demo/LEARNING_SCAFFOLD.md`", out)
 
+    def test_enrich_entry_from_audit_uses_calls_and_path_keys(self) -> None:
+        from unittest.mock import patch
+        import plan_telemetry
+
+        entry: dict = {}
+        fake_row = {"parallel_same_file_edits": [{"step": 77, "path": "c:/repo/tests/foo.py", "calls": 3}], "repeated_reads": {}}
+        with patch("plan_digest.audit_single_cid", return_value=fake_row):
+            plan_telemetry._enrich_entry_from_audit(entry, "12345678", None)
+        self.assertEqual(entry["skill_learn_candidates"], ["Transcript audit: step 77 issued 3 parallel edits on foo.py"])
+
+    def test_cap_tri_by_grade_clamps_token_and_hypothesis_scores(self) -> None:
+        import plan_telemetry
+
+        tri = {"token_efficiency": 5, "hypothesis_accuracy": 5, "tool_reliability": 5, "architectural_defense": 5, "overall": 5}
+        capped = plan_telemetry._cap_tri_by_grade(tri, "C")
+        self.assertEqual(capped["token_efficiency"], 3)
+        self.assertEqual(capped["hypothesis_accuracy"], 3)
+        self.assertEqual(capped["overall"], 4)
+
+    def test_format_digest_emits_health_alerts_when_flagged(self) -> None:
+        import plan_digest
+
+        digest = {
+            "slug": "demo", "title": "Demo", "status": "completed", "retro_entries": 1,
+            "milestones": [{"index": 1, "title": "M1", "status": "completed", "sha": "abc1234"}],
+            "integrity_issues": [], "went_well": [], "learn_candidates": [], "skill_learn_candidates": [],
+            "tool_gaps": [], "escalations": ["budget failed"], "cids": ["8bac2cdd"],
+            "transcripts_unavailable": False, "next_step": "Done",
+            "transcripts": [{"cid": "8bac2cdd", "steps": 138, "total_failures": 6, "suggested_grade_cap": "C",
+                             "subagents": ["s1"], "parallel_same_file_edits": [{"step": 1}], "reads_while_pending": 4, "subagent_overlap_reads": 4}],
+        }
+        md = plan_digest.format_digest(digest)
+        self.assertIn("## Health Alerts", md)
+        self.assertIn("Grade cap C on 8bac2cdd", md)
+        self.assertIn("1 parallel same-file edit(s)", md)
+        self.assertIn("8 subagent dup reads", md)
+        self.assertIn("Escalated: budget failed", md)
+
 
 if __name__ == "__main__":
     unittest.main()

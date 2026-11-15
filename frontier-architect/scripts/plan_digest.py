@@ -275,7 +275,6 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
-
 def format_digest(d: dict[str, Any]) -> str:
     """Render the digest as compact dual-axis markdown with user-selectable introspective commands."""
     done = sum(1 for m in d["milestones"] if m["status"] == "completed")
@@ -283,6 +282,11 @@ def format_digest(d: dict[str, Any]) -> str:
     lines = [f"# Plan Digest: {d['title']} ({d['slug']}) - {d['status']}", f"Milestones: {done}/{len(d['milestones'])} complete | retro entries: {d['retro_entries']}{bf}"]
     lines += [f"- M{m['index']} [{m['status']}] {m['title']}" + (f" ({m['sha']})" if m["sha"] else "") for m in d["milestones"]]
     lines += ["", "## Retrospective integrity"] + ([f"- {i}" for i in d["integrity_issues"]] or ["- OK"])
+    alerts = [f"Grade cap {r['suggested_grade_cap']} on {r['cid'][:8]} (steps={r['steps']}, fails={r['total_failures']})" for r in (d.get("transcripts") or []) if not r.get("missing") and r.get("suggested_grade_cap") in ("C", "D", "F")]
+    alerts += [f"{r['cid'][:8]}: {len(r['parallel_same_file_edits'])} parallel same-file edit(s)" for r in (d.get("transcripts") or []) if r.get("parallel_same_file_edits")]
+    alerts += [f"{r['cid'][:8]}: {r.get('reads_while_pending', 0) + r.get('subagent_overlap_reads', 0)} subagent dup reads" for r in (d.get("transcripts") or []) if r.get("reads_while_pending", 0) + r.get("subagent_overlap_reads", 0) > 5]
+    if alerts or d["escalations"]:
+        lines += ["", "## Health Alerts"] + [f"- {a}" for a in alerts] + [f"- Escalated: {e}" for e in d["escalations"]]
     lines += ["", "## What Went Well"] + ([f"- {i}" for i in d.get("went_well", [])] or ["- none"])
     lines += ["", "## Unresolved /learn candidates"] + ([f"- {i}" for i in d["learn_candidates"]] or ["- none"])
     lines += ["", "## Skill & Tooling /learn candidates"] + ([f"- {i}" for i in d.get("skill_learn_candidates", [])] or ["- none"])
@@ -302,7 +306,6 @@ def format_digest(d: dict[str, Any]) -> str:
         "- Persist Lessons: `/learn`",
     ]
     return "\n".join(lines + ["", f"Next: {d['next_step']}"])
-
 
 def _write_scaffold_file(root: Path, digest: dict[str, Any]) -> str:
     """Persist ``LEARNING_SCAFFOLD.md`` under ``.frontier/plans/<slug>/`` and return POSIX path."""

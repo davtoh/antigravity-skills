@@ -94,6 +94,20 @@ def _cap_grade_by_rubric(grade: str, retries: int | None, steps: int | None) -> 
     return grade
 
 
+def _cap_tri_by_grade(tri_scores: dict[str, Any], grade: str) -> dict[str, Any]:
+    """Keep token_efficiency and hypothesis_accuracy consistent with capped grade."""
+    cap = {"B": 4, "C": 3, "D": 2, "F": 1}.get(grade)
+    if cap and tri_scores:
+        for k in ("token_efficiency", "hypothesis_accuracy"):
+            if isinstance(tri_scores.get(k), int):
+                tri_scores[k] = min(tri_scores[k], cap)
+        dims = [tri_scores[k] for k in ("token_efficiency", "hypothesis_accuracy", "tool_reliability", "architectural_defense") if isinstance(tri_scores.get(k), int)]
+        if len(dims) == 4:
+            avg = sum(dims) / 4.0
+            tri_scores["overall"] = int(avg) if avg.is_integer() else round(avg, 2)
+    return tri_scores
+
+
 _IGNORED_ITEMS = {"", "none", "n/a", "null"}
 
 
@@ -178,7 +192,10 @@ def _enrich_entry_from_audit(entry: dict[str, Any], cid: str | None, brain_dir: 
     cands = entry.setdefault("skill_learn_candidates", [])
     for item in row.get("parallel_same_file_edits") or []:
         if isinstance(item, dict):
-            msg = f"Transcript audit: step {item.get('step')} issued {item.get('count')} parallel edits on {item.get('file')}"
+            calls = item.get("calls") if item.get("calls") is not None else item.get("count")
+            fpath = item.get("path") or item.get("file") or "?"
+            fname = Path(str(fpath)).name if fpath != "?" else "?"
+            msg = f"Transcript audit: step {item.get('step')} issued {calls} parallel edits on {fname}"
         else:
             msg = f"Transcript audit: {item}"
         if msg not in cands:
@@ -247,6 +264,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     steps = raw_steps if isinstance(raw_steps, int) and not isinstance(raw_steps, bool) else None
     steps, retries, cid = _resolve_cid_telemetry(args, steps, retries)
     grade = _cap_grade_by_rubric((args.grade or "A").upper(), retries, steps)
+    tri_scores = _cap_tri_by_grade(tri_scores, grade)
     entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
     if cid:
         entry["cid"] = cid
