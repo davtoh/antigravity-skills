@@ -240,6 +240,18 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(plan_engine._parse_tri(None), {})
         self.assertEqual(plan_engine._parse_tri("5"), {"overall": 5})
         self.assertEqual(plan_engine._parse_tri("cdp=5, plan=4, bad=xyz"), {"cdp": 5, "plan": 4})
+        self.assertEqual(plan_engine._parse_tri("plan_engine:5, diagnose:4"), {"plan_engine": 5, "diagnose": 4})
+        self.assertEqual(
+            plan_engine._parse_tri("9,9,9,9"),
+            {
+                "token_efficiency": 5,
+                "hypothesis_accuracy": 5,
+                "tool_reliability": 5,
+                "architectural_defense": 5,
+                "overall": 5,
+            },
+        )
+        self.assertEqual(plan_engine._parse_tri("cdp=9, plan=0"), {"cdp": 5, "plan": 1})
 
     def test_cli_discover_and_init(self):
         code, out = self._run_cli(["discover"])
@@ -398,10 +410,329 @@ class TestPlanEngineCLI(unittest.TestCase):
         if os.name == "nt":
             self.assertTrue(called_cmd.startswith(r".venv\Scripts\python.exe -m pytest tests/unit"))
 
+    @patch("subprocess.run")
+    def test_cli_verify_resolves_bare_python_and_leading_env(self, mock_subproc):
+        self._run_cli(["init", "sample_plan"])
+        venv_py = self.root / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
+        venv_py.parent.mkdir(parents=True, exist_ok=True)
+        venv_py.write_text("", encoding="utf-8")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="Ran 2 tests\n\nOK\n", stderr="")
+
+        code, _ = self._run_cli(["verify", "sample_plan", "--command", "MPLBACKEND=Agg python -m unittest tests/t.py"])
+        self.assertEqual(code, 0)
+        called_cmd = mock_subproc.call_args[0][0]
+        called_env = mock_subproc.call_args[1]["env"]
+        expected_prefix = r".venv\Scripts\python.exe" if os.name == "nt" else ".venv/bin/python"
+        self.assertTrue(called_cmd.startswith(f"{expected_prefix} -m unittest tests/t.py"))
+        self.assertEqual(called_env["MPLBACKEND"], "Agg")
+
     def test_cross_platform_path_handling(self):
         rel_posix = self.plan_path.relative_to(self.root).as_posix()
         self.assertNotIn("\\", rel_posix)
         self.assertTrue(rel_posix.startswith(".TODO/"))
+
+    def test_master_plan_step_zero_and_child_plan_linking(self):
+        master_path = self.root / ".TODO" / "master_roadmap.md"
+        master_path.write_text(
+            "# Master Roadmap\n\n"
+            "## Step 0: Tooling *(Completed)*\n"
+            "- **Goal**: Build mapper\n\n"
+            "## Step 1: Core Engine\n"
+            "- [ ] Unify pipeline\n"
+            "- **Child Plan**: `.TODO/sample_plan.md`\n",
+            encoding="utf-8",
+        )
+        parsed = parse_plan_markdown(master_path.read_text(encoding="utf-8"))
+        self.assertEqual([m["index"] for m in parsed["milestones"]], [0, 1])
+        self.assertTrue(parsed["milestones"][0]["is_complete"])
+        self.assertEqual(parsed["milestones"][1]["child_plan"], ".TODO/sample_plan.md")
+
+        code, out = self._run_cli(["init", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Active Milestone: 1/2", out)
+
+        code, pre_next_out = self._run_cli(["next", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Declared Child Plan: .TODO/sample_plan.md", pre_next_out)
+        self.assertIn("MASTER STEP PRE-PLAN GATE (Step 1)", pre_next_out)
+
+        code, out = self._run_cli(["init", "sample_plan", "--parent", "master_roadmap", "--milestone", "1"])
+        self.assertEqual(code, 0)
+        self.assertIn("Parent Master Plan: master_roadmap (Step/Milestone 1)", out)
+
+        code, status_out = self._run_cli(["status", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Child Plan: sample_plan [in_progress", status_out)
+
+        code, next_out = self._run_cli(["next", "master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("Linked Child Plan: sample_plan", next_out)
+
+        # Complete all milestones in child plan and verify parent sync + hint
+        self._run_cli(["advance", "sample_plan", "--milestone", "1"])
+        code, adv_out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
+        self.assertEqual(code, 0)
+        self.assertIn("Master Sync: Run 'plan_engine.py advance master_roadmap --milestone 1'", adv_out)
+
+        parent_state = load_json(get_frontier_dir(self.root) / "plans" / "master_roadmap" / "state.json")
+        self.assertEqual(parent_state["child_plans"]["1"]["status"], "completed")
+
+    def test_retrospective_after_advance_logs_completed_milestone_and_4d_tri(self):
+        self._run_cli(["init", "sample_plan"])
+        code, _ = self._run_cli(["advance", "sample_plan", "--commit", "abc1234"])
+        self.assertEqual(code, 0)
+
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--tri", "5,4,5,4",
+            "--hypotheses", "1", "--learn", "Log completed milestone after advance",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Logged retrospective for Milestone 1:", out)
+
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-1]["milestone_index"], 1)
+        self.assertEqual(
+            retros[-1]["tool_reliability_scores"],
+            {
+                "token_efficiency": 5,
+                "hypothesis_accuracy": 4,
+                "tool_reliability": 5,
+                "architectural_defense": 4,
+                "overall": 4.5,
+            },
+        )
+
+        code, next_out = self._run_cli(["next", "sample_plan"])
+        self.assertEqual(code, 0)
+        self.assertIn("Prior Milestone /learn Guards", next_out)
+        self.assertIn("Log completed milestone after advance", next_out)
+
+    def test_commit_suggestion_strips_status_tags_and_master_preplan_gate(self):
+        master_path = self.root / ".TODO" / "world_master_roadmap.md"
+        master_path.write_text(
+            "# World Master Roadmap\n\n"
+            "## Step 1: Core *(Active Execution Target)*\n"
+            "- [ ] Build core\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "world_master_roadmap"])
+        code, next_out = self._run_cli(["next", "world_master_roadmap"])
+        self.assertEqual(code, 0)
+        self.assertIn("MASTER STEP PRE-PLAN GATE (Step 1)", next_out)
+
+        code, adv_out = self._run_cli(["advance", "world_master_roadmap", "--commit", "deadbeef"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("active execution target", adv_out.lower())
+
+    def test_commit_suggestion_strips_em_dash_execution_tags_only(self):
+        plan_path = self.root / ".TODO" / "em_dash_plan.md"
+        plan_path.write_text(
+            "# Em Dash Plan\n\n"
+            "### Milestone 1: Core — FTS5 Index — *Active Execution Target*\n"
+            "- [ ] Task 1\n\n"
+            "### Milestone 2: Dashboard API — *Deferred to Next Turn / Milestone*\n"
+            "- [ ] Task 2\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "em_dash_plan"])
+        code, adv1 = self._run_cli(["advance", "em_dash_plan", "--milestone", "1", "--commit", "abc1111"])
+        self.assertEqual(code, 0)
+        self.assertIn("em_dash_plan.md", adv1)
+        self.assertIn("core fts5 index", adv1.lower())
+        self.assertNotIn("active execution target", adv1.lower())
+
+        code, adv2 = self._run_cli(["advance", "em_dash_plan", "--milestone", "2", "--commit", "abc2222"])
+        self.assertEqual(code, 0)
+        self.assertIn("dashboard api", adv2.lower())
+        self.assertNotIn("deferred to next turn", adv2.lower())
+        patched_md = plan_path.read_text(encoding="utf-8")
+        self.assertNotIn("Active Execution Target", patched_md)
+        self.assertNotIn("Deferred to Next Turn", patched_md)
+        ps = load_json(get_frontier_dir(self.root) / "plans" / "em_dash_plan" / "state.json")
+        self.assertEqual([m["title"] for m in ps["milestones"]], ["Core — FTS5 Index", "Dashboard API"])
+
+    def test_retrospective_retries_caps_inflated_grade(self):
+        self._run_cli(["init", "sample_plan"])
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--retries", "5", "--tri", "5",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Token Grade: C", out)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-1]["token_efficiency_grade"], "C")
+        self.assertEqual(retros[-1]["retries"], 5)
+
+    def test_retrospective_steps_rubric_guard(self):
+        self._run_cli(["init", "sample_plan"])
+        code_b, out_b = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--steps", "65", "--tri", "4,5,5,5",
+        ])
+        self.assertEqual(code_b, 0)
+        self.assertIn("Token Grade: B", out_b)
+
+        code_c, out_c = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--steps", "120", "--tri", "3,4,5,5",
+        ])
+        self.assertEqual(code_c, 0)
+        self.assertIn("Token Grade: C", out_c)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-2]["token_efficiency_grade"], "B")
+        self.assertEqual(retros[-2]["steps"], 65)
+        self.assertEqual(retros[-1]["token_efficiency_grade"], "C")
+        self.assertEqual(retros[-1]["steps"], 120)
+
+    def test_retrospective_cid_auto_populates_steps_retries_and_caps_grade(self):
+        self._run_cli(["init", "sample_plan"])
+        brain = self.root / "brain"
+        log_dir = brain / "cid-auto-1" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        rows = [{"type": "GENERIC", "content": "Command exited with code 1\n"} for _ in range(2)] + [
+            {"type": "GENERIC", "content": "ok"} for _ in range(62)
+        ]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8"))
+
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--tri", "5,5,5,5",
+            "--cid", "cid-auto-1", "--brain-dir", str(brain),
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Token Grade: B", out)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[-1]["cid"], "cid-auto-1")
+        self.assertEqual(retros[-1]["steps"], 64)
+        self.assertEqual(retros[-1]["retries"], 2)
+        self.assertEqual(retros[-1]["token_efficiency_grade"], "B")
+
+    def test_init_scope_recommendation_and_child_guard(self):
+        big_plan = self.root / ".TODO" / "big_feature_unification.md"
+        big_plan.write_text(
+            "# Big Unification\n\n"
+            "## Milestone 1: A\n- [ ] **api/a.py**: add\n\n"
+            "## Milestone 2: B\n- [ ] **ui/b.js**: add\n\n"
+            "## Milestone 3: C\n- [ ] **core/c.py**: add\n\n"
+            "## Milestone 4: D\n- [ ] **tests/test_d.py**: add\n",
+            encoding="utf-8",
+        )
+        code, out = self._run_cli(["init", ".TODO/big_feature_unification.md"])
+        self.assertEqual(code, 0)
+        self.assertIn("SCOPE RECOMMENDATION (MASTER PLAN)", out)
+
+        master = self.root / ".TODO" / "master_roadmap.md"
+        master.write_text("# Master Roadmap\n\n## Step 1: First\n- [ ] Go\n", encoding="utf-8")
+        self._run_cli(["init", ".TODO/master_roadmap.md"])
+        code_child, out_child = self._run_cli(["init", ".TODO/big_feature_unification.md", "--parent", "master_roadmap", "--milestone", "1"])
+        self.assertEqual(code_child, 0)
+        self.assertNotIn("SCOPE RECOMMENDATION (MASTER PLAN)", out_child)
+
+    def test_slice_tools_auto_pickup_and_retro_reminder(self):
+        ui_plan = self.root / ".TODO" / "ui_slice.md"
+        ui_plan.write_text(
+            "# UI Slice\n\n"
+            "## Milestone 1: Dashboard Panel\n- [ ] **dashboard/static/js/app.js**: Wire modal UI\n\n"
+            "## Milestone 2: Backend Router\n- [ ] **dashboard/routers/rec.py**: Add service\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "ui_slice"])
+        code_next, out_next = self._run_cli(["next", "ui_slice"])
+        self.assertEqual(code_next, 0)
+        self.assertIn("Auto-Selected Slice Tools", out_next)
+        self.assertIn("diagnose.py surface", out_next)
+
+        self._run_cli(["advance", "ui_slice", "--milestone", "1"])
+        code_adv2, out_adv2 = self._run_cli(["advance", "ui_slice", "--milestone", "2"])
+        self.assertEqual(code_adv2, 0)
+        self.assertIn("RETROSPECTIVE REMINDER: Milestone 1", out_adv2)
+        self.assertIn("Introspectives (User Choice):", out_adv2)
+
+    def test_retrospective_skill_learn_and_tool_gap(self):
+        self._run_cli(["init", "sample_plan"])
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--grade", "A", "--tri", "5,5,5,5",
+            "--learn", "Keep handlers <=25L", "--skill-learn", "Auto-detect >=4 milestones",
+            "--tool-gap", "scan --path lacked nargs=+",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("/learn candidate (skill): Auto-detect >=4 milestones", out)
+        self.assertIn("Tool gap: scan --path lacked nargs=+", out)
+
+    def test_init_scope_recommendation_three_subsystems_ten_tasks(self):
+        plan = self.root / ".TODO" / "cross_layer.md"
+        plan.write_text(
+            "# Cross Layer\n\n"
+            "## Milestone 1: API\n"
+            "- [ ] **api/a.py**: t1\n- [ ] **api/b.py**: t2\n- [ ] **api/c.py**: t3\n- [ ] **api/d.py**: t4\n\n"
+            "## Milestone 2: UI\n"
+            "- [ ] **ui/x.js**: t5\n- [ ] **ui/y.js**: t6\n- [ ] **ui/z.js**: t7\n\n"
+            "## Milestone 3: Core\n"
+            "- [ ] **core/m.py**: t8\n- [ ] **core/n.py**: t9\n- [ ] **core/o.py**: t10\n",
+            encoding="utf-8",
+        )
+        code, out = self._run_cli(["init", ".TODO/cross_layer.md"])
+        self.assertEqual(code, 0)
+        self.assertIn("SCOPE RECOMMENDATION (MASTER PLAN)", out)
+
+    def test_slice_tools_matches_punctuated_ui_and_probe_audit_scan(self):
+        p = self.root / ".TODO" / "all_tools.md"
+        p.write_text(
+            "# All Tools\n\n"
+            "## Milestone 1: Mixed\n"
+            "- [ ] Fix UI: camera probe bug in router.py\n",
+            encoding="utf-8",
+        )
+        self._run_cli(["init", "all_tools"])
+        code, out = self._run_cli(["next", "all_tools"])
+        self.assertEqual(code, 0)
+        self.assertIn("diagnose.py surface", out)
+        self.assertIn("diagnose.py audit", out)
+        self.assertIn("diagnose.py probe list", out)
+        self.assertIn("diagnose.py scan --path .", out)
+
+    def test_retrospective_went_well_upsert_short_cid_and_auto_scaffold(self):
+        self._run_cli(["init", "sample_plan"])
+        brain = self.root / "brain"
+        log_dir = brain / "conv-abcd1234-full" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        rows = [{"type": "GENERIC", "content": "Command exited with code 1\n"}] + [
+            {"type": "GENERIC", "content": "ok"} for _ in range(69)
+        ]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8"))
+
+        code, out = self._run_cli([
+            "retrospective", "sample_plan", "--milestone", "1", "--grade", "A",
+            "--cid", "conv-abcd1234", "--brain-dir", str(brain),
+            "--went-well", "Strict TDD slicing", "--skill-learn", "none",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Token Grade: B", out)
+        self.assertIn("Went well: Strict TDD slicing", out)
+        self.assertIn("Learning scaffold: .frontier/plans/sample_plan/LEARNING_SCAFFOLD.md", out)
+
+        # Re-running same milestone & canonical/prefix CID updates in-place instead of duplicating
+        code2, _ = self._run_cli([
+            "retrospective", "sample_plan", "--milestone", "1", "--grade", "A",
+            "--cid", "conv-abcd1234-full", "--brain-dir", str(brain),
+            "--went-well", "Updated note", "--skill-learn", "N/A",
+        ])
+        self.assertEqual(code2, 0)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(len(retros), 1)
+        self.assertEqual(retros[0]["cid"], "conv-abcd1234-full")
+        self.assertEqual(retros[0]["went_well"], ["Updated note"])
+        self.assertEqual(retros[0]["skill_learn_candidates"], [])
+        scaffold_text = (get_frontier_dir(self.root) / "plans" / "sample_plan" / "LEARNING_SCAFFOLD.md").read_text(encoding="utf-8")
+        self.assertIn("## What Went Well", scaffold_text)
+        self.assertIn("Updated note", scaffold_text)
+
+    def test_advance_prompts_slug_and_final_writes_scaffold(self):
+        self._run_cli(["init", "sample_plan"])
+        code1, out1 = self._run_cli(["advance", "sample_plan", "--milestone", "1"])
+        self.assertEqual(code1, 0)
+        self.assertIn("/frontier-architect continue sample_plan", out1)
+
+        code2, out2 = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
+        self.assertEqual(code2, 0)
+        self.assertIn("Learning Scaffold: .frontier/plans/sample_plan/LEARNING_SCAFFOLD.md", out2)
+        self.assertTrue((get_frontier_dir(self.root) / "plans" / "sample_plan" / "LEARNING_SCAFFOLD.md").is_file())
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@
         "Uses ask_question to offer choices between Live Chrome Tab, Headless Background Sandbox, and Backend & Runtime Only when mode is not specified",
         "Captures empirical proof via run_diagnose.py before modifying any code",
         "Constructs a Symptom-to-Root-Cause Matrix mapping each symptom to failing evidence, root cause, file/line, and verification check",
-        "Employs Dual Output reporting by generating a structured Markdown Artifact for complex multi-symptom bugs"
+        "Employs Dual Output reporting by generating a structured Markdown Artifact for complex multi-symptom bugs",
+        "Includes a concise Introspective Options hint at task completion offering transcript-audit, plan_engine.py digest, or /learn"
       ]
     },
     {

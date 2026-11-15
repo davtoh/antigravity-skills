@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -27,10 +26,23 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body
+from plan_digest import cmd_digest, register_digest_parser, write_learning_scaffold
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
-    load_json, record_milestone_advance, resolve_plan_path, save_json,
+    link_child_plan, load_json, record_milestone_advance, resolve_plan_path,
+)
+from plan_telemetry import (
+    _extract_leading_env,
+    _normalize_verify_cmd,
+    _parse_test_counts,
+    _parse_tri,
+    _resolve_venv_python,
+    cmd_lookup,
+    cmd_retrospective,
+    cmd_verify,
+    get_prior_learn_candidates,
 )
 
 
@@ -54,9 +66,20 @@ def cmd_init(root: Path, args: argparse.Namespace) -> int:
         print(f"[plan_engine] Error: Plan '{args.plan or ''}' could not be resolved.")
         return 1
     _ws, ps = bootstrap_plan(root, target)
+    parent_arg = getattr(args, "parent", None)
+    if parent_arg:
+        parent_ps = link_child_plan(root, ps, parent_arg, getattr(args, "milestone", None))
+        if not parent_ps:
+            print(f"[plan_engine] Warning: Parent plan '{parent_arg}' could not be linked.")
     print(f"[plan_engine] Initialized plan: {ps['title']}")
     print(f"  Slug: {ps['slug']} | Active Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
     print(f"  Status: {ps['status']} | Path: {ps['plan_path']}")
+    if ps.get("parent_plan"):
+        p = ps["parent_plan"]
+        print(f"  Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']})")
+    parsed = parse_plan_markdown(target.read_text(encoding="utf-8"))
+    if scope_msg := assess_plan_scope(parsed, ps, parent_arg):
+        print(scope_msg)
     return 0
 
 
@@ -78,15 +101,24 @@ def cmd_status(root: Path, args: argparse.Namespace) -> int:
     print("=== Frontier Architect Plan Status ===")
     print(f"Plan: {ps['title']} ({ps['plan_path']})")
     print(f"Slug: {ps['slug']} | Status: {ps['status'].upper()}")
+    if ps.get("parent_plan"):
+        p = ps["parent_plan"]
+        print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']})")
     print(f"Progress: [{bar}] {pct}% (Milestone {ps['active_milestone_index']} of {ps['total_milestones']})")
     vb = ws.get("verification_baseline", {})
     if vb.get("command"):
         print(f"Baseline: {vb.get('command')} -> Exit: {vb.get('last_exit_code')} ({vb.get('passed_tests')} passed)")
     print("\nMilestones:")
+    children = ps.get("child_plans", {})
     for m in ps["milestones"]:
         mark = "✓" if m["status"] == "completed" else ("▶" if m["status"] == "active" else " ")
         sha_str = f" [{m['commit_sha']}]" if m.get("commit_sha") else ""
         print(f"  [{mark}] Milestone {m['index']}: {m['title']} ({m['completed_tasks']}/{m['total_tasks']} tasks){sha_str}")
+        c_info = children.get(str(m["index"]))
+        if c_info:
+            print(f"      ↳ Child Plan: {c_info['slug']} [{c_info['status']} | M{c_info['active_milestone_index']}/{c_info['total_milestones']}] ({c_info['plan_path']})")
+        elif m.get("child_plan"):
+            print(f"      ↳ Child Plan (declared): {m['child_plan']}")
     return 0
 
 
@@ -100,33 +132,32 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     parsed = parse_plan_markdown(plan_p.read_text(encoding="utf-8"))
     active_idx = ps["active_milestone_index"]
     target_m = next((m for m in parsed["milestones"] if m["index"] == active_idx), None)
+    prior_learns = get_prior_learn_candidates(root, ps["slug"])
 
     all_done = ps["status"] == "completed" or (bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"]))
     if all_done or not target_m:
         if args.json:
-            print(json.dumps({"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"]}, indent=2))
+            payload = {"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, **({"parent_plan": ps["parent_plan"]} if ps.get("parent_plan") else {})}
+            print(json.dumps(payload, indent=2))
         else:
             print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
+            if p := ps.get("parent_plan"):
+                print(f"[plan_engine] Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']}) -> Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then 'plan_engine.py next {p['slug']}'.")
         return 0
     if args.json:
-        print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"]}, indent=2))
+        print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns}, indent=2))
         return 0
 
     print(f"=== Active Milestone: {target_m['index']} - {target_m['title']} ===")
-    print("Tasks to implement in this vertical slice:")
-    for t in target_m["tasks"]:
-        chk = "[x]" if t["checked"] else "[ ]"
-        print(f"  {chk} {t['text']}")
-
-    if parsed["verification_commands"]:
-        print("\nVerification Commands (OS-Agnostic):")
-        for v in parsed["verification_commands"]:
-            print(f"  {v}")
-
-    print("\nPre-Flight Critic Gate:")
-    print("  1. Public Surface Invariants: Document schemas & API contracts before code edits.")
-    print("  2. Defensive Edge Cases: Handle timeouts, missing inputs, and boundary conditions.")
-    print("  3. Modularity Line Budgets: Target < 350 lines; hard split ceiling at 500 lines.")
+    if ps.get("parent_plan"):
+        p = ps["parent_plan"]
+        print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']}) -> {p['plan_path']}")
+    c_info = ps.get("child_plans", {}).get(str(active_idx))
+    if c_info:
+        print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
+    else:
+        print_master_gate(ps, active_idx, target_m.get("child_plan"))
+    print_milestone_body(target_m, parsed, prior_learns)
     return 0
 
 
@@ -169,8 +200,15 @@ def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
         (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
         f"milestone {target_idx}",
     )
+    stripped_title = re.sub(
+        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
+        "",
+        milestone_title,
+        flags=re.IGNORECASE,
+    )
+    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", stripped_title)
     clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
-    clean_title = re.sub(r"[^\w\s-]", "", milestone_title).strip().lower()
+    clean_title = re.sub(r"[^\w\s-]", "", stripped_title).strip().lower()
     clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"
     return f'git commit -m "feat({clean_scope}): {clean_title}"'
 
@@ -182,7 +220,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         print("[plan_engine] Error: No plan resolved.")
         return 1
     _ws, ps = bootstrap_plan(root, plan_p)
-    target_idx = args.milestone or ps["active_milestone_index"]
+    target_idx = args.milestone if args.milestone is not None else ps["active_milestone_index"]
 
     patched = patch_milestone_checkboxes(plan_p, target_idx)
     sha = args.commit or get_git_sha(root)
@@ -197,205 +235,19 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     else:
         commit_hint = _build_commit_suggestion(ps, target_idx)
 
-    print(f"[plan_engine] Advanced Milestone {target_idx} (checked {patched} tasks).")
-    print(f"  Commit: {sha or 'N/A'} | Status: {ps['status']}")
-    print(f"  Suggested Commit: {commit_hint}")
-    if ps["status"] == "completed":
-        print("[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off & Pre-Merge Gate.")
-    else:
-        print(f"  Status: in_progress | Next Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
-        print("=" * 72)
-        print(f"[plan_engine] TURN GATE: Milestone {target_idx} COMPLETE!")
-        print("MANDATORY: STOP calling tools. DO NOT execute the next milestone in this turn.")
-        if has_code_diff:
-            print("Present milestone verification and Suggested Commit to user, then prompt '/frontier-architect continue'.")
-        else:
-            print("Milestone was verification/audit only (no application code files modified; skip git commit).")
-            print("Present verification results to user, then prompt '/frontier-architect continue'.")
-        print("=" * 72)
+    from plan_telemetry import rollup_child_retrospective
+    rollup_child_retrospective(root, ps, target_idx)
+
+    missing_prior_retro = None
+    if target_idx > 1:
+        retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
+        logged = {r.get("milestone_index") for r in retros if isinstance(r, dict)}
+        if (target_idx - 1) not in logged:
+            missing_prior_retro = target_idx - 1
+
+    scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
+    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel)
     return 0
-
-
-def _parse_tri(tri_arg: str | None) -> dict[str, int]:
-    """Parse tool reliability index argument into dictionary."""
-    if not tri_arg:
-        return {}
-    scores = {}
-    for item in tri_arg.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        if "=" in item:
-            k, v = item.split("=", 1)
-            try:
-                scores[k.strip()] = int(v.strip())
-            except ValueError:
-                pass
-        else:
-            try:
-                scores["overall"] = int(item.strip())
-            except ValueError:
-                pass
-    return scores
-
-
-def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
-    """Record Token Efficiency Grade, TRI, and /learn candidate proposals."""
-    plan_p = resolve_plan_path(root, args.plan)
-    if not plan_p:
-        print("[plan_engine] Error: No plan resolved.")
-        return 1
-    _ws, ps = bootstrap_plan(root, plan_p)
-    fdir = get_frontier_dir(root)
-    retro_path = fdir / "plans" / ps["slug"] / "retrospectives.json"
-    retros = load_json(retro_path, [])
-
-    entry = {
-        "milestone_index": args.milestone or ps["active_milestone_index"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "token_efficiency_grade": (args.grade or "A").upper(),
-        "tool_reliability_scores": _parse_tri(args.tri),
-        "hypotheses_tested": args.hypotheses or 1,
-        "root_causes_escalated": [args.escalate] if args.escalate else [],
-        "learn_candidates": [args.learn] if args.learn else [],
-    }
-    retros.append(entry)
-    save_json(retro_path, retros)
-
-    ws = load_json(fdir / "state.json", {})
-    ws.setdefault("retrospectives", []).append(entry)
-    save_json(fdir / "state.json", ws)
-
-    print(f"[plan_engine] Logged retrospective for Milestone {entry['milestone_index']}:")
-    print(f"  Token Grade: {entry['token_efficiency_grade']} | TRI: {entry['tool_reliability_scores']}")
-    if entry["learn_candidates"]:
-        print(f"  /learn candidate: {entry['learn_candidates'][0]}")
-    return 0
-
-
-def cmd_lookup(root: Path, args: argparse.Namespace) -> int:
-    """Surface past decisions, milestones, commits, and retrospectives."""
-    q = args.query.lower().strip()
-    fdir = get_frontier_dir(root)
-    ws = load_json(fdir / "state.json", {})
-    results: list[dict[str, Any]] = []
-
-    for item in ws.get("plan_history", []):
-        if q in item.get("slug", "").lower() or q in item.get("title", "").lower():
-            results.append({"type": "plan", "item": item})
-
-    for pdir in (fdir / "plans").glob("*"):
-        st = load_json(pdir / "state.json", {})
-        if not st:
-            continue
-        for m in st.get("milestones", []):
-            if q in m.get("title", "").lower() or q in m.get("commit_sha", "").lower():
-                results.append({"type": "milestone", "plan": st.get("slug"), "milestone": m})
-        for r in load_json(pdir / "retrospectives.json", []):
-            learns = " ".join(r.get("learn_candidates", [])).lower()
-            escs = " ".join(r.get("root_causes_escalated", [])).lower()
-            if q in learns or q in escs:
-                results.append({"type": "retrospective", "plan": st.get("slug"), "retro": r})
-
-    if not results:
-        print(f"[plan_engine] No historical decisions or plans matched query '{args.query}'.")
-        return 0
-
-    print(f"[plan_engine] Lookup results for '{args.query}' ({len(results)} matches):")
-    for r in results:
-        if r["type"] == "plan":
-            print(f"  [PLAN] {r['item'].get('title')} ({r['item'].get('slug')}) - {r['item'].get('status')}")
-        elif r["type"] == "milestone":
-            m = r["milestone"]
-            print(f"  [MILESTONE] Plan: {r['plan']} -> M{m.get('index')}: {m.get('title')} (sha: {m.get('commit_sha')})")
-        elif r["type"] == "retrospective":
-            print(f"  [RETRO] Plan: {r['plan']} M{r['retro'].get('milestone_index')}: Learn={r['retro'].get('learn_candidates')}")
-    return 0
-
-
-def _normalize_verify_cmd(cmd: str, root: Path) -> str:
-    """Normalize leading Unix virtualenv paths on Windows while preserving arguments."""
-    if os.name != "nt" or not cmd.strip():
-        return cmd
-    stripped = cmd.lstrip()
-    quote = stripped[0] if stripped[0] in ('"', "'") else ""
-    if quote:
-        end_idx = stripped.find(quote, 1)
-        if end_idx == -1:
-            return cmd
-        first_token, rest = stripped[1:end_idx], stripped[end_idx + 1 :]
-    else:
-        parts = stripped.split(None, 1)
-        first_token, rest = parts[0], (" " + parts[1] if len(parts) > 1 else "")
-    if "/" not in first_token:
-        return cmd
-    clean = first_token.removeprefix("./")
-    if clean in (".venv/bin/python", "venv/bin/python", "env/bin/python"):
-        win_py = root / clean.split("/")[0] / "Scripts" / "python.exe"
-        if win_py.is_file():
-            first_token = first_token.replace("/bin/python", "\\Scripts\\python.exe").replace("/", "\\")
-    elif clean.startswith((".venv/", "venv/", "env/")) or (root / clean.replace("/", "\\")).exists():
-        first_token = first_token.replace("/", "\\")
-    return f"{quote}{first_token}{quote}{rest}"
-
-
-def _parse_test_counts(output: str) -> tuple[int, int]:
-    """Extract passed and failed test counts from unittest or pytest output."""
-    passed, failed = 0, 0
-    ok_match = re.search(r"Ran (\d+) tests?.*?\n\nOK", output)
-    if ok_match:
-        passed = int(ok_match.group(1))
-    fail_match = re.search(r"FAILED \((?:failures=(\d+))?(?:, )?(?:errors=(\d+))?\)", output)
-    if fail_match:
-        failed = sum(int(x) for x in fail_match.groups() if x)
-    if passed == 0 and failed == 0:
-        pt_pass = re.search(r"(\d+)\s+passed", output)
-        pt_fail = re.search(r"(\d+)\s+failed", output)
-        pt_err = re.search(r"(\d+)\s+errors?", output)
-        if pt_pass or pt_fail or pt_err:
-            passed = int(pt_pass.group(1)) if pt_pass else 0
-            failed = (int(pt_fail.group(1)) if pt_fail else 0) + (int(pt_err.group(1)) if pt_err else 0)
-    return passed, failed
-
-
-def cmd_verify(root: Path, args: argparse.Namespace) -> int:
-    """Run verification command and update baseline ledger."""
-    cmd = args.command
-    plan_p = resolve_plan_path(root, args.plan)
-    if not cmd and plan_p:
-        parsed = parse_plan_markdown(plan_p.read_text(encoding="utf-8"))
-        if parsed["verification_commands"]:
-            cmd = parsed["verification_commands"][0]
-    if not cmd:
-        ws_existing = load_json(get_frontier_dir(root) / "state.json", {})
-        cmd = ws_existing.get("verification_baseline", {}).get("command")
-
-    if not cmd:
-        print(
-            "[plan_engine] Error: No verification command specified or found in plan. "
-            'Pass --command "<cmd>" or include runnable commands in code blocks / Scenario Matrix tables.'
-        )
-        return 1
-
-    exec_cmd = _normalize_verify_cmd(cmd, root)
-    print(f"[plan_engine] Running verifier: {exec_cmd}")
-    proc = subprocess.run(exec_cmd, shell=True, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    output = (proc.stdout or "") + (proc.stderr or "")
-    print(output)
-
-    passed, failed = _parse_test_counts(output)
-
-    fdir = get_frontier_dir(root)
-    ws = load_json(fdir / "state.json", {})
-    ws["verification_baseline"] = {
-        "command": cmd,
-        "last_exit_code": proc.returncode,
-        "passed_tests": passed,
-        "failed_tests": failed,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    save_json(fdir / "state.json", ws)
-    return proc.returncode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -410,6 +262,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("discover", parents=[root_parent], help="Discover architectural plans in workspace")
     p_init = sub.add_parser("init", parents=[root_parent], help="Initialize or bind active plan")
     p_init.add_argument("plan", nargs="?", help="Path or slug of plan")
+    p_init.add_argument("--parent", default=None, help="Optional parent master plan path or slug")
+    p_init.add_argument("--milestone", type=int, default=None, help="Parent milestone/step index for child plan")
     plan_parent = argparse.ArgumentParser(add_help=False, parents=[root_parent])
     plan_parent.add_argument("plan", nargs="?", help="Optional plan target")
     p_status = sub.add_parser("status", parents=[plan_parent], help="Show active plan status")
@@ -421,17 +275,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_adv = sub.add_parser("advance", parents=[plan_parent], help="Check off tasks and advance milestone")
     p_adv.add_argument("--milestone", type=int, help="Milestone number to complete")
     p_adv.add_argument("--commit", help="Commit SHA to record")
-    p_retro = sub.add_parser("retrospective", parents=[plan_parent], help="Log retrospective telemetry")
-    p_retro.add_argument("--milestone", type=int, help="Milestone index")
-    p_retro.add_argument("--grade", default="A", help="Token Efficiency Grade (A-F)")
-    p_retro.add_argument("--tri", help="Tool Reliability Index score (1-5 or tool=score)")
-    p_retro.add_argument("--hypotheses", type=int, default=1, help="Hypotheses tested")
-    p_retro.add_argument("--escalate", help="Root cause escalated to /app-debugger")
-    p_retro.add_argument("--learn", help="Candidate proposal for /learn")
+    add_retrospective_parser(sub, plan_parent)
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
     p_ver.add_argument("--command", "--cmd", dest="command", help="Explicit verifier command")
+    register_digest_parser(sub, plan_parent)
 
     return parser
 
@@ -447,7 +296,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     handlers = {
         "discover": cmd_discover, "init": cmd_init, "status": cmd_status,
         "next": cmd_next, "continue": cmd_next, "advance": cmd_advance,
-        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify,
+        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify, "digest": cmd_digest,
     }
     handler = handlers.get(cmd)
     if not handler:

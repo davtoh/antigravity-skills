@@ -39,6 +39,37 @@ class TestStaticAuditor(unittest.TestCase):
             issues = static_auditor.audit_callable_smoke(tmp)
             self.assertEqual(issues, [])
 
+    def test_callable_smoke_skips_exception_subclasses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "errors.py").write_text(
+                "class CameraError(Exception):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            issues = static_auditor.audit_callable_smoke(tmp / "errors.py")
+            self.assertEqual(issues, [])
+
+    def test_callable_smoke_skips_typing_protocol_and_reports_concrete_lineno(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "protos.py").write_text(
+                "from typing import Protocol, runtime_checkable\n\n"
+                "@runtime_checkable\n"
+                "class SemanticProvider(Protocol):\n"
+                "    name: str\n"
+                "    def synthesize(self, query: str) -> str: ...\n\n"
+                "class BrokenProvider:\n"
+                "    def __init__(self) -> None:\n"
+                "        raise TypeError('bad concrete init')\n",
+                encoding="utf-8",
+            )
+            issues = static_auditor.audit_callable_smoke(tmp / "protos.py")
+            self.assertEqual(len(issues), 1)
+            self.assertEqual(issues[0]["type"], "initialization_type_error")
+            self.assertIn("BrokenProvider", issues[0]["message"])
+            self.assertEqual(issues[0]["line"], 8)
+
     def test_callable_smoke_catches_init_type_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -153,6 +184,55 @@ class TestStaticAuditor(unittest.TestCase):
             )
             code = static_auditor.cmd_audit(tmp, "python", args)
             self.assertEqual(code, 1)
+
+    def test_diagnose_audit_accepts_multiple_paths(self) -> None:
+        import diagnose
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            f1 = tmp / "a.py"
+            f2 = tmp / "b.py"
+            f1.write_text("x = 1\n", encoding="utf-8")
+            f2.write_text("y = 2\n", encoding="utf-8")
+            args = MagicMock(
+                path=[str(f1), str(f2)],
+                callable_smoke=False,
+                smells=True,
+                typecheck=False,
+                json=False,
+                strict=True,
+            )
+            code = diagnose.cmd_audit(args)
+            self.assertEqual(code, 0)
+
+    def test_audit_modularity_budgets_flags_long_function_and_custom_max_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            f = tmp / "sample.py"
+            body = "\n".join("    x += 1" for _ in range(42))
+            f.write_text(f"def too_long():\n    x = 0\n{body}\n    return x\n", encoding="utf-8")
+            args = MagicMock(
+                callable_smoke=False,
+                smells=False,
+                typecheck=False,
+                json=False,
+                strict=False,
+                max_lines=40,
+                max_fn_lines=40,
+            )
+            code = static_auditor.cmd_audit(f, "python", args)
+            self.assertEqual(code, 1)
+
+    def test_cmd_audit_missing_path_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing = Path(tmpdir) / "does_not_exist.py"
+            args = MagicMock(callable_smoke=False, smells=False, typecheck=False, json=True, strict=False, max_lines=None, max_fn_lines=None)
+            with patch("builtins.print") as mock_print:
+                code = static_auditor.cmd_audit(missing, "python", args)
+                self.assertEqual(code, 1)
+                data = json.loads(mock_print.call_args[0][0])
+                self.assertEqual(data["status"], "DEFECTS_FOUND")
+                self.assertEqual(data["issues"][0]["type"], "missing_file")
 
 
 if __name__ == "__main__":

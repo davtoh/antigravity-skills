@@ -41,3 +41,15 @@ This reference provides a high-leverage catalog of modern architectural patterns
 - **Concept**: Rather than hardcoding static integrations, system capabilities are dynamically leased and orchestrated using standardized protocols like the Model Context Protocol (MCP).
 - **Key Primitives**: Model Context Protocol (MCP), dynamic capability discovery, sandboxed execution.
 - **Why It Matters**: Products become infinitely extensible without rewriting core logic when new services emerge.
+
+## 3-Tier Detail
+
+1. **Tier 1: Pragmatic Baseline**
+   - The conventional, battle-tested approach (how 90% of teams build it).
+   - *Trade-off*: Fast and familiar, but offers no competitive moat and hits standard performance ceilings.
+2. **Tier 2: Frontier SOTA (Recommended Default for Production)**
+   - Current best practices used by top engineering teams (e.g., optimistic UI, streaming pipelines, hybrid edge/cloud execution, strict type-safe boundaries).
+   - *Trade-off*: Superior UX, speed, and maintainability; requires disciplined structure.
+3. **Tier 3: Novel 0-to-1 Paradigm (The Moonshot)**
+   - A paradigm-inverting approach that creates an unfair advantage (e.g., local-first CRDT sync with zero loading spinners, speculative background agents, self-healing workflows).
+   - *Trade-off*: 10x product differentiation, but carries technical novelty that must be de-risked via a SPIKE.

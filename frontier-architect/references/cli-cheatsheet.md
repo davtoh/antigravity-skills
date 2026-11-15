@@ -2,33 +2,57 @@
 
 Consult this quick-reference sheet during **Phase 1B (Diagnostics)** and **Phase 6 (Plan Execution & Milestone Sign-Off)** to avoid `--help` round-trips and quote-stripping errors on Windows PowerShell.
 
+> `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside the config repo).
+
 ---
 
 ## 1. Plan Continuation Engine (`scripts/plan_engine.py`)
 
 ```bash
-# Initialize or register a markdown plan (.TODO/<slug>.md, .plans/<slug>.md, or explicit path)
-python skills/frontier-architect/scripts/plan_engine.py init <plan_or_slug> --root .
+# Discover existing plans before exploring an unfamiliar repo
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" discover --root .
 
-# Inspect visual progress bar, active milestone, and verification baseline
-python skills/frontier-architect/scripts/plan_engine.py status <plan_or_slug> --root .
+# Initialize or register a markdown plan (.TODO/<slug>.md, .plans/<slug>.md, or explicit path)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" init <plan_or_slug> --root .
+
+# Link a child step plan to a Master Roadmap (when >=4 milestones or >=3 subsystems)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" init .TODO/step_1_<slug>.md --parent <master_slug> --milestone 1 --root .
+
+# Inspect visual progress bar, active milestone, and verification baseline (omit <plan_or_slug> to auto-resolve .frontier/state.json)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" status [<plan_or_slug>] --root .
 
 # Emit ONLY the active milestone's checklist items and verifiers (Zero-Token Slicer)
-python skills/frontier-architect/scripts/plan_engine.py next <plan_or_slug> --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<plan_or_slug>] --root .
 
 # Run verification command (auto-normalizes leading .venv/bin/python on Windows & parses unittest/pytest counts)
-python skills/frontier-architect/scripts/plan_engine.py verify <plan_or_slug> --command "<test_cmd>" --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" --root .
 
-# Advance completed milestone (patches [ ] -> [x] in-place and emits copy-pasteable git commit snippet)
-python skills/frontier-architect/scripts/plan_engine.py advance <plan_or_slug> --milestone <N> --commit <sha> --root .
+# Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-writes LEARNING_SCAFFOLD.md on plan completion)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> --root .
 
-# Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json and retrospectives.json)
-python skills/frontier-architect/scripts/plan_engine.py retrospective <plan_or_slug> \
-  --milestone <N> --grade A --tri "plan_engine:5,diagnose:5" --hypotheses 1 \
-  --learn "<reusable insight>" --escalate "none" --root .
+# Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
+# Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospective <plan_or_slug> \
+  --milestone <N> --grade A --cid <conv_id> --tri "5,5,5,5" --hypotheses 1 \
+  --went-well "<what worked well>" --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
+
+# Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path <files...> --max-lines 350 --max-fn-lines 40
+
+# Polyglot defect scan across one or multiple paths
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path <paths...>
+
+# Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .
+
+# End-of-plan digest: retro integrity, dual-axis /learn candidates, optional transcript backfill & LEARNING_SCAFFOLD.md
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest <plan_or_slug> --cids <conv_id...> --backfill --write-scaffold --root .
+
+# Deterministic transcript audit (steps, failures, repeated reads, corrections, parallel edits); --cids accepts 8-char prefixes or comma-separated IDs
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <conv_id...> [--json] [--brain-dir <dir>]
 
 # Lookup historical plans, commit SHAs, and retrospective lessons
-python skills/frontier-architect/scripts/plan_engine.py lookup "<keyword_or_sha>" --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" lookup "<keyword_or_sha>" --root .
 ```
 
 ---
@@ -37,13 +61,13 @@ python skills/frontier-architect/scripts/plan_engine.py lookup "<keyword_or_sha>
 
 ```bash
 # Attach to active visible Chrome tab (--live) and audit DOM bounding boxes & overflow
-python skills/system-diagnostics/scripts/diagnose.py ui --url http://localhost:8000 --live --audit-layout --selectors "#app,.card"
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --audit-layout --selectors "#app,.card"
 
 # Evaluate multi-statement JS in page context via --eval-file (avoids PowerShell quote stripping)
-python skills/system-diagnostics/scripts/diagnose.py ui --url http://localhost:8000 --live --eval-file scratch/probe_dom.js
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --eval-file scratch/probe_dom.js
 
 # Isolated headless inspection with screenshot capture
-python skills/system-diagnostics/scripts/diagnose.py ui --url http://localhost:8000 --headless --audit-layout --screenshot scratch/ui.jpg
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --headless --audit-layout --screenshot scratch/ui.jpg
 ```
 
 ---
@@ -52,11 +76,11 @@ python skills/system-diagnostics/scripts/diagnose.py ui --url http://localhost:8
 
 ```bash
 # Record completed milestone in CHANGELOG.md (<=150L auto-archived) and emit git commit snippet
-python skills/system-diagnostics/scripts/diagnose.py changelog add \
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add \
   --title "<Milestone Title>" --type feat --summary "<1-line summary>" --verify "<test_cmd>" --path .
 
 # Package standalone .skill archive (resolves SSOT shims into full scripts & strips tests/evals per /skill-creator)
-python skills/system-diagnostics/scripts/diagnose.py package-skill all --out dist/
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" package-skill all --out dist/
 ```
 
 ---

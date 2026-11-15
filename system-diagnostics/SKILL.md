@@ -91,8 +91,9 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Detect Platform Import Smells** | Source repository | Flags dynamic try..except ladders | `python skills/system-diagnostics/scripts/diagnose.py audit --smells` |
 | **Callable Smoke & Init Check** | Source repository | Checks signatures & constructor TypeErrors | `python skills/system-diagnostics/scripts/diagnose.py audit --callable-smoke` |
 | **Export Static Defect JSON** | Source repository | Full machine-readable audit report | `python skills/system-diagnostics/scripts/diagnose.py audit --json` |
-| **Polyglot Latent Defect Scan** | Source repository | Scans Py, JS/TS, CSS, Dart (SSOT catalog) | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/` |
+| **Polyglot Latent Defect Scan** | Source repository | Scans Py, JS/TS, CSS, Dart across 1+ paths | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/ tests/` |
 | **Deep Scan with CSS & Extended AST** | Source repository | Full polyglot rules + specificity leaks | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/ --deep` |
+| **Audit Conversation Transcripts** | Brain logs | Steps, failures, parallel edits & subagent dupes | `python skills/system-diagnostics/scripts/diagnose.py transcript-audit --latest 1` |
 | **Strict CI Defect Gate** | CI / Pre-commit | Returncode 1 if any defects found | `python skills/system-diagnostics/scripts/diagnose.py scan --strict` |
 | **Unlock Tactical Defect (Test Synthesis)** | Quarantined defect | Generates Red repro in tests/quarantine/ | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
 | **Unlock Tactical Defect + Micro-Branch** | Quarantined defect | Clean git checkout + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
@@ -189,12 +190,21 @@ python skills/system-diagnostics/scripts/diagnose.py audit [OPTIONS]
 ```bash
 python skills/system-diagnostics/scripts/diagnose.py scan [OPTIONS]
 ```
-- `--path <PATH>`: Target file or directory to scan across Python, JS/TS, CSS, and Dart (default: current directory).
+- `--path <PATHS...>`: One or more files/directories to scan across Python, JS/TS, CSS, and Dart (default: current directory).
 - `--deep` / `--all`: Scans extended rules (CSS `!important` specificity overruns, unbounded container growth, blocking loops).
 - `--prune`: Purges closed (`resolved`/`dismissed`) or vanished defects from the catalog during scan reconciliation.
 - `--json`: Outputs machine-readable catalog JSON to stdout.
 - `--strict`: Exits with return code 1 if any active (`quarantined`/`scaffolded`/`elevated`) defects are detected.
 - *Automatic Stateful Catalog Sync*: Reconciles findings by `fingerprint` in `<workspace>/.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`, automatically transitioning fixed defects to `resolved` and preserving `dismissed` items so solved issues are never repeated.
+
+### Subcommand: `transcript-audit`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <IDs...>] [--latest <N>] [--min-steps <N>] [--json]
+```
+- `--cids <IDs...>`: Full UUIDs, 8-char prefixes, or comma-separated IDs from `<appDataDir>/brain`.
+- `--latest <N>` / `--min-steps <N>`: Audit the `N` most recent substantive conversations (prefers `>= 6` steps, skipping empty new chats).
+- `--brain-dir <DIR>`: Override brain directory (or set `AGY_BRAIN_DIR`).
+- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
 
 ### Subcommand: `resolve-defect` & `dismiss-defect`
 ```bash
@@ -221,6 +231,16 @@ python skills/system-diagnostics/scripts/diagnose.py package-skill <SKILL_OR_ALL
 - `<SKILL_OR_ALL>`: Skill name/directory (`frontier-architect`, `refactor-monolith`, `system-diagnostics`, `app-debugger`) or `all`.
 - `--out <DIR>`: Output directory for `.skill` archives (default: `dist/`).
 - *Temp-Stage Standalone Bundling*: Stages the skill in an isolated temporary directory, materializes any thin SSOT shims into full standalone scripts from `system-diagnostics/scripts/`, strips dev-only directories (`tests/`, `evals/`, `.coverage`, `.diagnostics/`), and invokes `/skill-creator`'s `package_skill.py` validator/packager.
+
+### Subcommands: `arch-map`, `traces`, & `run`
+```bash
+python skills/system-diagnostics/scripts/diagnose.py arch-map [--path <PATHS...>] [--include-tests] [--json] [--full] [--out <FILE>]
+python skills/system-diagnostics/scripts/diagnose.py traces [--clear] [--scaffold {fastapi,flask,generic}] [--dest <DIR>]
+python skills/system-diagnostics/scripts/diagnose.py run <COMMAND...>
+```
+- `arch-map`: Generates a compact architecture, modularity, route, and import-coupling map in Markdown or `--json`.
+- `traces`: Inspects and clears `.diagnostics/` runtime crash/trace catalogs, or scaffolds a framework bridge (`--scaffold fastapi|flask|generic`).
+- `run`: Zero-code runner that launches an application command with automatic runtime tracing bootstrapped.
 
 ---
 

@@ -9,10 +9,18 @@ from pathlib import Path
 from typing import Any
 import re
 
-M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
+M_REGEX = re.compile(r"^(#{2,4})\s+\*{0,2}(?:Milestone|Phase|Step)\s+(\d+)\*{0,2}[:\s-]*(.*)$", re.IGNORECASE)
+STATUS_TAG_REGEX = re.compile(
+    r"\s*(?:(?:—|--|-)\s*)?\*?\(?\s*(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Pending|In Progress)\s*\)?\*?\s*$",
+    re.IGNORECASE,
+)
 TASK_REGEX = re.compile(r"^(\s*[-*]\s*\[)([ xX])(\]\s*(.*))$")
 TASK_UNCHECKED_REGEX = re.compile(r"^(\s*[-*]\s*\[)[ ](\]\s*.*)$")
 BULLET_TASK_REGEX = re.compile(r"^(\s*[-*]\s+)(?!\[[ xX]\])(.*)$")
+CHILD_PLAN_REGEX = re.compile(
+    r"^\s*[-*]?\s*\*{0,2}Child\s+Plan\*{0,2}:\s*(?:\[[^\]]*\]\(([^)\s]+\.md)\)|`?([^`\s]+\.md)`?)",
+    re.IGNORECASE,
+)
 VERIFIER_PREFIXES = (
     "python", "pytest", "npm", "cargo", "go test", "unittest",
     "node", "deno", "bun", "mvn", "gradle", "flutter", "dotnet", ".venv",
@@ -58,70 +66,68 @@ def discover_plans(root: Path) -> list[Path]:
     return unique
 
 
+def _append_milestone_line(line: str, idx: int, current_m: dict[str, Any]) -> bool:
+    """Append child plan or task entry to ``current_m``; return True if section boundary ends milestone."""
+    if cp_match := CHILD_PLAN_REGEX.match(line):
+        current_m["child_plan"] = (cp_match.group(1) or cp_match.group(2)).strip()
+        return False
+    t_match = TASK_REGEX.match(line)
+    b_match = BULLET_TASK_REGEX.match(line) if not t_match else None
+    if t_match:
+        current_m["tasks"].append({
+            "text": t_match.group(4).strip(), "checked": t_match.group(2).lower() == "x",
+            "has_checkbox": True, "line_index": idx,
+        })
+    elif b_match and not line.strip().startswith(("#", "```", "---", "***")):
+        current_m["tasks"].append({
+            "text": b_match.group(2).strip(), "checked": False,
+            "has_checkbox": False, "line_index": idx,
+        })
+    elif _is_section_boundary(line):
+        return True
+    return False
+
+
 def parse_plan_markdown(content: str) -> dict[str, Any]:
     """Parse title, milestones, tasks, and verification commands from markdown."""
     lines = content.splitlines()
-    title = "Architectural Implementation Plan"
-    for line in lines:
-        if line.startswith("# "):
-            title = line[2:].strip()
-            break
-
+    title = next((ln[2:].strip() for ln in lines if ln.startswith("# ")), "Architectural Implementation Plan")
     milestones: list[dict[str, Any]] = []
     current_m: dict[str, Any] | None = None
 
     for idx, line in enumerate(lines):
-        m_match = M_REGEX.match(line)
-        if m_match:
+        if m_match := M_REGEX.match(line):
             if current_m:
                 _finalize_milestone(current_m)
                 milestones.append(current_m)
             current_m = {
-                "index": int(m_match.group(2)),
-                "title": m_match.group(3).strip(),
-                "raw_heading": line,
-                "line_index": idx,
-                "tasks": [],
-                "is_complete": False,
+                "index": int(m_match.group(2)), "title": m_match.group(3).strip(),
+                "raw_heading": line, "line_index": idx, "tasks": [],
+                "child_plan": None, "is_complete": False,
             }
-            continue
-
-        if current_m:
-            t_match = TASK_REGEX.match(line)
-            b_match = BULLET_TASK_REGEX.match(line) if not t_match else None
-            if t_match:
-                current_m["tasks"].append({
-                    "text": t_match.group(4).strip(),
-                    "checked": t_match.group(2).lower() == "x",
-                    "line_index": idx,
-                })
-            elif b_match and not line.strip().startswith(("#", "```", "---", "***")):
-                # Fallback: treat plain list items under a milestone as unchecked tasks
-                current_m["tasks"].append({
-                    "text": b_match.group(2).strip(),
-                    "checked": False,
-                    "line_index": idx,
-                })
-            elif _is_section_boundary(line):
-                _finalize_milestone(current_m)
-                milestones.append(current_m)
-                current_m = None
+        elif current_m and _append_milestone_line(line, idx, current_m):
+            _finalize_milestone(current_m)
+            milestones.append(current_m)
+            current_m = None
 
     if current_m:
         _finalize_milestone(current_m)
         milestones.append(current_m)
-
-    verifiers = _extract_verifiers(content)
     return {
-        "title": title,
-        "milestones": milestones,
-        "verification_commands": verifiers,
-        "total_milestones": len(milestones),
+        "title": title, "milestones": milestones,
+        "verification_commands": _extract_verifiers(content), "total_milestones": len(milestones),
     }
 
 
 def _finalize_milestone(m: dict[str, Any]) -> None:
     """Calculate milestone completion state."""
+    has_explicit_unchecked = any(t.get("has_checkbox") and not t["checked"] for t in m["tasks"])
+    marked_completed = "(completed)" in m.get("title", "").lower()
+    if marked_completed and not has_explicit_unchecked:
+        for t in m["tasks"]:
+            t["checked"] = True
+        m["is_complete"] = True
+        return
     m["is_complete"] = len(m["tasks"]) > 0 and all(t["checked"] for t in m["tasks"])
 
 
@@ -163,7 +169,7 @@ def _extract_verifiers(content: str) -> list[str]:
 
 def patch_milestone_checkboxes(plan_path: Path, milestone_index: int) -> int:
     """In-place patch unchecked checkboxes to [x] for a given milestone."""
-    raw = plan_path.read_text(encoding="utf-8")
+    raw = plan_path.read_bytes().decode("utf-8")
     lines = raw.splitlines(keepends=True)
 
     in_target = False
@@ -175,6 +181,9 @@ def patch_milestone_checkboxes(plan_path: Path, milestone_index: int) -> int:
         if m_match:
             idx = int(m_match.group(2))
             in_target = (idx == milestone_index)
+            if in_target:
+                eol = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
+                line = STATUS_TAG_REGEX.sub("", line.rstrip("\r\n")) + eol
         elif in_target and _is_section_boundary(line):
             in_target = False
 
@@ -187,5 +196,5 @@ def patch_milestone_checkboxes(plan_path: Path, milestone_index: int) -> int:
                 patched_count += 1
         new_lines.append(line)
 
-    plan_path.write_text("".join(new_lines), encoding="utf-8")
+    plan_path.write_bytes("".join(new_lines).encode("utf-8"))
     return patched_count

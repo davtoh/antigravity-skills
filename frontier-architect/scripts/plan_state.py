@@ -16,7 +16,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_parser import discover_plans, parse_plan_markdown, slugify
+from plan_parser import STATUS_TAG_REGEX, discover_plans, parse_plan_markdown, slugify
 
 
 def get_repo_root(target: Path | None = None) -> Path:
@@ -108,48 +108,50 @@ def _calc_active_milestone(milestones: list[dict[str, Any]]) -> int:
     for m in milestones:
         if not m["is_complete"]:
             return m["index"]
-    return len(milestones) if milestones else 1
+    return milestones[-1]["index"] if milestones else 1
 
 
-def bootstrap_plan(root: Path, plan_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Initialize or synchronize workspace and plan state ledgers."""
-    content = plan_path.read_text(encoding="utf-8")
-    parsed = parse_plan_markdown(content)
-    slug = slugify(plan_path.stem)
-    fdir = get_frontier_dir(root)
-    pdir = fdir / "plans" / slug
-    pdir.mkdir(parents=True, exist_ok=True)
-    (pdir / "artifacts").mkdir(parents=True, exist_ok=True)
-
+def _build_plan_state(
+    slug: str, rel_path: str, parsed: dict[str, Any], existing: dict[str, Any], now_iso: str,
+) -> dict[str, Any]:
+    """Assemble normalized plan state dict preserving parent/child links and commit SHAs."""
+    prev_shas = {m.get("index"): m.get("commit_sha", "") for m in existing.get("milestones", [])}
     active_idx = _calc_active_milestone(parsed["milestones"])
     all_done = bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"])
-    now_iso = datetime.now(timezone.utc).isoformat()
-    rel_path = plan_path.relative_to(root).as_posix() if plan_path.is_relative_to(root) else plan_path.as_posix()
-
-    plan_state = {
-        "slug": slug,
-        "title": parsed["title"],
-        "plan_path": rel_path,
-        "active_milestone_index": active_idx,
-        "total_milestones": len(parsed["milestones"]),
-        "status": "completed" if all_done else "in_progress",
-        "updated_at": now_iso,
+    ps: dict[str, Any] = {
+        "slug": slug, "title": parsed["title"], "plan_path": rel_path,
+        "active_milestone_index": active_idx, "total_milestones": len(parsed["milestones"]),
+        "status": "completed" if all_done else "in_progress", "updated_at": now_iso,
         "milestones": [
             {
-                "index": m["index"],
-                "title": m["title"],
-                "total_tasks": len(m["tasks"]),
+                "index": m["index"], "title": m["title"], "total_tasks": len(m["tasks"]),
                 "completed_tasks": sum(1 for t in m["tasks"] if t["checked"]),
                 "status": "completed" if m["is_complete"] else ("active" if m["index"] == active_idx else "pending"),
-                "commit_sha": "",
+                "commit_sha": prev_shas.get(m["index"], ""),
+                **({"child_plan": m["child_plan"]} if m.get("child_plan") else {}),
             }
             for m in parsed["milestones"]
         ],
     }
+    for key in ("parent_plan", "child_plans", "last_advanced_milestone"):
+        if existing.get(key) is not None:
+            ps[key] = existing[key]
+    return ps
+
+
+def bootstrap_plan(root: Path, plan_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Initialize or synchronize workspace and plan state ledgers."""
+    parsed = parse_plan_markdown(plan_path.read_text(encoding="utf-8"))
+    slug = slugify(plan_path.stem)
+    fdir = get_frontier_dir(root)
+    pdir = fdir / "plans" / slug
+    (pdir / "artifacts").mkdir(parents=True, exist_ok=True)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rel_path = plan_path.relative_to(root).as_posix() if plan_path.is_relative_to(root) else plan_path.as_posix()
+    plan_state = _build_plan_state(slug, rel_path, parsed, load_json(pdir / "state.json", {}), now_iso)
     save_json(pdir / "state.json", plan_state)
     if not (pdir / "retrospectives.json").exists():
         save_json(pdir / "retrospectives.json", [])
-
     ws_state = _sync_workspace_state(fdir, slug, plan_state, get_git_sha(root), now_iso)
     return ws_state, plan_state
 
@@ -196,14 +198,20 @@ def record_milestone_advance(
     """Update plan and workspace ledgers after advancing a milestone."""
     for m in ps["milestones"]:
         if m["index"] == target_idx:
+            m["title"] = STATUS_TAG_REGEX.sub("", m.get("title", "")).strip()
             m["status"] = "completed"
             m["completed_tasks"] = m["total_tasks"]
             m["commit_sha"] = sha
             m["completed_at"] = now_iso
 
-    next_idx = target_idx + 1
-    all_done = next_idx > ps["total_milestones"]
-    ps["active_milestone_index"] = next_idx if not all_done else ps["total_milestones"]
+    incomplete = [m for m in ps["milestones"] if m["status"] != "completed"]
+    all_done = len(incomplete) == 0
+    if not all_done:
+        incomplete[0]["status"] = "active"
+        ps["active_milestone_index"] = incomplete[0]["index"]
+    else:
+        ps["active_milestone_index"] = ps["milestones"][-1]["index"] if ps["milestones"] else ps["total_milestones"]
+    ps["last_advanced_milestone"] = target_idx
     ps["status"] = "completed" if all_done else "in_progress"
     ps["updated_at"] = now_iso
 
@@ -218,5 +226,64 @@ def record_milestone_advance(
                 p["status"] = ps["status"]
                 p["last_updated"] = now_iso
         save_json(fdir / "state.json", ws)
+    sync_parent_child_status(fdir, ps)
     return ps
+
+
+def link_child_plan(
+    root: Path, child_ps: dict[str, Any], parent_target: str, milestone_idx: int | None = None
+) -> dict[str, Any] | None:
+    """Bind a child implementation plan to a parent master plan milestone/step."""
+    parent_p = resolve_plan_path(root, parent_target)
+    if not parent_p or parent_p.resolve() == (root / child_ps["plan_path"]).resolve():
+        return None
+    fdir = get_frontier_dir(root)
+    parent_slug = slugify(parent_p.stem)
+    parent_ps = load_json(fdir / "plans" / parent_slug / "state.json")
+    if not parent_ps:
+        _, parent_ps = bootstrap_plan(root, parent_p)
+    target_m = milestone_idx if milestone_idx is not None else parent_ps.get("active_milestone_index", 1)
+
+    child_ps["parent_plan"] = {
+        "slug": parent_slug,
+        "title": parent_ps.get("title", parent_slug),
+        "plan_path": parent_ps["plan_path"],
+        "milestone": target_m,
+    }
+    save_json(fdir / "plans" / child_ps["slug"] / "state.json", child_ps)
+
+    parent_ps.setdefault("child_plans", {})[str(target_m)] = {
+        "slug": child_ps["slug"],
+        "title": child_ps["title"],
+        "plan_path": child_ps["plan_path"],
+        "status": child_ps["status"],
+        "active_milestone_index": child_ps["active_milestone_index"],
+        "total_milestones": child_ps["total_milestones"],
+    }
+    save_json(fdir / "plans" / parent_slug / "state.json", parent_ps)
+    # Re-sync workspace active plan back to child plan
+    _sync_workspace_state(fdir, child_ps["slug"], child_ps, get_git_sha(root), child_ps["updated_at"])
+    return parent_ps
+
+
+def sync_parent_child_status(fdir: Path, child_ps: dict[str, Any]) -> dict[str, Any] | None:
+    """Propagate child plan progress/completion back into its parent master plan state."""
+    parent_ref = child_ps.get("parent_plan")
+    if not isinstance(parent_ref, dict) or not parent_ref.get("slug"):
+        return None
+    parent_path = fdir / "plans" / parent_ref["slug"] / "state.json"
+    parent_ps = load_json(parent_path)
+    if not parent_ps:
+        return None
+    m_key = str(parent_ref.get("milestone", 1))
+    parent_ps.setdefault("child_plans", {})[m_key] = {
+        "slug": child_ps["slug"],
+        "title": child_ps["title"],
+        "plan_path": child_ps["plan_path"],
+        "status": child_ps["status"],
+        "active_milestone_index": child_ps["active_milestone_index"],
+        "total_milestones": child_ps["total_milestones"],
+    }
+    save_json(parent_path, parent_ps)
+    return parent_ps
 

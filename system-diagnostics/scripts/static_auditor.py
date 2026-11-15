@@ -52,6 +52,8 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
     py_files = _find_py_files(target)
     issues: list[dict[str, Any]] = []
     root = target if target.is_dir() else target.parent
+    while (root / "__init__.py").is_file() and root.parent != root:
+        root = root.parent
     root_str = str(root.resolve())
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
@@ -78,7 +80,7 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
 
         for name, obj in inspect.getmembers(mod):
             if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:
-                if inspect.isabstract(obj):
+                if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, BaseException):
                     continue
                 try:
                     sig = inspect.signature(obj)
@@ -94,10 +96,14 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
                         try:
                             obj()
                         except TypeError as te:
+                            try:
+                                _, lineno = inspect.getsourcelines(obj)
+                            except (OSError, TypeError):
+                                lineno = 1
                             issues.append({
                                 "type": "initialization_type_error",
                                 "file": str(p),
-                                "line": getattr(obj, "__doc__", "") and 1 or 1,
+                                "line": lineno,
                                 "message": f"Initialization TypeError in {name}(): {te}",
                             })
                         except Exception:
@@ -215,6 +221,42 @@ def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
     return exit_code, logs
 
 
+def _opt_int(args: Any, name: str) -> int | None:
+    """Return integer attribute from args, ignoring unset or MagicMock values."""
+    val = getattr(args, name, None)
+    return val if isinstance(val, int) and not isinstance(val, bool) else None
+
+
+def audit_modularity_budgets(
+    target: Path,
+    *,
+    max_lines: int = 350,
+    max_fn_lines: int = 40,
+    max_methods: int = 12,
+) -> list[dict[str, Any]]:
+    """Flag files, classes, and functions exceeding modularity line or method budgets."""
+    issues: list[dict[str, Any]] = []
+    for p in _find_py_files(target):
+        try:
+            code = p.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(code, filename=str(p))
+        except Exception:
+            continue
+        lines = len(code.splitlines())
+        if lines >= max_lines:
+            issues.append({"type": "file_budget_overrun", "file": str(p), "line": 1, "message": f"File has {lines} lines (budget < {max_lines})."})
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and getattr(node, "end_lineno", None):
+                span = node.end_lineno - node.lineno + 1
+                if span > max_fn_lines:
+                    issues.append({"type": "function_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Function '{node.name}' is {span} lines (budget <= {max_fn_lines})."})
+            elif isinstance(node, ast.ClassDef):
+                methods = sum(1 for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)))
+                if methods > max_methods:
+                    issues.append({"type": "class_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Class '{node.name}' has {methods} methods (budget <= {max_methods})."})
+    return issues
+
+
 def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
     """Entrypoint for `diagnose.py audit` subcommand."""
     do_all = not (getattr(args, "callable_smoke", False) or getattr(args, "smells", False) or getattr(args, "typecheck", False))
@@ -224,10 +266,18 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
         "typecheck_logs": [],
         "status": "PASS",
     }
+    line_cnt: int | None = None
     overall_code = 0
+    if not target.exists():
+        results["issues"].append({"type": "missing_file", "file": str(target), "line": 0, "message": "Target path does not exist."})
+        results["status"] = "DEFECTS_FOUND"
+        overall_code = 1
+    elif target.is_file():
+        line_cnt = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
+        results["line_count"] = line_cnt
 
     # 1. Typecheck & Linters
-    if do_all or getattr(args, "typecheck", False):
+    if target.exists() and (do_all or getattr(args, "typecheck", False)):
         tc_code, tc_logs = run_static_typecheckers(target, py_bin)
         results["typecheck_logs"] = tc_logs
         if tc_code != 0:
@@ -251,11 +301,25 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
             results["status"] = "DEFECTS_FOUND"
             overall_code = max(overall_code, 1)
 
+    # 4. Modularity & Function Length Budgets
+    max_l = _opt_int(args, "max_lines")
+    max_fn = _opt_int(args, "max_fn_lines")
+    if do_all or max_l is not None or max_fn is not None:
+        budget_issues = audit_modularity_budgets(target, max_lines=max_l or 350, max_fn_lines=max_fn or 40)
+        results["issues"].extend(budget_issues)
+        if budget_issues:
+            results["status"] = "DEFECTS_FOUND"
+            if getattr(args, "strict", False) or max_l is not None or max_fn is not None:
+                overall_code = max(overall_code, 1)
+
     if getattr(args, "json", False):
         print(json.dumps(results, indent=2))
         return overall_code
 
     print(f"\n=== Static Quality & Defect Audit ({target.name}) ===")
+    if line_cnt is not None:
+        budget_tag = "HARD >=500L" if line_cnt >= 500 else ("WARN >=350L" if line_cnt >= 350 else "OK <350L")
+        print(f"  [lines] {target.name}: {line_cnt} lines ({budget_tag})")
     for log in results["typecheck_logs"]:
         print(f"  {log}")
 
@@ -276,11 +340,13 @@ def cmd_audit(target: Path, py_bin: str, args: Any) -> int:
 def register_parser(subparsers: Any) -> Any:
     """Register 'audit' subparser into diagnose.py CLI."""
     p_aud = subparsers.add_parser("audit", help="Static quality, defect, typecheck and code smell audit")
-    p_aud.add_argument("--path", default=None, help="Root directory or file to audit")
+    p_aud.add_argument("--path", nargs="+", default=None, help="Root directory or file(s) to audit")
     p_aud.add_argument("--typecheck", action="store_true", help="Run virtualenv typecheckers (ruff/mypy)")
     p_aud.add_argument("--smells", action="store_true", help="Scan for platform import smells")
     p_aud.add_argument("--callable-smoke", action="store_true", help="Run callable signature and constructor smoke checks")
     p_aud.add_argument("--json", action="store_true", help="Output JSON report")
     p_aud.add_argument("--strict", action="store_true", help="Exit code 1 if any smells or defects found")
+    p_aud.add_argument("--max-lines", type=int, default=None, help="Custom file line-count ceiling (fails if >= N)")
+    p_aud.add_argument("--max-fn-lines", type=int, default=None, help="Custom function line-count ceiling (default: 40)")
     return p_aud
 
