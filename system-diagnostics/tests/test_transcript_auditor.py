@@ -185,6 +185,18 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertEqual(row["audit_catches"], 1)
         self.assertIn("read_fail (missing.py)", row["failure_samples"][0])
 
+    def test_scan_audit_catch_vs_traceback_and_empty_pending_calls(self) -> None:
+        _write(self.brain, "scan-1", [
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python skills/system-diagnostics/scripts/diagnose.py scan --path src/"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n[scan] DEFECTS_FOUND\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python skills/system-diagnostics/scripts/diagnose.py scan --path src/"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nTraceback (most recent call last):\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "scan-1")
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["failures"], {"cmd_fail": 2})
+
 
 if __name__ == "__main__":
     unittest.main()

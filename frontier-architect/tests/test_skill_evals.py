@@ -78,6 +78,9 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("non-mocked", "unconfigured/empty/fallback"), (r"non-mocked branch gate", r"diagnose\.py scan --path \."), "Non-Mocked Branch Gate & scan"),
     (("git diff main...plan/",), (r"git diff main\.\.\.plan/<slug>", r"changelog add"), "Final sign-off diff & changelog"),
     (("/learn", "continuous learning"), (r"/learn|continuous learning",), "Continuous learning feed to /learn"),
+    (("2-3 cohesive milestones", "40-70 steps"), (r"2[–-]3 cohesive milestones", r"40[–-]70 steps"), "Consolidated child plan sizing"),
+    (("--no-sync-parent", "auto-advances linked parent"), (r"auto-advance any completed child plan", r"--no-sync-parent"), "Auto-sync parent milestone"),
+    ((">60-step", "duplicate-read churn"), (r">60`-step", r"transcript-audit --latest 1"), ">60-step transcript-audit check"),
 ]
 
 

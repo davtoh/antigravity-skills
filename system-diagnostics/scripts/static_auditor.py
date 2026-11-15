@@ -12,6 +12,7 @@ prevent context window explosion during AI agent interactions.
 """
 
 import ast
+import enum
 import importlib
 import inspect
 import json
@@ -80,7 +81,7 @@ def audit_callable_smoke(target: Path) -> list[dict[str, Any]]:
 
         for name, obj in inspect.getmembers(mod):
             if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:
-                if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, BaseException):
+                if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum)):
                     continue
                 try:
                     sig = inspect.signature(obj)

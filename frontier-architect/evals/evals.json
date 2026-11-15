@@ -288,6 +288,18 @@
         "Runs plan_engine.py digest --backfill --write-scaffold, diagnose.py changelog add, and provides git diff main...plan/<slug> on final completion",
         "Surfaces LEARNING_SCAFFOLD.md highlights and Introspective Options and advises clicking New Conversation (+) or /compact"
       ]
+    },
+    {
+      "id": 23,
+      "prompt": "We are designing a Master Roadmap with child plans and just finished a 75-step child plan. How should child plans be sized, how does parent milestone sync work on advance, and what audit should run before closing a >60-step turn?",
+      "expected_output": "Consolidates child plans into 2-3 cohesive milestones (~40-70 steps each), relies on plan_engine.py advance to auto-advance any completed child plan's linked parent master milestone (or passes --no-sync-parent to opt out), and runs diagnose.py transcript-audit --latest 1 for >60-step or subagent-heavy runs before closing the turn.",
+      "files": [],
+      "expectations": [
+        "Consolidates child plans into 2-3 cohesive milestones (~40-70 steps each) instead of fracturing 1-2 file edits across tiny conversations",
+        "Auto-advances linked parent master milestone on child plan completion via plan_engine.py advance (with --no-sync-parent opt-out)",
+        "Runs diagnose.py transcript-audit --latest 1 for >60-step or subagent-heavy planning runs to catch parallel-edit or duplicate-read churn",
+        "Enforces Export-Ready Portable Plan Contract with repo-relative paths and portable commands"
+      ]
     }
   ]
 }

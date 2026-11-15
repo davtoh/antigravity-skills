@@ -261,6 +261,20 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         self.assertIn("## /learn Readiness", md)
         self.assertIn("Candidates: 1 project", md)
 
+    def test_verify_extract_leading_env_and_rollup_refresh_preserves_manual_notes(self) -> None:
+        import plan_verify as pv
+        import plan_rollup as pr
+        env, cmd = pv._extract_leading_env("FOO=bar BAZ=1 python -m unittest")
+        self.assertEqual(env, {"FOO": "bar", "BAZ": "1"})
+        self.assertEqual(cmd, "python -m unittest")
+        merged = pr._merge_master_child_entry(
+            {"milestone_index": 1, "child_slug": "c1", "went_well": ["A"], "learn_candidates": ["L1"]},
+            {"master_cid": "mcid-1", "went_well": ["A", "B"], "notes": "Verified"},
+        )
+        self.assertEqual(merged["master_cid"], "mcid-1")
+        self.assertEqual(merged["went_well"], ["A", "B"])
+        self.assertEqual(merged["notes"], "Verified")
+
 
 if __name__ == "__main__":
     unittest.main()
