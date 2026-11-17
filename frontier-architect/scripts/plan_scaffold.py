@@ -101,6 +101,29 @@ def format_workspace_digest(d: dict[str, Any]) -> str:
     return "\n".join(lines[:78])
 
 
+def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
+    """Deduplicate near-identical /learn candidates and filter out items already codified in AGENTS.md/SKILL.md."""
+    import re
+    doc_blob = "\n".join(
+        p.read_text(encoding="utf-8", errors="replace").lower()
+        for p in doc_paths if p.is_file()
+    )
+    doc_tokens = set(re.findall(r"[a-z_][a-z0-9_]{3,}", doc_blob))
+    seen_norm: set[str] = set()
+    kept: list[str] = []
+    for raw in items:
+        norm = re.sub(r"[^a-z0-9]+", " ", raw.lower()).strip()
+        if not norm or norm in seen_norm:
+            continue
+        seen_norm.add(norm)
+        if doc_tokens:
+            bt_ids = {t.lower() for t in re.findall(r"`([A-Za-z_][A-Za-z0-9_]{3,})(?:\(\))?`", raw)}
+            if len(bt_ids) >= 2 and bt_ids.issubset(doc_tokens):
+                continue
+        kept.append(raw)
+    return kept
+
+
 def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bool, build_digest_fn: Any) -> dict[str, Any]:
     """Aggregate active and completed plans across the workspace into one /learn queue."""
     from plan_parser import discover_plans, slugify
@@ -125,10 +148,13 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
         skill_learns += d["skill_learn_candidates"]
         gaps += d["tool_gaps"]
         escs += d["escalations"]
+    skill_md = Path(__file__).resolve().parents[1] / "SKILL.md"
     return {
-        "plans": plans, "learn_candidates": list(dict.fromkeys(learns)),
-        "skill_learn_candidates": list(dict.fromkeys(skill_learns)),
-        "tool_gaps": list(dict.fromkeys(gaps)), "escalations": list(dict.fromkeys(escs)),
+        "plans": plans,
+        "learn_candidates": _triage_candidates(learns, [root / "AGENTS.md"]),
+        "skill_learn_candidates": _triage_candidates(skill_learns, [skill_md]),
+        "tool_gaps": list(dict.fromkeys(gaps)),
+        "escalations": list(dict.fromkeys(escs)),
     }
 
 

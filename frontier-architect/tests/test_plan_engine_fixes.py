@@ -10,7 +10,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_cli_helpers import print_master_gate, resolve_commit_hint
+from plan_cli_helpers import print_master_gate, print_retrospective_summary, resolve_commit_hint
+from plan_scaffold import _triage_candidates
 from plan_state import load_json, save_json
 
 
@@ -58,6 +59,56 @@ class TestPlanEngineFixes(unittest.TestCase):
         hint_audit, has_diff_audit = resolve_commit_hint(ps, 2, [], True, None)
         self.assertIn("verification/audit only", hint_audit)
         self.assertFalse(has_diff_audit)
+
+    def test_tactical_master_gate_allows_concrete_4_file_slice(self):
+        import io
+        from contextlib import redirect_stdout
+
+        ps = {"slug": "perf_master_roadmap", "title": "Perf Master", "child_plans": {}}
+        tasks = [
+            {"text": "**Files**:"},
+            {"text": "`dashboard/services/async_inference_worker.py`: Add worker."},
+            {"text": "`dashboard/services/stream_worker.py`: Wire async step."},
+            {"text": "`dashboard/stream_manager.py` & `dashboard/routers/streaming.py`: Event wakeup."},
+            {"text": "`tests/test_async_inference_worker.py`: Add unit tests."},
+            {"text": "**Verification**:"},
+            {"text": "`python -m unittest tests/test_async_inference_worker.py`"},
+        ]
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_master_gate(ps, 2, declared_child=None, tasks=tasks)
+        self.assertIn("Tactical Master Step", buf.getvalue())
+
+    def test_retrospective_summary_includes_commit_reminder(self):
+        import io
+        from contextlib import redirect_stdout
+
+        entry = {
+            "milestone_index": 1,
+            "token_efficiency_grade": "A",
+            "tool_reliability_scores": {"overall": 5},
+            "went_well": ["Clean vertical slice"],
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_retrospective_summary(entry, "demo_plan", ".frontier/plans/demo_plan/LEARNING_SCAFFOLD.md")
+        self.assertIn("Commit Reminder", buf.getvalue())
+        self.assertIn("Suggested Commit", buf.getvalue())
+
+    def test_triage_candidates_dedupes_and_filters_codified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_md = Path(tmp) / "AGENTS.md"
+            agents_md.write_text(
+                "Use `ProcessingModeService` and `should_hibernate_camera` for focus_only.\n",
+                encoding="utf-8",
+            )
+            items = [
+                "Update `ProcessingModeService` `should_hibernate_camera()` for focus_only.",
+                "Always scale `warmup_timeout` proportionally with `read_timeout`.",
+                "Always scale warmup_timeout proportionally with read_timeout!",
+            ]
+            triaged = _triage_candidates(items, [agents_md])
+            self.assertEqual(triaged, ["Always scale `warmup_timeout` proportionally with `read_timeout`."])
 
 
 if __name__ == "__main__":

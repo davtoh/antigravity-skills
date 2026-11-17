@@ -79,6 +79,20 @@ def _suggest_slice_tools(target_m: dict[str, Any]) -> list[str]:
     return tools
 
 
+_SECTION_HEADER_RE = re.compile(r"^\s*\*{0,2}(?:files|verification)\*{0,2}\s*:?\s*$", re.IGNORECASE)
+
+
+def _is_tactical_master_step(tasks: list[dict[str, Any]] | None) -> bool:
+    """Return True when a master step is a concrete, bounded slice (<=4 files, <=6 actionable tasks) or <=3 abstract tasks."""
+    if tasks is None:
+        return False
+    actionable = [t for t in tasks if not _SECTION_HEADER_RE.match(t.get("text", ""))]
+    unique_files = {m.group(1) for t in actionable if (m := _TASK_PATH_RE.search(t.get("text", "")))}
+    if unique_files:
+        return len(unique_files) <= 4 and len(actionable) <= 6
+    return len(actionable) <= 3
+
+
 def print_master_gate(
     ps: dict[str, Any],
     active_idx: int,
@@ -97,8 +111,8 @@ def print_master_gate(
         print("\n" + "=" * 72)
         print(f"[plan_engine] MASTER STEP PRE-PLAN GATE (Step {active_idx}):")
         print("No child implementation plan is linked to this master step yet.")
-        if not declared_child and tasks is not None and len(tasks) <= 3:
-            print("Tactical Master Step (<=3 tasks, no child plan declared): You MAY execute this step directly in one turn without creating a child plan unless exploration reveals >=3 subsystems or >=4 files.")
+        if not declared_child and _is_tactical_master_step(tasks):
+            print("Tactical Master Step (<=4 files / <=3 abstract tasks, no child plan declared): You MAY execute this step directly in one turn without creating a child plan unless exploration reveals >=3 subsystems or >=10 sub-tasks.")
         else:
             print("MANDATORY: DO NOT implement this entire master step in one turn.")
             print("Instead, execute Pre-Plan -> Child Plan Synthesis:")
@@ -230,3 +244,4 @@ def print_retrospective_summary(entry: dict[str, Any], slug: str, scaffold_rel: 
             print(f"- **`/learn` candidate ({label})**: {entry[key][0]}")
     target = scaffold_rel or f".frontier/plans/{slug}/LEARNING_SCAFFOLD.md"
     print(f"- **Introspective Options**: Review `{target}`, run `/learn`, or run `diagnose.py transcript-audit --latest 1`.")
+    print("- **Commit Reminder**: Echo the `Suggested Commit` block from `plan_engine.py advance` verbatim when code changed (never run `git commit` before `advance` or without user consent).")
