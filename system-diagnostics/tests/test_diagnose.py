@@ -315,5 +315,18 @@ class TestMainDispatcher(unittest.TestCase):
                 code = diagnose.main()
                 self.assertEqual(code, 0)
 
+    def test_debug_retro_writes_to_diagnostics_or_frontier(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with patch.object(sys, "argv", ["diagnose.py", "debug-retro", "--path", str(root), "--symptom", "Black screen", "--cause", "Stub cam_01", "--learn", "Avoid stub"]):
+                self.assertEqual(diagnose.main(), 0)
+            self.assertTrue((root / ".diagnostics" / "DEBUG_RETRO.md").is_file())
+            (root / ".frontier").mkdir()
+            with patch.object(sys, "argv", ["diagnose.py", "debug-retro", "--path", str(root), "--symptom", "Overlay missing", "--cause", "Stale tab"]):
+                self.assertEqual(diagnose.main(), 0)
+            retro_text = (root / ".frontier" / "DEBUG_RETRO.md").read_text(encoding="utf-8")
+            self.assertIn("Overlay missing", retro_text)
+
+
 if __name__ == "__main__":
     unittest.main()

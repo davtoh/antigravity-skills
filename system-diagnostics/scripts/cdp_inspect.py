@@ -30,11 +30,23 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Local modular zero-dependency transport
+# Local modular zero-dependency transport & runtime helpers
 try:
     from cdp_transport import CDPSession, connect_ws
+    from cdp_runtime import (
+        collect_runtime_report,
+        enable_runtime_capture,
+        find_devtools_active_port,
+        urls_match,
+    )
 except ImportError:
     from scripts.cdp_transport import CDPSession, connect_ws
+    from scripts.cdp_runtime import (
+        collect_runtime_report,
+        enable_runtime_capture,
+        find_devtools_active_port,
+        urls_match,
+    )
 
 # Ensure UTF-8 output across Windows, macOS, and Linux terminals
 if hasattr(sys.stdout, "reconfigure"):
@@ -79,49 +91,6 @@ def find_chrome_executable() -> str:
 
     return shutil.which("chrome") or shutil.which("google-chrome") or "google-chrome"
 
-def find_devtools_active_port() -> tuple[int, str] | None:
-    """Locate browser DevToolsActivePort file across Windows, macOS, Linux, and WSL."""
-    system = platform.system().lower()
-    home = Path.home()
-    candidates: list[Path] = []
-
-    if system == "windows":
-        local_app_data = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
-        candidates = [
-            local_app_data / "Google" / "Chrome" / "User Data" / "DevToolsActivePort",
-            local_app_data / "Microsoft" / "Edge" / "User Data" / "DevToolsActivePort",
-            local_app_data / "Chromium" / "User Data" / "DevToolsActivePort",
-        ]
-    elif system == "darwin":
-        app_support = home / "Library" / "Application Support"
-        candidates = [
-            app_support / "Google" / "Chrome" / "DevToolsActivePort",
-            app_support / "Microsoft Edge" / "DevToolsActivePort",
-            app_support / "Chromium" / "DevToolsActivePort",
-        ]
-    else:  # Linux / WSL
-        config_dir = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
-        candidates = [
-            config_dir / "google-chrome" / "DevToolsActivePort",
-            config_dir / "chromium" / "DevToolsActivePort",
-            home / "snap" / "chromium" / "common" / "chromium" / "DevToolsActivePort",
-        ]
-        # WSL host probe: a Windows-side live Chrome is only reachable from WSL2 when
-        # networking is mirrored; otherwise the live attempt fails and headless is used.
-        if Path("/mnt/c/Users").exists():
-            for p in Path("/mnt/c/Users").glob("*/AppData/Local/Google/Chrome/User Data/DevToolsActivePort"):
-                candidates.append(p)
-
-    for path in candidates:
-        if path.exists():
-            try:
-                lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-                if len(lines) >= 2:
-                    return int(lines[0]), lines[1]
-            except Exception:
-                pass
-    return None
-
 def build_generic_audit_js(custom_selectors: list[str]) -> str:
     js_path = Path(__file__).parent / "audit_layout.js"
     base_js = js_path.read_text(encoding="utf-8")
@@ -140,72 +109,69 @@ async def evaluate(cdp: CDPSession, session_id: str | None, expression: str):
         return {"jsException": text.splitlines()[0] if text else "Unknown JS exception"}
     return res.get("result", {}).get("value", res.get("result"))
 
+async def _click_selector(cdp: CDPSession, session_id: str | None, selector: str) -> None:
+    click_js = (
+        "(() => { const el = document.querySelector(" + json.dumps(selector) + "); "
+        "if (!el) return { clicked: false, reason: 'Selector not found' }; "
+        "el.click(); return { clicked: true, text: el.textContent?.trim() }; })()"
+    )
+    print(json.dumps({"click": await evaluate(cdp, session_id, click_js)}, indent=2, ensure_ascii=False))
+    await asyncio.sleep(0.5)
+
+async def _capture_screenshot(cdp: CDPSession, session_id: str | None, path_str: str) -> None:
+    shot = await cdp.send("Page.captureScreenshot", {"format": "jpeg", "quality": 85}, session_id=session_id)
+    if data := shot.get("data"):
+        out_path = Path(path_str)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(base64.b64decode(data))
+        print(f"[CDP] Saved screenshot to {out_path.resolve()}")
+
 async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> int:
     await cdp.send("Page.enable", session_id=session_id)
     await cdp.send("Runtime.enable", session_id=session_id)
-
+    capture_rt = getattr(args, "capture_runtime", False)
+    if capture_rt:
+        await enable_runtime_capture(cdp, session_id)
     if args.navigate and args.target_url:
         await cdp.send("Page.navigate", {"url": args.target_url}, session_id=session_id)
     if args.wait > 0:
         await asyncio.sleep(args.wait)
     exit_code = 0
-
     if args.click:
-        click_js = f"""
-        (() => {{
-            const el = document.querySelector({json.dumps(args.click)});
-            if (!el) return {{ clicked: false, reason: 'Selector not found' }};
-            el.click();
-            return {{ clicked: true, text: el.textContent?.trim() }};
-        }})()
-        """
-        print(json.dumps({"click": await evaluate(cdp, session_id, click_js)}, indent=2, ensure_ascii=False))
-        await asyncio.sleep(0.5)
-
+        await _click_selector(cdp, session_id, args.click)
     custom_sels = [s.strip() for s in args.selectors.split(",") if s.strip()] if args.selectors else []
     if args.audit_layout or custom_sels:
         result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels))
         print(json.dumps(result, indent=2, ensure_ascii=False))
         if getattr(args, "strict", False) and isinstance(result, dict):
-            warnings = result.get("layoutOverflowWarnings", [])
-            viewport = result.get("viewport", {})
-            if warnings or viewport.get("hasHorizontalWindowScroll", False):
+            if result.get("layoutOverflowWarnings") or result.get("viewport", {}).get("hasHorizontalWindowScroll", False):
                 exit_code = 1
-
     if args.eval:
         eval_result = await evaluate(cdp, session_id, args.eval)
         print(json.dumps(eval_result, indent=2, ensure_ascii=False))
         if isinstance(eval_result, dict) and "jsException" in eval_result:
             exit_code = 3  # Non-zero so agents/CI can't mistake a thrown error for a pass
-
+    if capture_rt:
+        rt = await collect_runtime_report(cdp, session_id, evaluate)
+        print(json.dumps({"runtime": rt}, indent=2, ensure_ascii=False))
+        if rt.get("exceptions") and exit_code == 0:
+            exit_code = 3
     if args.screenshot:
-        shot = await cdp.send("Page.captureScreenshot", {"format": "jpeg", "quality": 85}, session_id=session_id)
-        data = shot.get("data")
-        if data:
-            out_path = Path(args.screenshot)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(base64.b64decode(data))
-            print(f"[CDP] Saved screenshot to {out_path.resolve()}")
-
+        await _capture_screenshot(cdp, session_id, args.screenshot)
     return exit_code
 
 async def pick_page_target(cdp: CDPSession, target_url: str) -> str:
-    """Return a targetId, never silently auditing an unrelated tab: use the tab matching
-    target_url, else open a new tab at target_url, else (no URL) use the first non-internal tab.
-    """
+    """Return matching tab (treating localhost/127.0.0.1 equivalently), else open a new tab."""
     targets_res = await cdp.send("Target.getTargets", timeout=15.0)
     pages = [t for t in targets_res.get("targetInfos", []) if t.get("type") == "page"]
     internal = ("chrome://", "edge://", "devtools://", "about:")
-
     if target_url:
-        wanted = target_url.rstrip("/")
-        match = next((p for p in pages if wanted in p.get("url", "")), None)
+        match = next((p for p in pages if urls_match(target_url, p.get("url", ""))), None)
         if match:
             print(f"[CDP] Attached to tab: {match.get('title')} ({match.get('url')})", file=sys.stderr)
             return match["targetId"]
         print(f"[CDP] No open tab matches {target_url}; opening a new tab.", file=sys.stderr)
         return (await cdp.send("Target.createTarget", {"url": target_url}))["targetId"]
-
     candidates = [p for p in pages if not p.get("url", "").startswith(internal)]
     if not candidates:
         raise RuntimeError("No inspectable tab open and no --url / APP_URL provided.")
@@ -231,6 +197,12 @@ async def attach_and_run(browser_ws_url: str, args, viewport: tuple[int, int] | 
                 {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
                 session_id=session_id,
             )
+        elif not getattr(args, "headless", False):
+            for method, params, sid in (("Target.activateTarget", {"targetId": target_id}, None), ("Page.bringToFront", None, session_id)):
+                try:
+                    await cdp.send(method, params, session_id=sid)
+                except Exception:
+                    pass
         return await run_against_target(cdp, session_id, args)
 
 async def read_port_file(profile_dir: Path, timeout_s: float = 10.0) -> tuple[int, str] | None:
@@ -252,6 +224,9 @@ async def run_live(args) -> int | None:
     """Try the user's live browser. Returns None to signal 'fall back to headless'."""
     active_port = find_devtools_active_port()
     if not active_port:
+        if not getattr(args, "fallback_headless", True):
+            print("[CDP] Error: No DevToolsActivePort found for live browser. Enable remote debugging or pass --headless.", file=sys.stderr)
+            return 2
         return None
     port, ws_path = active_port
     browser_ws_url = f"ws://127.0.0.1:{port}{ws_path}"
@@ -345,6 +320,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     parser.add_argument("--headless", action="store_true", help="Use isolated auto-cleaned headless browser")
     parser.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
+    parser.add_argument("--allow-headless-fallback", action="store_true", help="Permit fallback to headless Chrome if live fails")
+    parser.add_argument("--capture-runtime", action="store_true", help="Capture console errors, exceptions, HTTP>=400, and localStorage")
     parser.set_defaults(fallback_headless=True)
     parser.add_argument("--window-size", dest="viewport", type=parse_viewport, default=(1440, 900), help="Headless viewport (default: 1440x900)")
     parser.add_argument("--port", type=int, default=0, help="Headless debugging port (default: 0 = OS-assigned free port)")

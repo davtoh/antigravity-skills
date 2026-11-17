@@ -14,11 +14,15 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterator
 
-_EXIT_RE = re.compile(r"(?:^|\n)Command exited with code (-?\d+)")
+from transcript_checks import (
+    append_row_notes,
+    classify_result,
+    extract_user_correction,
+    failure_snippet,
+)
+
 _MODEL_RE = re.compile(r"Model Selection` from [^\n]+? to ([^\n]+?)\. No need")
 _USER_REQ_RE = re.compile(r"<USER_REQUEST>(.*?)</USER_REQUEST>", re.DOTALL)
-_CORRECTION_RE = re.compile(r"\b(no|instead|wrong|failed|don't|do not|stop|worthless|why did you)\b", re.I)
-_FIRST_OVERRIDE_RE = re.compile(r"^(?:no\b|stop\b|wrong\b|don't\b|do not\b|actually\b|wait\b)", re.I)
 _TASK_ID_RE = re.compile(r"\b(task-\d+)\b")
 _SUB_CID_RE = re.compile(r'"conversationId"\s*:\s*"([^"]+)"')
 _SENDER_RE = re.compile(r"sender=([^\s\]>]+)")
@@ -61,22 +65,6 @@ def _tool_args(call: dict[str, Any]) -> dict[str, Any]:
     args = _loads_or(raw, {}) if isinstance(raw, str) else raw
     return {k: _unquote(v) for k, v in args.items()} if isinstance(args, dict) else {}
 
-
-def _classify_result(content: str, status: str, last_cmd: str = "") -> str | None:
-    """Classify a tool-result step as cmd_fail / audit_catch / edit_fail / read_fail, else None."""
-    head = content[:1500] if "<SYSTEM_MESSAGE>" in content[:150] else content[:400]
-    is_read_output = "Showing lines " in content[:220] or "Partial read " in content[:220]
-    match = _EXIT_RE.search(head)
-    if match and not is_read_output:
-        code = int(match.group(1))
-        if code == 1 and re.search(r"\bgit\s+grep\b", last_cmd) and "fatal:" not in content.lower():
-            return None
-        if code == 1 and re.search(r"diagnose\.py\s+(?:audit|scan)\b", last_cmd) and "traceback" not in content.lower():
-            return "audit_catch"
-        return "cmd_fail" if code != 0 else None
-    if status == "ERROR":
-        return "edit_fail" if "target content not found" in content else ("read_fail" if "file does not exist" in content else None)
-    return None
 
 def _norm_path(raw: str) -> str:
     """Normalize a file path to forward-slash lowercase for cross-transcript matching."""
@@ -133,6 +121,8 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
         elif name == "run_command":
             cmd_line = str(args.get("CommandLine", "")).strip()
             acc["last_cmd"] = cmd_line
+            if "changelog add" in cmd_line:
+                acc["changelog_adds"] += 1
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
             acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
@@ -166,32 +156,6 @@ def _track_subagent_events(kind: str, content: str, cid: str, acc: dict[str, Any
                 acc["pending_unnamed"] -= 1
 
 
-def _extract_user_correction(content: str, idx: int, acc: dict[str, Any]) -> None:
-    """Capture up to 3 user correction/override prompts for /learn and eval generation."""
-    is_first = not acc["seen_first_user"]
-    acc["seen_first_user"] = True
-    if len(acc["user_corrections"]) >= 3:
-        return
-    matches = _USER_REQ_RE.findall(content)
-    clean_req = " ".join(("\n".join(matches) if matches else content).split())
-    if not clean_req or (is_first and not _FIRST_OVERRIDE_RE.match(clean_req)):
-        return
-    if _CORRECTION_RE.search(clean_req):
-        acc["user_corrections"].append(f"step {idx}: {clean_req[:110]}")
-
-
-_NOISE_PREFIXES = ("Created At:", "Completed At:", "Command output:", "Log: file:///", "<SYSTEM_MESSAGE>", "</SYSTEM_MESSAGE>", "YOU MUST TAKE ", "DO NOTHING ELSE.")
-
-
-def _failure_snippet(content: str) -> str:
-    """Extract a concise single-line failure snippet from tool output."""
-    lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
-    body = [ln for ln in lines if not ln.startswith(_NOISE_PREFIXES)]
-    non_exit = [ln for ln in body if not _EXIT_RE.match(ln)]
-    chosen = non_exit[-1] if non_exit else (body[0] if body else "error")
-    return " ".join(chosen.split())[:90]
-
-
 def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[str, str]:
     """Match a tool-result or SYSTEM_MESSAGE step back to its originating target and command."""
     if kind == "SYSTEM_MESSAGE":
@@ -207,14 +171,16 @@ def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[st
 
 def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict[str, Any]) -> None:
     """Classify one tool-result step against FIFO pending_calls or bg_tasks and record failures."""
+    if "[CDP] Live connection failed" in content:
+        acc["cdp_live_fallbacks"] += 1
     call_target, call_cmd = _resolve_step_call(content, kind, acc)
-    fail = _classify_result(content, status, call_cmd)
+    fail = classify_result(content, status, call_cmd)
     if fail == "audit_catch":
         acc["audit_catches"] += 1
     elif fail:
         acc["failures"][fail] += 1
         if len(acc["failure_samples"]) < 5:
-            acc["failure_samples"].append(f"step {idx} {fail} ({call_target or 'tool'}): {_failure_snippet(content)}")
+            acc["failure_samples"].append(f"step {idx} {fail} ({call_target or 'tool'}): {failure_snippet(content)}")
 
 
 def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
@@ -229,6 +195,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "failure_samples": [], "user_corrections": [], "plan_mode_calls": 0,
         "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
+        "cdp_live_fallbacks": 0, "changelog_adds": 0,
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -241,7 +208,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             _record_calls(step, idx, acc)
         elif kind == "USER_INPUT":
             acc["models"].extend(_extract_models(content))
-            _extract_user_correction(content, idx, acc)
+            extract_user_correction(content, idx, acc)
         else:
             _track_subagent_events(kind, content, cid, acc)
             _apply_result_step(content, step.get("status", ""), kind, idx, acc)
@@ -262,6 +229,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
         "parallel_same_file_edits": acc["parallel_same_file_edits"], "plan_mode_calls": acc["plan_mode_calls"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
+        "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "changelog_adds": acc["changelog_adds"],
         "suggested_grade_cap": "C" if steps > 100 else ("B" if steps > 60 else "A"),
     }
 
@@ -303,18 +271,6 @@ def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, m
     return (substantive + short)[:limit]
 
 
-def _append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
-    """Append waste flags, failure samples, repeated reads, and user corrections for one row."""
-    if r["subagents"] and r["reads_after_subagent"] > 4:
-        notes.append(f"- FLAG {cid8}: {r['reads_after_subagent']} subagent duplicate reads ({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)")
-    notes += [f"- FLAG {cid8}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}" for e in r["parallel_same_file_edits"]]
-    notes += [f"- FAIL {cid8}: {s}" for s in r.get("failure_samples", [])]
-    if r.get("plan_mode_calls"): notes.append(f"- FLAG {cid8}: called enter/exit_plan_mode ({r['plan_mode_calls']}x)")
-    if reps := ", ".join(f"{Path(p).name} ({n}x)" for p, n in (r.get("repeated_reads") or {}).items() if n >= 2):
-        notes.append(f"- REPEAT {cid8}: {reps}")
-    notes += [f"- CORRECTION {cid8}: {c}" for c in r.get("user_corrections", [])]
-
-
 def format_markdown(rows: list[dict[str, Any]]) -> str:
     """Render a compact markdown table plus waste, failure, repeat, and correction diagnostics."""
     out, notes = ["| cid | steps | fails | subagents | dup reads | grade cap |", "|---|---:|---:|---:|---:|:--:|"], []
@@ -324,7 +280,7 @@ def format_markdown(rows: list[dict[str, Any]]) -> str:
             out.append(f"| {cid8} | MISSING | - | - | - | - |")
             continue
         out.append(f"| {cid8} | {r['steps']} | {r['total_failures']} | {len(r['subagents'])} | {r['reads_after_subagent']} | {r['suggested_grade_cap']} |")
-        _append_row_notes(r, cid8, notes)
+        append_row_notes(r, cid8, notes)
     return "\n".join(out + ([""] + notes if notes else [""]))
 
 

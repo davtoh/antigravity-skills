@@ -14,9 +14,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-AI_GUARD_BANNER = (
-    "<!-- AI AGENT NOTICE: Historical archive only. "
-    "DO NOT read this file unless explicitly asked to research past migrations. -->\n\n"
+from changelog_archive import (
+    AI_GUARD_BANNER,
+    ChangelogEntry,
+    parse_changelog,
+    resolve_archive_dir,
+    rotate_entries,
 )
 
 def _to_repo_relative(val: str, repo_root: Path) -> str:
@@ -59,149 +62,6 @@ def sanitize_text(text: str, repo_root: Path) -> str:
         else:
             res = re.sub(pattern, repl, res)
     return res
-
-def resolve_archive_dir(root: Path, custom_archive: str | None = None) -> Path:
-    """Discover or create archive directory according to multi-tier discovery.
-
-    1. Explicit custom_archive path if provided
-    2. Existing .changelogs directory at root
-    3. Existing archive/changelogs or changelogs directory at root
-    4. Subdirectory search: docs/archive/changelogs, docs/changelogs, etc.
-    5. Any directory containing 'changelog' under docs/ or archive/
-    6. Defaults to creating root / ".changelogs" (with .gitignore)
-    """
-    if custom_archive:
-        custom_p = Path(custom_archive)
-        target = custom_p if custom_p.is_absolute() else (root / custom_p)
-        target.mkdir(parents=True, exist_ok=True)
-        return target
-
-    # Tier 1: Existing .changelogs at root
-    if (root / ".changelogs").is_dir():
-        return root / ".changelogs"
-
-    # Tier 2: Existing root-level standard directories (e.g. archive/changelogs, changelogs)
-    for cand in ("archive/changelogs", "archive/changelog", "changelogs", ".changelog"):
-        if (root / cand).is_dir():
-            return root / cand
-
-    # Tier 3: Subdirectory standard paths (docs/archive/changelogs, docs/changelogs)
-    for depth in (1, 2):
-        for pattern in ("*/archive/changelogs", "*/changelogs", "*/archive/changelog"):
-            for c in root.glob("*/" * (depth - 1) + pattern):
-                if c.is_dir():
-                    return c
-
-    # Tier 4: Any directory containing 'changelog' inside docs/ or archive/
-    for parent in ("docs", "archive", "doc"):
-        p_dir = root / parent
-        if p_dir.is_dir():
-            try:
-                for sub in p_dir.iterdir():
-                    if sub.is_dir() and "changelog" in sub.name.lower():
-                        return sub
-            except Exception:
-                pass
-
-    # Tier 5: Default fallback: create .changelogs at root
-    p1 = root / ".changelogs"
-    p1.mkdir(parents=True, exist_ok=True)
-    gi = p1 / ".gitignore"
-    if not gi.exists():
-        gi.write_text("*\n", encoding="utf-8")
-    return p1
-
-class ChangelogEntry:
-    """Structured representation of a single changelog milestone entry."""
-    def __init__(self, header: str, body: list[str], raw_text: str | None = None):
-        self.header = header.strip()
-        self.body = [line.rstrip() for line in body]
-        self.raw_text = raw_text or (self.header + "\n" + "\n".join(self.body) + "\n")
-        m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", self.header)
-        now = datetime.datetime.now(datetime.timezone.utc)
-        self.year = int(m.group(1)) if m else now.year
-        self.month = int(m.group(2)) if m else now.month
-        self.half = "H1" if self.month <= 6 else "H2"
-
-    def compact(self, max_body_lines: int = 15) -> str:
-        """Compact verbose entries (>= 25 lines) down to <= 15 lines."""
-        if len(self.body) < 25:
-            return self.header + "\n" + "\n".join(self.body) + "\n"
-        keep, file_count, in_f = [], 0, False
-        for line in self.body:
-            is_tag = bool(re.match(r"^-\s+\*\*(Type|Summary|Verification)\*\*:", line))
-            if is_tag:
-                in_f = False
-                keep.append(line)
-            elif re.match(r"^-\s+\*\*Files\*\*:", line) or line.strip() == "### Files:":
-                in_f = True
-                keep.append(line)
-            elif in_f and line.strip().startswith("- "):
-                file_count += 1
-                if file_count <= 4:
-                    keep.append(line)
-                elif file_count == 5:
-                    keep.append("  - ... (+more modified files)")
-            elif len(keep) < max_body_lines - 1:
-                keep.append(line)
-        return self.header + "\n" + "\n".join(keep) + "\n"
-
-def parse_changelog(content: str) -> tuple[str, list[ChangelogEntry]]:
-    """Parse markdown changelog into prologue and list of structured entries."""
-    prologue_lines, entries, cur_h, cur_b = [], [], None, []
-    for line in content.splitlines():
-        if line.startswith("## "):
-            if cur_h is not None:
-                entries.append(ChangelogEntry(cur_h, cur_b))
-            cur_h, cur_b = line, []
-        elif cur_h is None:
-            prologue_lines.append(line)
-        else:
-            cur_b.append(line)
-    if cur_h is not None:
-        entries.append(ChangelogEntry(cur_h, cur_b))
-    prologue = "\n".join(prologue_lines).strip()
-    return (prologue + "\n\n" if prologue else "# Changelog\n\n"), entries
-
-def _write_archive_shard(archive_dir: Path, year: int, half: str, entries: list[ChangelogEntry]) -> Path:
-    shard = archive_dir / f"changelog_{year}_{half}.md"
-    existing = shard.read_text(encoding="utf-8") if shard.exists() else ""
-    body = "\n\n".join(e.raw_text.strip() for e in entries) + "\n"
-    if not existing:
-        shard.write_text(f"{AI_GUARD_BANNER}# Historical Changelog Archive ({year} {half})\n\n{body}", encoding="utf-8")
-    else:
-        shard.write_text(existing.rstrip() + "\n\n" + body, encoding="utf-8")
-    return shard
-
-def rotate_entries(
-    prologue: str, entries: list[ChangelogEntry], archive_dir: Path, max_lines: int = 150, min_entries: int = 3
-) -> tuple[str, list[Path]]:
-    """Keep recent entries <= max_lines (min 3 entries), rotate overflow to shard."""
-    if not entries:
-        return prologue, []
-    seen, unique = set(), []
-    for e in entries:
-        if e.header not in seen:
-            seen.add(e.header)
-            unique.append(e)
-
-    active, overflow, curr_lines = [], [], len(prologue.splitlines())
-    for idx, e in enumerate(unique):
-        e_lines = len(e.compact().splitlines())
-        if idx < min_entries or (curr_lines + e_lines <= max_lines):
-            active.append(e)
-            curr_lines += e_lines
-        else:
-            overflow.append(e)
-
-    shards_written = []
-    if overflow:
-        groups: dict[tuple[int, str], list[ChangelogEntry]] = {}
-        for oe in overflow:
-            groups.setdefault((oe.year, oe.half), []).append(oe)
-        for (y, h), grp in groups.items():
-            shards_written.append(_write_archive_shard(archive_dir, y, h, grp))
-    return prologue + "\n\n".join(e.compact().strip() for e in active) + "\n", shards_written
 
 def _get_git_modified_files(root: Path) -> tuple[list[str], bool]:
     try:
@@ -274,6 +134,19 @@ def migrate_logs(root: Path, src_name: str, tgt_name: str, max_lines: int = 150,
     except Exception as ex:
         return True, f"Merged into '{tgt_name}', could not unlink '{src_name}': {ex}"
 
+def _warn_same_day_fixes(entries: list[ChangelogEntry], c_type: str, clean_files: list[str]) -> None:
+    """Warn when multiple same-day fix entries touch overlapping files (wait for user confirmation)."""
+    if c_type.lower() != "fix":
+        return
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    same_day = [e for e in entries if f"[{today}] fix:" in e.header.lower()]
+    if not same_day:
+        return
+    overlaps = [f for f in clean_files if any(f"`{f}`" in "\n".join(e.body) for e in same_day)]
+    detail = f" overlapping {', '.join(overlaps[:3])}" if overlaps else ""
+    print(f"[changelog add] Warning: {len(same_day)} same-day fix entry/entries already recorded{detail}. Confirm live fix with user before adding repeat fix logs.")
+
+
 def cmd_changelog_add(args: argparse.Namespace) -> int:
     """Record a milestone, auto-rotate, and emit single-generation commit hint."""
     root = Path(args.path or ".").resolve()
@@ -287,12 +160,9 @@ def cmd_changelog_add(args: argparse.Namespace) -> int:
     c_type = sanitize_text(args.type or "refactor", root).strip()
     c_title = sanitize_text(args.title or "Milestone Update", root).strip()
     c_summary = sanitize_text(args.summary or "", root).strip()
-    is_git = True
-    if args.files:
-        raw_files = args.files
-    else:
-        raw_files, is_git = _get_git_modified_files(root)
+    raw_files, is_git = (args.files, True) if args.files else _get_git_modified_files(root)
     clean_files = [sanitize_text(f, root).strip() for f in raw_files]
+    _warn_same_day_fixes(entries, c_type, clean_files)
 
     entry = _build_entry(root, c_type, c_title, c_summary, clean_files, sanitize_text(args.verify or "", root).strip())
     final_c, shards = rotate_entries(prologue, [entry] + entries, arch_dir, max_lines=args.max_lines)

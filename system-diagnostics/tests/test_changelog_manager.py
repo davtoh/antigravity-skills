@@ -298,6 +298,17 @@ class TestCliSubcommands(unittest.TestCase):
         self.assertEqual(data["target"]["name"], "CHANGELOG.md")
         self.assertGreater(data["target"]["lines"], 0)
 
+    def test_same_day_repeat_fix_emits_warning(self):
+        parser = changelog_manager.argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="subcommand")
+        changelog_manager.register_parser(sub)
+        a1 = parser.parse_args(["changelog", "add", "--path", str(self.root), "--type", "fix", "--title", "Fix A", "--files", "app.js"])
+        a2 = parser.parse_args(["changelog", "add", "--path", str(self.root), "--type", "fix", "--title", "Fix B", "--files", "app.js"])
+        with patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.assertEqual(changelog_manager.cmd_changelog(a1), 0)
+            self.assertEqual(changelog_manager.cmd_changelog(a2), 0)
+            self.assertIn("Warning: 1 same-day fix entry/entries already recorded overlapping app.js", out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

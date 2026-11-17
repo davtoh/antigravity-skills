@@ -219,6 +219,24 @@ class TestTranscriptAuditor(unittest.TestCase):
         row = ta.audit_conversation(self.brain, "spec-1")
         self.assertEqual(row["user_corrections"], [])
 
+    def test_flags_cdp_fallbacks_repeat_changelog_and_read_fail_guesses(self) -> None:
+        _write(self.brain, "waste-1", [
+            _planner(("read_file", {"Path": "missing1.py"}), ("read_file", {"Path": "missing2.py"})),
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --title A"})),
+            {"type": "GENERIC", "content": "[CDP] Live connection failed (TimeoutError).", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --title B"})),
+            {"type": "GENERIC", "content": "Command exited with code 0.", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "waste-1")
+        self.assertEqual(row["cdp_live_fallbacks"], 1)
+        self.assertEqual(row["changelog_adds"], 2)
+        md = ta.format_markdown([row])
+        self.assertIn("CDP --live->headless fallback", md)
+        self.assertIn("2 changelog add calls", md)
+        self.assertIn("2 read_fail path-guess errors", md)
+
 
 if __name__ == "__main__":
     unittest.main()

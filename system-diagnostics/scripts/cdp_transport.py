@@ -155,6 +155,27 @@ class CDPSession:
     def __init__(self, ws):
         self.ws = ws
         self.msg_id = 0
+        self.events: list[dict] = []
+
+    def _record_event(self, msg: dict) -> None:
+        if "method" in msg:
+            self.events.append(msg)
+            if len(self.events) > 200:
+                del self.events[: len(self.events) - 200]
+
+    async def drain_events(self, timeout: float = 0.05) -> list[dict]:
+        """Collect any buffered CDP events currently waiting on the socket."""
+        deadline = time.time() + timeout
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            try:
+                raw = await asyncio.wait_for(self.ws.recv(), timeout=remaining)
+                self._record_event(json.loads(raw))
+            except (asyncio.TimeoutError, TimeoutError, Exception):
+                break
+        return list(self.events)
 
     async def send(self, method: str, params: dict | None = None, session_id: str | None = None, timeout: float = 15.0) -> dict:
         self.msg_id += 1
@@ -173,6 +194,7 @@ class CDPSession:
                 if "error" in msg:
                     raise RuntimeError(f"CDP error in {method}: {msg['error']}")
                 return msg.get("result", {})
+            self._record_event(msg)
 
 async def connect_ws(url: str, timeout: float = 10.0):
     """Connect to WebSocket URL using websockets library if available, else pure stdlib."""

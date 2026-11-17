@@ -31,6 +31,7 @@ import runtime_runner
 import skill_packager
 import arch_mapper
 import transcript_auditor
+import debug_retro
 import diagnose_cli
 
 # Configure UTF-8 stdout/stderr across all platforms
@@ -246,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose_cli.register_core_parsers(sub)
     for mod in (
         probe_runner, static_auditor, shadow_prober, changelog_manager,
-        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor,
+        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor, debug_retro,
     ):
         reg = getattr(mod, "register_parsers", None) or getattr(mod, "register_parser")
         reg(sub)
@@ -277,6 +278,7 @@ def main() -> int:
         "package-skill": skill_packager.cmd_package_skill,
         "arch-map": arch_mapper.cmd_arch_map,
         "transcript-audit": transcript_auditor.cmd_transcript_audit,
+        "debug-retro": debug_retro.cmd_debug_retro,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

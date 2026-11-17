@@ -39,7 +39,7 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 
 > [!IMPORTANT]
 > **Pre-Flight Tool-Call Ceiling ($\le 3-5$ calls)**:
-> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted grep, or 1 device probe). If port, process, or environment ambiguity remains after 3 tool calls, **STOP immediately and present the Pre-Flight UX Gate (`ask_question`)**. NEVER embark on a 50–100 tool exploration marathon, run repetitive ad-hoc Python socket loops, scan ports blindly, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
+> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted `git grep -n`, or 1 device probe). Never guess file paths in `read_file`—locate paths via `git grep` or `surface` first, and delegate `> 3–4` file sweeps to a `research` subagent (`Model: 'flash'`) regardless of parent model (`Orchestrator`, `Opus`, `Hydrogen`). If port, process, or environment ambiguity remains after 3 tool calls, **STOP immediately and present the Pre-Flight UX Gate (`ask_question`)**. NEVER embark on a 50–100 tool exploration marathon, run repetitive ad-hoc Python socket loops, scan ports blindly, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
 >
 > **Post-Interview Diagnosis Budget**: Even after the user selects deep diagnosis, cap third-party library inspection (e.g., `uvicorn`, `fastapi`) at **$\le 3$ targeted probes** or delegate to a `research` subagent. Never guess HTTP endpoints (`/api/health`, `/api/system/status`)—run `surface --show-routes` or `git grep` routes first.
 
@@ -63,15 +63,15 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    ```bash
    python skills/app-debugger/scripts/run_diagnose.py container --lines 100 --sync-check <modified_files>
    ```
-3. **Tier 3 (Browser UI Layout via CDP)**:
+3. **Tier 3 (Browser UI Layout & Runtime Telemetry via CDP)**:
    ```bash
-   # Live visible tab (with optional settle delay for scroll-snap resting offsets and transitions)
-   python skills/app-debugger/scripts/run_diagnose.py ui --live --audit-layout
+   # Live visible tab (brings tab to front, fails loud unless --allow-headless-fallback, captures console/HTTP/localStorage)
+   python skills/app-debugger/scripts/run_diagnose.py ui --live --capture-runtime --audit-layout
    python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout
    # Evaluate multi-statement JS without PowerShell quote stripping
-   python skills/app-debugger/scripts/run_diagnose.py ui --live --eval-file scratch/probe.js
-   # Or isolated headless background
-   python skills/app-debugger/scripts/run_diagnose.py ui --headless --audit-layout --screenshot scratch/bug_before.jpg
+   python skills/app-debugger/scripts/run_diagnose.py ui --live --capture-runtime --eval-file scratch/probe.js
+   # Or isolated headless background (note: fresh empty profile has no live localStorage/cookies)
+   python skills/app-debugger/scripts/run_diagnose.py ui --headless --capture-runtime --audit-layout --screenshot scratch/bug_before.jpg
    ```
 4. **Dynamic Domain Probes (Hardware, Databases, Network)**:
    - **Do NOT create throwaway scripts in `scratch/`**.
@@ -117,19 +117,20 @@ Before touching code, synthesize findings into a structured matrix that maps eve
 
 ### Step 4: Surgical Atomic Fix & Hybrid Verification
 
-1. **Apply Surgical Edits**:
+1. **Apply Surgical Edits (or Escalate Multi-Module SSOT Leaks)**:
    - Adhere to Modularity Budgets ($\le$ 350 lines per file, functions $\le$ 30 lines).
    - Fix the identified root causes without side effects or unneeded refactoring.
+   - **SSOT Escalation Gate**: If `git grep` shows `>= 3` files owning the same state (e.g., duplicated defaults) or 1 patch fails live verification, STOP local patching and yield the floor to `/frontier-architect` to establish an SSOT contract before further edits.
 2. **Execute Environment-Parity & Lifecycle Verification**:
-   - Re-run diagnostic commands and domain probes.
-   - **Environment Parity**: Never verify solely against synthetic mocks when a live database or hardware device is configured. Test against real configuration states (e.g. existing database embedding dimensions).
+   - Re-run diagnostic commands and domain probes (`--capture-runtime` for live browser console/HTTP/`localStorage` parity).
+   - **Environment Parity**: Never verify solely against synthetic mocks or blank `--headless` profiles when live `localStorage`/DB/hardware state is involved.
    - **Resource Lifecycle Check**: Explicitly verify cleanup (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
    - **Test Job & Daemon Cleanup Invariant**: Before completing Step 4, query active background tasks (`manage_task list`) and API job ledgers (`GET /api/.../jobs`). Terminate test daemons (`manage_task kill`) and cancel any unfinished test jobs so zero orphan tasks survive into subsequent user turns.
-   - **Interactive User Gate**: When confidence is partial, physical hardware is involved, or an operation is sensitive/destructive, provide a 1-line verification recipe and prompt the user to confirm live execution before closing the milestone.
-   - **Milestone Recording (Single-Generation Echo Protocol)**: When closing a verified bug fix milestone, record it via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
-3. **Report Axiom 9 Honest Verification & Introspective Options**:
+   - **Pending User-Verification Gate (Zero Premature `CHANGELOG.md` Clutter)**: For interactive UI/live-browser/hardware bugs (or any retry $\ge 1$), do **not** run `diagnose.py changelog add`, claim `"FIXED"`, or emit `*Introspective Options*` until `--live` CDP verifies the exact state transition against the user's real session **or** the user confirms via a 1-click `ask_question` (`Confirmed fixed in my browser` / `Still broken — describe what happened`). Report `"Patch Applied — Ready for Live Verification"` with a 1-line check recipe first; run `changelog add` only after confirmation (pure deterministic backend/unit-test bugs remain exempt).
+   - **Milestone Recording (Single-Generation Echo Protocol)**: Only after verified confirmation, record via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
+3. **Report Axiom 9 Honest Verification, `debug-retro` & Introspective Options**:
    - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
-   - At task completion, include a 1–2 line **Introspective Options** hint so the user can choose whether to run `python skills/system-diagnostics/scripts/diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist project/skill lessons.
+   - At **verified** task completion (once only, never on unconfirmed patches), record non-trivial sessions (`>= 30` steps or `>= 1` retry) via `python skills/app-debugger/scripts/run_diagnose.py debug-retro --symptom "<Symptom>" --cause "<Cause>" --status verified --cid <cid>` (and re-run `plan_engine.py digest <slug> --backfill --write-scaffold` if working inside an active `.frontier` plan), then include a 1–2 line **Introspective Options** hint offering `diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist lessons.
 
 ---
 

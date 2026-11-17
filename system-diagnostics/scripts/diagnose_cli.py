@@ -18,7 +18,9 @@ def register_ui_parser(sub: Any) -> None:
     mode.add_argument("--live", action="store_true", help="Inspect visible live Chrome tab")
     mode.add_argument("--headless", action="store_true", default=None, help="Run headless Chrome (default unless --live)")
     p.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
+    p.add_argument("--allow-headless-fallback", action="store_true", help="Permit fallback to isolated headless Chrome when --live fails")
     p.set_defaults(fallback_headless=True)
+    p.add_argument("--capture-runtime", action="store_true", help="Capture console errors, uncaught exceptions, HTTP>=400, and localStorage")
     p.add_argument("--audit-layout", action="store_true", help="Audit bounding box overflow")
     p.add_argument("--selectors", default=None, help="Comma-separated CSS selectors to measure")
     p.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
@@ -68,6 +70,7 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     for attr, flag in (
         ("list_tabs", "--list-tabs"), ("audit_layout", "--audit-layout"),
         ("navigate", "--navigate"), ("strict", "--strict"),
+        ("capture_runtime", "--capture-runtime"), ("allow_headless_fallback", "--allow-headless-fallback"),
     ):
         if getattr(args, attr, False):
             cmd.append(flag)
@@ -81,7 +84,10 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     for attr, flag in (("wait", "--wait"), ("port", "--port")):
         if (val := getattr(args, attr, None)) is not None:
             cmd.extend([flag, str(val)])
-    if getattr(args, "fallback_headless", True) is False:
+    no_fallback = (getattr(args, "fallback_headless", True) is False) or (
+        getattr(args, "live", False) and not getattr(args, "allow_headless_fallback", False)
+    )
+    if no_fallback:
         cmd.append("--no-fallback-headless")
     if not getattr(args, "live", False):
         cmd.append("--headless")

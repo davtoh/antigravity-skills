@@ -436,5 +436,18 @@ class TestCDPInspect(unittest.TestCase):
         self.assertEqual(warnings[0]["scrollWidth"], 80)
         self.assertEqual(warnings[0]["clientWidth"], 26)
 
+    def test_urls_match_localhost_and_summarize_cdp_events(self):
+        import cdp_runtime
+        self.assertTrue(cdp_runtime.urls_match("http://localhost:8000", "http://127.0.0.1:8000/#videos"))
+        self.assertFalse(cdp_runtime.urls_match("http://localhost:8000", "http://127.0.0.1:3000/"))
+        summary = cdp_runtime.summarize_cdp_events([
+            {"method": "Runtime.consoleAPICalled", "params": {"type": "error", "args": [{"value": "boom"}]}},
+            {"method": "Runtime.exceptionThrown", "params": {"exceptionDetails": {"text": "Uncaught TypeError"}}},
+            {"method": "Network.responseReceived", "params": {"response": {"url": "http://localhost:8000/api/404", "status": 404}}},
+        ])
+        self.assertEqual(summary["consoleErrors"], ["boom"])
+        self.assertEqual(summary["exceptions"], ["Uncaught TypeError"])
+        self.assertEqual(summary["networkErrors"][0]["status"], 404)
+
 if __name__ == "__main__":
     unittest.main()

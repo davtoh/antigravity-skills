@@ -91,7 +91,7 @@ def format_workspace_digest(d: dict[str, Any]) -> str:
         "| Plan | Status | Milestones | Retro | Issues |",
         "|---|---:|---:|---:|---:|",
     ]
-    for p in d["plans"][:15]:
+    for p in sorted(d["plans"], key=lambda x: 0 if x["status"] != "completed" else 1)[:15]:
         lines.append(f"| {p['slug']} | {p['status']} | {p['done']}/{p['total']} | {p['retro_entries']} | {p['integrity_issues']} |")
     lines += _cap_section("Unresolved Project /learn Candidates", d.get("learn_candidates", []), 12)
     lines += _cap_section("Skill & Tooling /learn Candidates", d.get("skill_learn_candidates", []), 10)
@@ -136,7 +136,7 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
             seen_paths.add(rp)
             candidates.append(rp)
     seen_slugs: set[str] = set()
-    plans, learns, skill_learns, gaps, escs = [], [], [], [], []
+    plans, active_digests, completed_digests = [], [], []
     for p in candidates:
         slug = slugify(p.stem)
         if slug in seen_slugs or not (d := build_digest_fn(root, str(p), None, brain_dir, backfill)):
@@ -144,10 +144,13 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
         seen_slugs.add(d["slug"])
         done = sum(1 for m in d["milestones"] if m["status"] == "completed")
         plans.append({"slug": d["slug"], "title": d["title"], "status": d["status"], "done": done, "total": len(d["milestones"]), "retro_entries": d["retro_entries"], "integrity_issues": len(d["integrity_issues"])})
-        learns += d["learn_candidates"]
-        skill_learns += d["skill_learn_candidates"]
-        gaps += d["tool_gaps"]
-        escs += d["escalations"]
+        (completed_digests if d["status"] == "completed" else active_digests).append(d)
+    # Keep active plans + up to 5 recent completed plans in LEARN_QUEUE.md so historical backlogs don't drown active items.
+    queued = active_digests + completed_digests[:5]
+    learns = [item for d in queued for item in d["learn_candidates"]]
+    skill_learns = [item for d in queued for item in d["skill_learn_candidates"]]
+    gaps = [item for d in queued for item in d["tool_gaps"]]
+    escs = [item for d in queued for item in d["escalations"]]
     skill_md = Path(__file__).resolve().parents[1] / "SKILL.md"
     return {
         "plans": plans,
