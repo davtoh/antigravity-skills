@@ -26,7 +26,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body
+from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body, resolve_commit_hint
 from plan_digest import cmd_digest, register_digest_parser, write_learning_scaffold
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_state import (
@@ -167,7 +167,7 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
         msg = f"[completed] -> MASTER STEP SYNC GATE: Run 'plan_engine.py advance {ps['slug']} --milestone {active_idx}' to advance Master Milestone." if c_info.get("status") == "completed" else f"[{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'"
         print(f"Linked Child Plan: {c_info['slug']} {msg}")
     else:
-        print_master_gate(ps, active_idx, target_m.get("child_plan"))
+        print_master_gate(ps, active_idx, target_m.get("child_plan"), tasks=target_m.get("tasks"))
     print_milestone_body(target_m, parsed, prior_learns, prior_gaps)
     return 0
 
@@ -205,26 +205,7 @@ def _get_working_tree_code_changes(root: Path) -> tuple[list[str], bool]:
         return [], False
 
 
-def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
-    """Build a conventional git commit suggestion for the completed milestone."""
-    milestone_title = next(
-        (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
-        f"milestone {target_idx}",
-    )
-    stripped_title = re.sub(
-        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
-        "",
-        milestone_title,
-        flags=re.IGNORECASE,
-    )
-    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", stripped_title)
-    clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
-    clean_title = re.sub(r"[^\w\s-]", "", stripped_title).strip().lower()
-    clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"
-    return f'git commit -m "feat({clean_scope}): {clean_title}"'
-
-
-def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: str, no_sync: bool) -> tuple[str, int] | None:
+def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: str, no_sync: bool) -> tuple[str, int, bool] | None:
     """Auto-advance the linked parent Master Milestone when a child plan completes."""
     if no_sync or ps.get("status") != "completed" or not isinstance(ps.get("parent_plan"), dict):
         return None
@@ -240,8 +221,12 @@ def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: 
     parent_ps = record_milestone_advance(get_frontier_dir(root), parent_ps, int(p_idx), sha, now_iso)
     from plan_telemetry import rollup_child_retrospective
     rollup_child_retrospective(root, parent_ps, int(p_idx), refresh=True)
-    write_learning_scaffold(root, parent_ps["slug"], backfill=False)
-    return parent_ps["slug"], int(p_idx)
+    parent_completed = parent_ps.get("status") == "completed"
+    write_learning_scaffold(root, parent_ps["slug"], backfill=parent_completed)
+    if parent_completed:
+        from plan_digest import build_workspace_digest, write_workspace_scaffold
+        write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
+    return parent_ps["slug"], int(p_idx), parent_completed
 
 
 def cmd_advance(root: Path, args: argparse.Namespace) -> int:
@@ -260,11 +245,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
 
     code_changes, is_git = _get_working_tree_code_changes(root)
-    has_code_diff = bool(code_changes) if is_git else True
-    if is_git and not code_changes:
-        commit_hint = "(None - Milestone was verification/audit only; no application code changes)"
-    else:
-        commit_hint = _build_commit_suggestion(ps, target_idx)
+    commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective
     rollup_child_retrospective(root, ps, target_idx)
@@ -277,6 +258,9 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
             missing_prior_retro = target_idx - 1
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
+    if ps["status"] == "completed":
+        from plan_digest import build_workspace_digest, write_workspace_scaffold
+        write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
     parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
     print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced)
     return 0

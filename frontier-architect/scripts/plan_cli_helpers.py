@@ -8,6 +8,40 @@ import re
 _TASK_PATH_RE = re.compile(r"(?:\*\*|`)([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)(?:\*\*|`)")
 
 
+def build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
+    """Build a conventional git commit suggestion for the completed milestone."""
+    milestone_title = next(
+        (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
+        f"milestone {target_idx}",
+    )
+    stripped_title = re.sub(
+        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
+        "",
+        milestone_title,
+        flags=re.IGNORECASE,
+    )
+    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", stripped_title)
+    clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
+    clean_title = re.sub(r"[^\w\s-]", "", stripped_title).strip().lower()
+    clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"
+    return f'git commit -m "feat({clean_scope}): {clean_title}"'
+
+
+def resolve_commit_hint(
+    ps: dict[str, Any],
+    target_idx: int,
+    code_changes: list[str],
+    is_git: bool,
+    commit_arg: str | None,
+) -> tuple[str, bool]:
+    """Return (commit_hint, has_code_diff) without misreporting pre-committed milestones."""
+    if is_git and not code_changes:
+        if commit_arg:
+            return f"(Already committed as {commit_arg})", True
+        return "(None - Milestone was verification/audit only; no application code changes)", False
+    return build_commit_suggestion(ps, target_idx), True
+
+
 def assess_plan_scope(parsed: dict[str, Any], ps: dict[str, Any], parent_arg: str | None) -> str | None:
     """Recommend Master Plan hierarchy when a flat roadmap spans >=4 milestones or >=3 subsystems."""
     is_master = (
@@ -45,8 +79,13 @@ def _suggest_slice_tools(target_m: dict[str, Any]) -> list[str]:
     return tools
 
 
-def print_master_gate(ps: dict[str, Any], active_idx: int, declared_child: str | None = None) -> None:
-    """Emit the MASTER STEP PRE-PLAN GATE when a master roadmap step has no child plan."""
+def print_master_gate(
+    ps: dict[str, Any],
+    active_idx: int,
+    declared_child: str | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+) -> None:
+    """Emit the MASTER STEP PRE-PLAN GATE (or tactical bypass) when a master step has no child plan."""
     if declared_child:
         print(f"Declared Child Plan: {declared_child}")
     is_master_roadmap = (
@@ -58,12 +97,15 @@ def print_master_gate(ps: dict[str, Any], active_idx: int, declared_child: str |
         print("\n" + "=" * 72)
         print(f"[plan_engine] MASTER STEP PRE-PLAN GATE (Step {active_idx}):")
         print("No child implementation plan is linked to this master step yet.")
-        print("MANDATORY: DO NOT implement this entire master step in one turn.")
-        print("Instead, execute Pre-Plan -> Child Plan Synthesis:")
-        print("  1. Read AGENTS.md and any referenced architecture blueprint (e.g. docs/architecture/).")
-        print("  2. Run 'diagnose.py arch-map --path .' and delegate file/import sweeps to a research subagent.")
-        print(f"  3. Draft a vertical-sliced child plan (.TODO/step_{active_idx}_<slug>.md) + RequestFeedback artifact.")
-        print(f"  4. Register via: plan_engine.py init .TODO/step_{active_idx}_<slug>.md --parent {ps['slug']} --milestone {active_idx}")
+        if not declared_child and tasks is not None and len(tasks) <= 3:
+            print("Tactical Master Step (<=3 tasks, no child plan declared): You MAY execute this step directly in one turn without creating a child plan unless exploration reveals >=3 subsystems or >=4 files.")
+        else:
+            print("MANDATORY: DO NOT implement this entire master step in one turn.")
+            print("Instead, execute Pre-Plan -> Child Plan Synthesis:")
+            print("  1. Read AGENTS.md and any referenced architecture blueprint (e.g. docs/architecture/).")
+            print("  2. Run 'diagnose.py arch-map --path .' and delegate file/import sweeps to a research subagent.")
+            print(f"  3. Draft a vertical-sliced child plan (.TODO/step_{active_idx}_<slug>.md) + RequestFeedback artifact.")
+            print(f"  4. Register via: plan_engine.py init .TODO/step_{active_idx}_<slug>.md --parent {ps['slug']} --milestone {active_idx}")
         print("=" * 72)
 
 
@@ -108,7 +150,7 @@ def print_milestone_body(
 def print_advance_summary(
     ps: dict[str, Any], target_idx: int, sha: str | None, commit_hint: str,
     has_code_diff: bool, patched: int, missing_prior_retro: int | None = None,
-    scaffold_rel: str | None = None, parent_synced: tuple[str, int] | None = None,
+    scaffold_rel: str | None = None, parent_synced: tuple[str, int] | tuple[str, int, bool] | None = None,
 ) -> None:
     """Print the milestone-advance result, turn gate, and user-selectable introspective commands."""
     plan_ref = ps.get("plan_path") or ps.get("slug", "plan")
@@ -124,7 +166,11 @@ def print_advance_summary(
         if ps.get("parent_plan"):
             p = ps["parent_plan"]
             if parent_synced:
-                print(f"[plan_engine] Master Sync (Auto): Marked parent '{parent_synced[0]}' Milestone {parent_synced[1]} complete -> continue with '/frontier-architect continue {parent_synced[0]}'.")
+                parent_done = len(parent_synced) >= 3 and bool(parent_synced[2])
+                if parent_done:
+                    print(f"[plan_engine] Master Sync (Auto): Parent '{parent_synced[0]}' Milestone {parent_synced[1]} completed -> Master Roadmap is 100% COMPLETE! (Learning scaffold refreshed; run `/learn` or start a New Conversation (+)).")
+                else:
+                    print(f"[plan_engine] Master Sync (Auto): Marked parent '{parent_synced[0]}' Milestone {parent_synced[1]} complete -> continue with '/frontier-architect continue {parent_synced[0]}'.")
             else:
                 print(f"[plan_engine] Master Sync: Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then prompt '/frontier-architect continue {p['slug']}'.")
         print(f"[plan_engine] Introspectives (User Choice): Review `{scaffold_rel or 'LEARNING_SCAFFOLD.md'}` -> run `/learn` to persist lessons | optional: `plan_engine.py digest {ps['slug']} --backfill --write-scaffold`")

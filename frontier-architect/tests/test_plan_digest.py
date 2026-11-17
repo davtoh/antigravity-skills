@@ -220,7 +220,8 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         entry = {"skill_learn_candidates": []}
         pt._enrich_entry_from_audit(entry, "abc12345-0000-0000-0000-000000000001", str(brain))
         joined = " | ".join(entry["skill_learn_candidates"])
-        self.assertIn("parallel edits", joined)
+        self.assertIn("parallel same-file edit(s)", joined)
+        self.assertIn("foo.py", joined)
         self.assertIn("bar.py (3x)", joined)
 
         self._write_retros([{"milestone_index": 1, "token_efficiency_grade": "B", "steps": 50, "retries": 2, "learn_candidates": ["L1"]}])

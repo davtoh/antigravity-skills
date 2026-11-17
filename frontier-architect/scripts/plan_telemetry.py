@@ -196,19 +196,19 @@ def _enrich_entry_from_audit(entry: dict[str, Any], cid: str | None, brain_dir: 
     if not row:
         return
     cands = entry.setdefault("skill_learn_candidates", [])
-    for item in row.get("parallel_same_file_edits") or []:
-        if isinstance(item, dict):
-            calls = item.get("calls") if item.get("calls") is not None else item.get("count")
-            fpath = item.get("path") or item.get("file") or "?"
-            fname = Path(str(fpath)).name if fpath != "?" else "?"
-            msg = f"Transcript audit: step {item.get('step')} issued {calls} parallel edits on {fname}"
-        else:
-            msg = f"Transcript audit: {item}"
+    parallel_items = row.get("parallel_same_file_edits") or []
+    if parallel_items:
+        files = list(dict.fromkeys(
+            Path(str(it.get("path") or it.get("file") or "?")).name
+            for it in parallel_items if isinstance(it, dict)
+        ))
+        detail = f" ({', '.join(files[:4])})" if files else ""
+        msg = f"Transcript audit: {len(parallel_items)} parallel same-file edit(s){detail}"
         if msg not in cands:
             cands.append(msg)
-    heavy_repeats = [f"{k} ({v}x)" for k, v in (row.get("repeated_reads") or {}).items() if int(v) >= 3]
+    heavy_repeats = [f"{Path(str(k)).name} ({v}x)" for k, v in (row.get("repeated_reads") or {}).items() if int(v) >= 3]
     if heavy_repeats:
-        msg = f"Transcript audit: repeated file reads (>=3x): {', '.join(heavy_repeats)}"
+        msg = f"Transcript audit: repeated file reads (>=3x): {', '.join(heavy_repeats[:4])}"
         if msg not in cands:
             cands.append(msg)
 
@@ -242,8 +242,10 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     ws = load_json(fdir / "state.json", {})
     _upsert_retro(ws.setdefault("retrospectives", []), {**entry, "_slug": ps["slug"]}, slug=ps["slug"])
     save_json(fdir / "state.json", ws)
-    from plan_digest import write_learning_scaffold
+    from plan_digest import build_workspace_digest, write_learning_scaffold, write_workspace_scaffold
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
+    if ps.get("status") == "completed":
+        write_workspace_scaffold(root, build_workspace_digest(root, getattr(args, "brain_dir", None), backfill=False))
     _refresh_parent_rollup(root, ps, getattr(args, "brain_dir", None))
     print_retrospective_summary(entry, ps["slug"], scaffold_rel)
     return 0

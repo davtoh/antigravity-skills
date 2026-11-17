@@ -29,12 +29,10 @@ def _extract_models(content: str) -> list[str]:
     """Extract model switches from USER_INPUT metadata outside <USER_REQUEST> blocks."""
     return _MODEL_RE.findall(_USER_REQ_RE.sub("", content))
 
-
 def default_brain_dir() -> Path:
     """Resolve the brain directory from AGY_BRAIN_DIR, else the standard per-user location."""
     env = os.getenv("AGY_BRAIN_DIR", "")
     return Path(env) if env else Path.home() / ".gemini" / "antigravity" / "brain"
-
 
 def _iter_steps(path: Path) -> Iterator[dict[str, Any]]:
     """Yield decoded transcript steps line-by-line, skipping malformed rows."""
@@ -46,7 +44,6 @@ def _iter_steps(path: Path) -> Iterator[dict[str, Any]]:
                 except json.JSONDecodeError:
                     continue
 
-
 def _loads_or(raw: str, fallback: Any) -> Any:
     """Decode a JSON string or return ``fallback`` on parse error."""
     try:
@@ -54,11 +51,9 @@ def _loads_or(raw: str, fallback: Any) -> Any:
     except json.JSONDecodeError:
         return fallback
 
-
 def _unquote(value: Any) -> Any:
     """Transcripts store some arguments as JSON-encoded strings (``'"a.py"'``); decode them."""
     return _loads_or(value, value) if (isinstance(value, str) and len(value) >= 2 and value[0] == value[-1] == '"') else value
-
 
 def _tool_args(call: dict[str, Any]) -> dict[str, Any]:
     """Return tool-call arguments as a dict regardless of string/dict encoding."""
@@ -83,11 +78,9 @@ def _classify_result(content: str, status: str, last_cmd: str = "") -> str | Non
         return "edit_fail" if "target content not found" in content else ("read_fail" if "file does not exist" in content else None)
     return None
 
-
 def _norm_path(raw: str) -> str:
     """Normalize a file path to forward-slash lowercase for cross-transcript matching."""
     return raw.strip().replace("\\", "/").lower()
-
 
 def _matches_any(candidate: str, refs: list[str] | set[str]) -> bool:
     """Return True if normalized ``candidate`` matches or shares a relative tail with ``refs``."""
@@ -146,6 +139,8 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             acc["pending_unnamed"] += 1
             if acc["first_subagent_step"] is None:
                 acc["first_subagent_step"] = idx
+        elif name in ("enter_plan_mode", "exit_plan_mode"):
+            acc["plan_mode_calls"] += 1
         acc["last_target"] = target
         acc["pending_calls"].append((name, target, cmd_line))
     for path, count in same_step_edits.items():
@@ -232,8 +227,8 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_unnamed": 0, "pending_cids": set(), "subagent_cids": [], "reads_while_pending": 0,
         "post_dispatch_reads": [], "edited_paths": set(), "parallel_same_file_edits": [],
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
-        "audit_catches": 0, "failure_samples": [], "user_corrections": [],
-        "last_target": "", "last_cmd": "", "models": [],
+        "audit_catches": 0, "failure_samples": [], "user_corrections": [], "plan_mode_calls": 0,
+        "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -241,6 +236,8 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         content, kind = step.get("content") or "", step.get("type", "")
         if kind == "PLANNER_RESPONSE":
             planner += 1
+            if "git commit" in content: acc["has_commit_hint"] = True
+            if "Continuous Learning & Introspective Options" in content: acc["has_learning_block"] = True
             _record_calls(step, idx, acc)
         elif kind == "USER_INPUT":
             acc["models"].extend(_extract_models(content))
@@ -263,7 +260,9 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "failure_samples": acc["failure_samples"], "user_corrections": acc["user_corrections"], "subagents": acc["subagents"],
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
-        "parallel_same_file_edits": acc["parallel_same_file_edits"], "suggested_grade_cap": "C" if steps > 100 else ("B" if steps > 60 else "A"),
+        "parallel_same_file_edits": acc["parallel_same_file_edits"], "plan_mode_calls": acc["plan_mode_calls"],
+        "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
+        "suggested_grade_cap": "C" if steps > 100 else ("B" if steps > 60 else "A"),
     }
 
 
@@ -310,6 +309,7 @@ def _append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
         notes.append(f"- FLAG {cid8}: {r['reads_after_subagent']} subagent duplicate reads ({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)")
     notes += [f"- FLAG {cid8}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}" for e in r["parallel_same_file_edits"]]
     notes += [f"- FAIL {cid8}: {s}" for s in r.get("failure_samples", [])]
+    if r.get("plan_mode_calls"): notes.append(f"- FLAG {cid8}: called enter/exit_plan_mode ({r['plan_mode_calls']}x)")
     if reps := ", ".join(f"{Path(p).name} ({n}x)" for p, n in (r.get("repeated_reads") or {}).items() if n >= 2):
         notes.append(f"- REPEAT {cid8}: {reps}")
     notes += [f"- CORRECTION {cid8}: {c}" for c in r.get("user_corrections", [])]

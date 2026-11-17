@@ -472,7 +472,7 @@ class TestPlanEngineCLI(unittest.TestCase):
         self._run_cli(["advance", "sample_plan", "--milestone", "1"])
         code, adv_out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
         self.assertEqual(code, 0)
-        self.assertIn("Master Sync (Auto): Marked parent 'master_roadmap' Milestone 1 complete", adv_out)
+        self.assertIn("Master Sync (Auto): Parent 'master_roadmap' Milestone 1 completed -> Master Roadmap is 100% COMPLETE!", adv_out)
 
         parent_state = load_json(get_frontier_dir(self.root) / "plans" / "master_roadmap" / "state.json")
         self.assertEqual(parent_state["child_plans"]["1"]["status"], "completed")
