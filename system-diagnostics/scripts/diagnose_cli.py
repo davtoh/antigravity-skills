@@ -30,6 +30,7 @@ def register_ui_parser(sub: Any) -> None:
     p.add_argument("--click", default=None, help="CSS selector to click before auditing")
     p.add_argument("--window-size", default="1440x900", help="Viewport size WxH (default: 1440x900)")
     p.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection (default: 1.5)")
+    p.add_argument("--connect-timeout", type=float, default=None, help="Live CDP WebSocket handshake timeout (seconds)")
     p.add_argument("--port", type=int, default=None, help="Debugging port override")
     p.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     p.add_argument("--list-tabs", action="store_true", help="List active Chrome tabs")
@@ -81,7 +82,7 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     ):
         if val := getattr(args, attr, None):
             cmd.extend([flag, str(val)])
-    for attr, flag in (("wait", "--wait"), ("port", "--port")):
+    for attr, flag in (("wait", "--wait"), ("connect_timeout", "--connect-timeout"), ("port", "--port")):
         if (val := getattr(args, attr, None)) is not None:
             cmd.extend([flag, str(val)])
     no_fallback = (getattr(args, "fallback_headless", True) is False) or (

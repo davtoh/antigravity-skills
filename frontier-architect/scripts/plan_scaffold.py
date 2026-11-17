@@ -161,6 +161,71 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
     }
 
 
+def refresh_stale_retro_entry(
+    entry: dict[str, Any], row: dict[str, Any] | None, cap_fn: Any, worse_fn: Any
+) -> bool:
+    """Refresh stale mid-session steps/retries/grade on the latest retro entry for a CID."""
+    if not row or row.get("missing") or entry.get("child_slug"):
+        return False
+    before = json_snap(entry)
+    if (row.get("steps") or 0) > (entry.get("steps") or 0):
+        entry["steps"] = row["steps"]
+    if (row.get("total_failures") or 0) > (entry.get("retries") or 0):
+        entry["retries"] = row["total_failures"]
+    cap = cap_fn(entry.get("steps"), entry.get("retries"))
+    if worse_fn(str(entry.get("token_efficiency_grade", "A")), cap):
+        entry["token_efficiency_grade"] = cap
+        tri = entry.get("tool_reliability_scores")
+        lim = {"B": 4, "C": 3, "D": 2, "F": 1}.get(cap)
+        if isinstance(tri, dict) and lim:
+            for k in ("token_efficiency", "hypothesis_accuracy"):
+                if isinstance(tri.get(k), int):
+                    tri[k] = min(tri[k], lim)
+            dims = [tri[k] for k in ("token_efficiency", "hypothesis_accuracy", "tool_reliability", "architectural_defense") if isinstance(tri.get(k), int)]
+            if len(dims) == 4:
+                avg = sum(dims) / 4.0
+                tri["overall"] = int(avg) if avg.is_integer() else round(avg, 2)
+    return json_snap(entry) != before
+
+
+def json_snap(obj: Any) -> str:
+    """Stable serialized snapshot for mutation checks."""
+    import json
+    return json.dumps(obj, sort_keys=True)
+
+
+def _append_unique(items: list[str], msg: str) -> None:
+    """Append ``msg`` unless already present."""
+    if msg and msg not in items:
+        items.append(msg)
+
+
+def promote_transcript_findings(
+    rows: list[dict[str, Any]] | None, skill_learns: list[str], escalations: list[str]
+) -> None:
+    """Surface transcript-audit anomalies and user corrections into digest /learn lists."""
+    for r in rows or ():
+        if not isinstance(r, dict) or r.get("missing"):
+            continue
+        cid8 = str(r.get("cid") or "")[:8]
+        if p_edits := r.get("parallel_same_file_edits") or []:
+            files = list(dict.fromkeys(Path(str(it.get("path") or it.get("file") or "?")).name for it in p_edits if isinstance(it, dict)))
+            detail = f" ({', '.join(files[:4])})" if files else ""
+            _append_unique(skill_learns, f"Transcript audit: {len(p_edits)} parallel same-file edit(s){detail}")
+        if reps := [f"{Path(str(k)).name} ({v}x)" for k, v in (r.get("repeated_reads") or {}).items() if int(v) >= 3]:
+            _append_unique(skill_learns, f"Transcript audit: repeated file reads (>=3x): {', '.join(reps[:4])}")
+        if (rf := int((r.get("failures") or {}).get("read_fail", 0))) >= 2:
+            _append_unique(skill_learns, f"Transcript audit: {cid8} had {rf} read_fail path-guess errors (use git grep/surface first)")
+        if (ca := int(r.get("changelog_adds", 0))) >= 2:
+            _append_unique(skill_learns, f"Transcript audit: {cid8} ran {ca} changelog add calls in one session")
+        if (fb := int(r.get("cdp_live_fallbacks", 0))) >= 1:
+            _append_unique(skill_learns, f"Transcript audit: {cid8} had {fb} CDP --live->headless fallback(s)")
+        if (lf := int(r.get("cdp_live_failures", 0))) >= 1:
+            _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
+        for corr in r.get("user_corrections") or ():
+            _append_unique(escalations, f"User correction ({cid8}): {corr}")
+
+
 def write_workspace_scaffold(root: Path, digest: dict[str, Any]) -> str:
     """Persist ``.frontier/LEARN_QUEUE.md`` and return its workspace-relative POSIX path."""
     queue_p = get_frontier_dir(root) / "LEARN_QUEUE.md"

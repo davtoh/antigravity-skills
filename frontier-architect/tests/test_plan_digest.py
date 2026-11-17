@@ -303,6 +303,45 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         self.assertIn("static_auditor skips LazySettings", content)
         self.assertIn("| second_plan |", content)
 
+    def test_backfill_refreshes_stale_latest_cid_and_promotes_transcript_findings(self) -> None:
+        brain = Path(self._tmp.name) / "brain_stale"
+        c1_dir = brain / "conv-stale-1" / ".system_generated" / "logs"
+        c2_dir = brain / "conv-followup-2" / ".system_generated" / "logs"
+        c1_dir.mkdir(parents=True)
+        c2_dir.mkdir(parents=True)
+        c1_steps = [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nContinue plan\n</USER_REQUEST>"},
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nNo, this is still wrong\n</USER_REQUEST>"},
+        ] + [{"type": "GENERIC", "content": "ok"} for _ in range(110)]
+        c2_steps = [
+            {"type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "edit_file", "args": {"Path": "x.js"}},
+                {"name": "edit_file", "args": {"Path": "x.js"}},
+            ]},
+            {"type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "read_file", "args": {"Path": "missing1.js"}},
+                {"name": "read_file", "args": {"Path": "missing2.js"}},
+            ]},
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+        ]
+        (c1_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in c1_steps) + "\n").encode("utf-8"))
+        (c2_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in c2_steps) + "\n").encode("utf-8"))
+        self._write_retros([
+            {"milestone_index": 1, "cid": "conv-stale-1", "steps": 40, "retries": 0,
+             "token_efficiency_grade": "A", "tool_reliability_scores": {"token_efficiency": 5, "hypothesis_accuracy": 5, "tool_reliability": 5, "architectural_defense": 5, "overall": 5}},
+        ])
+        digest = pd.build_digest(self.root, "demo", cids=["conv-followup-2"], brain_dir=str(brain), backfill=True)
+        saved = json.loads((self.root / ".frontier" / "plans" / "demo" / "retrospectives.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved[0]["steps"], 112)
+        self.assertEqual(saved[0]["token_efficiency_grade"], "C")
+        self.assertEqual(saved[0]["tool_reliability_scores"]["token_efficiency"], 3)
+        self.assertIn("conv-followup-2", digest["cids"])
+        self.assertIn("User correction (conv-sta): step 1: No, this is still wrong", digest["escalations"])
+        joined_sk = " | ".join(digest["skill_learn_candidates"])
+        self.assertIn("parallel same-file edit(s) (x.js)", joined_sk)
+        self.assertIn("2 read_fail path-guess errors", joined_sk)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -449,5 +449,26 @@ class TestCDPInspect(unittest.TestCase):
         self.assertEqual(summary["exceptions"], ["Uncaught TypeError"])
         self.assertEqual(summary["networkErrors"][0]["status"], 404)
 
+    def test_connect_timeout_flag_and_run_live_fallback_message(self):
+        parser = cdp_inspect.build_parser()
+        ns = parser.parse_args(["--connect-timeout", "35"])
+        self.assertEqual(ns.connect_timeout, 35.0)
+        import io
+        from contextlib import redirect_stderr
+        args_no_fb = argparse.Namespace(fallback_headless=False)
+        args_fb = argparse.Namespace(fallback_headless=True)
+        with patch("cdp_inspect.find_devtools_active_port", return_value=(9222, "/devtools/browser/x")), \
+             patch("cdp_inspect.attach_and_run", side_effect=TimeoutError("timed out")):
+            buf1 = io.StringIO()
+            with redirect_stderr(buf1):
+                rc1 = asyncio.run(cdp_inspect.run_live(args_no_fb))
+            self.assertEqual(rc1, 2)
+            self.assertNotIn("Falling back to isolated headless browser", buf1.getvalue())
+            buf2 = io.StringIO()
+            with redirect_stderr(buf2):
+                rc2 = asyncio.run(cdp_inspect.run_live(args_fb))
+            self.assertIsNone(rc2)
+            self.assertIn("Falling back to isolated headless browser", buf2.getvalue())
+
 if __name__ == "__main__":
     unittest.main()

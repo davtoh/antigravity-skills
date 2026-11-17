@@ -237,6 +237,18 @@ class TestTranscriptAuditor(unittest.TestCase):
         self.assertIn("2 changelog add calls", md)
         self.assertIn("2 read_fail path-guess errors", md)
 
+    def test_live_no_fallback_failure_not_counted_as_headless_fallback(self) -> None:
+        _write(self.brain, "live-fail-1", [
+            _planner(("run_command", {"CommandLine": "python diagnose.py ui --live --capture-runtime"})),
+            {"type": "GENERIC", "content": "[CDP] Live connection failed (TimeoutError: timed out).", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "live-fail-1")
+        self.assertEqual(row["cdp_live_fallbacks"], 0)
+        self.assertEqual(row["cdp_live_failures"], 1)
+        md = ta.format_markdown([row])
+        self.assertNotIn("CDP --live->headless fallback", md)
+        self.assertIn("CDP --live handshake failure", md)
+
 
 if __name__ == "__main__":
     unittest.main()

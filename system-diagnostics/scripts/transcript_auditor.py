@@ -171,9 +171,17 @@ def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[st
 
 def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict[str, Any]) -> None:
     """Classify one tool-result step against FIFO pending_calls or bg_tasks and record failures."""
-    if "[CDP] Live connection failed" in content:
-        acc["cdp_live_fallbacks"] += 1
     call_target, call_cmd = _resolve_step_call(content, kind, acc)
+    is_live_no_fallback = (
+        ("diagnose.py" in call_cmd and "--live" in call_cmd and "--allow-headless-fallback" not in call_cmd)
+        or ("--no-fallback-headless" in call_cmd)
+    )
+    if "[CDP] Falling back to isolated headless browser" in content or (
+        "[CDP] Live connection failed" in content and not is_live_no_fallback
+    ):
+        acc["cdp_live_fallbacks"] += 1
+    elif "[CDP] Live connection failed" in content:
+        acc["cdp_live_failures"] += 1
     fail = classify_result(content, status, call_cmd)
     if fail == "audit_catch":
         acc["audit_catches"] += 1
@@ -195,7 +203,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "failure_samples": [], "user_corrections": [], "plan_mode_calls": 0,
         "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
-        "cdp_live_fallbacks": 0, "changelog_adds": 0,
+        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0,
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -229,7 +237,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
         "parallel_same_file_edits": acc["parallel_same_file_edits"], "plan_mode_calls": acc["plan_mode_calls"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
-        "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "changelog_adds": acc["changelog_adds"],
+        "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],
         "suggested_grade_cap": "C" if steps > 100 else ("B" if steps > 60 else "A"),
     }
 

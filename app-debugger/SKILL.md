@@ -48,7 +48,10 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 - **Option 3**: `Backend & Runtime Only - Audit container stats, logs, tracebacks, and tests without browser CDP`
 
 > [!NOTE]
-> If the user has already specified the mode in their prompt (e.g., "debug the live tab", "test in headless mode", or "fix container crash"), **skip** `ask_question` and proceed directly to Step 2.
+> If the user has already specified the mode in their prompt (e.g., "debug the live tab", "test in headless mode", or "fix container crash"), **skip** `ask_question` for mode selection and proceed directly to Step 2.
+> **Live Chrome Authorization & Subagent Guard**: Chrome only shows *"Allow remote debugging?"* when CDP connects, and users should not have to watch the browser mid-session.
+> - **Subagents / `/goal` (No User Access)**: NEVER call `ask_question` inside a subagent or `/goal` run—use `--headless` when isolated checks suffice, or report `UNVERIFIED` and return to the parent coordinator.
+> - **Interactive Parent Coordinator (`--live`)**: NEVER chain `diagnose.py ui --live` behind another command or background it silently. Either trigger a fast `ui --live --list-tabs` handshake up front at Step 2 (so Chrome prompts immediately) or run `--headless` during edits and call `ask_question` at the end before `--live` (and immediately on `TimeoutError: timed out during opening handshake`) with: `(Recommended) Click 'Allow' in Chrome and run/retry --live`, `Use --headless fallback (unattended / user away)`, or `Skip live check (mark UNVERIFIED)`.
 
 ### Step 2: Reproduce First (3-Tier & Dynamic Domain Probes)
 
@@ -128,9 +131,9 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - **Test Job & Daemon Cleanup Invariant**: Before completing Step 4, query active background tasks (`manage_task list`) and API job ledgers (`GET /api/.../jobs`). Terminate test daemons (`manage_task kill`) and cancel any unfinished test jobs so zero orphan tasks survive into subsequent user turns.
    - **Pending User-Verification Gate (Zero Premature `CHANGELOG.md` Clutter)**: For interactive UI/live-browser/hardware bugs (or any retry $\ge 1$), do **not** run `diagnose.py changelog add`, claim `"FIXED"`, or emit `*Introspective Options*` until `--live` CDP verifies the exact state transition against the user's real session **or** the user confirms via a 1-click `ask_question` (`Confirmed fixed in my browser` / `Still broken — describe what happened`). Report `"Patch Applied — Ready for Live Verification"` with a 1-line check recipe first; run `changelog add` only after confirmation (pure deterministic backend/unit-test bugs remain exempt).
    - **Milestone Recording (Single-Generation Echo Protocol)**: Only after verified confirmation, record via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
-3. **Report Axiom 9 Honest Verification, `debug-retro` & Introspective Options**:
+3. **Report Axiom 9 Honest Verification, `debug-retro` & Continuous Learning**:
    - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
-   - At **verified** task completion (once only, never on unconfirmed patches), record non-trivial sessions (`>= 30` steps or `>= 1` retry) via `python skills/app-debugger/scripts/run_diagnose.py debug-retro --symptom "<Symptom>" --cause "<Cause>" --status verified --cid <cid>` (and re-run `plan_engine.py digest <slug> --backfill --write-scaffold` if working inside an active `.frontier` plan), then include a 1–2 line **Introspective Options** hint offering `diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist lessons.
+   - For non-trivial sessions (`>= 30` steps or `>= 1` retry), record `python skills/app-debugger/scripts/run_diagnose.py debug-retro --symptom "<Symptom>" --cause "<Cause>" --status <verified|unconfirmed> --cid <cid>` (`unconfirmed` when awaiting live user confirmation, `verified` once confirmed), re-run `plan_engine.py digest <slug> --cids <cid> --backfill --write-scaffold` if tied to an active `.frontier` plan, run `diagnose.py transcript-audit --latest 1 --workspace .`, and append a `### Continuous Learning & Introspective Options` block (offering **Introspective Options**: `diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist lessons).
 
 ---
 

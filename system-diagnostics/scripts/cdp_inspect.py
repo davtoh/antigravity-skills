@@ -181,7 +181,8 @@ async def pick_page_target(cdp: CDPSession, target_url: str) -> str:
 
 async def attach_and_run(browser_ws_url: str, args, viewport: tuple[int, int] | None = None) -> int:
     """Connect to a browser-level endpoint, select a page, attach, and run the audit."""
-    async with await connect_ws(browser_ws_url, timeout=10.0) as ws:
+    connect_timeout = float(getattr(args, "connect_timeout", 15.0) or 15.0)
+    async with await connect_ws(browser_ws_url, timeout=connect_timeout) as ws:
         cdp = CDPSession(ws)
         if args.list_tabs:
             targets = await cdp.send("Target.getTargets", timeout=15.0)
@@ -241,7 +242,10 @@ async def run_live(args) -> int | None:
             "was not accepted, or DevToolsActivePort is stale from an earlier session.",
             file=sys.stderr,
         )
-        return None if args.fallback_headless else 2
+        if args.fallback_headless:
+            print("[CDP] Falling back to isolated headless browser...", file=sys.stderr)
+            return None
+        return 2
 
 async def run_headless(args) -> int:
     """Launch an isolated, auto-cleaned headless browser on an OS-assigned free port."""
@@ -317,6 +321,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
     parser.add_argument("--navigate", action="store_true", help="Force (re)navigation to target URL, e.g. a hard reload after a fix")
     parser.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection")
+    parser.add_argument("--connect-timeout", type=float, default=15.0, help="Live CDP handshake timeout (seconds)")
     parser.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     parser.add_argument("--headless", action="store_true", help="Use isolated auto-cleaned headless browser")
     parser.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")

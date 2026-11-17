@@ -220,9 +220,13 @@ def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | No
         rpath = get_frontier_dir(root) / "plans" / slug / "retrospectives.json"
         if not isinstance(rows := load_json(rpath, []), list):
             continue
+        last_pos_for_cid = {str(r["cid"]).lower(): i for i, r in enumerate(rows) if isinstance(r, dict) and r.get("cid")}
         dirty = False
-        for e in (r for r in rows if isinstance(r, dict)):
+        for idx_i, e in enumerate(rows):
+            if not isinstance(e, dict):
+                continue
             row = None
+            raw_cid = str(e.get("cid") or "").strip()
             if e.get("steps") is None or e.get("retries") is None or not e.get("tool_reliability_scores"):
                 if idx_rows is None:
                     dirs = [brain / _resolve_one_cid(brain, c) for c in cids] if cids else (list(brain.iterdir()) if brain.is_dir() else [])
@@ -231,7 +235,10 @@ def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | No
                     if cid := _match_entry_cid(e, idx_rows, cids, pos):
                         row = cache.setdefault(cid, ta.audit_conversation(brain, cid))
                     pos += 1
-            if _apply_backfill_row(e, row):
+            elif raw_cid and last_pos_for_cid.get(raw_cid.lower()) == idx_i:
+                full_cid = _resolve_one_cid(brain, raw_cid)
+                row = cache.setdefault(full_cid, ta.audit_conversation(brain, full_cid))
+            if _apply_backfill_row(e, row) or refresh_stale_retro_entry(e, row, _grade_cap, _worse):
                 dirty, updated = True, updated + 1
         rows, dropped = _dedupe_retro_rows(rows)
         if dropped:
@@ -264,8 +271,17 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     went_well = _clean_items(entries, "went_well")
     entry_cids = _dedupe_cids([str(e["cid"]) for e in entries if e.get("cid")])
     all_recorded = bool(entries) and all(e.get("cid") or e.get("child_slug") for e in entries)
-    extra_cids = [] if (ps["status"] == "completed" and all_recorded) else (cids or [])
+    saved_followups = [str(c) for c in (ps.get("followup_cids") or []) if c]
+    extra_cids = [] if (ps["status"] == "completed" and all_recorded) else _dedupe_cids([*saved_followups, *(cids or [])])
     rows = _transcript_rows(_dedupe_cids([*entry_cids, *extra_cids]), brain_dir)
+    active_fcids = saved_followups
+    if backfill and cids and ps["status"] != "completed" and rows:
+        valid_cids = [r["cid"] for r in rows if not r.get("missing") and r.get("cid")]
+        merged_fcids = _dedupe_cids([*saved_followups, *[c for c in valid_cids if c not in entry_cids]])
+        if merged_fcids != saved_followups:
+            ps["followup_cids"] = active_fcids = merged_fcids
+            save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
+    promote_transcript_findings(rows, skill_learns, escalations)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
@@ -273,7 +289,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "retro_entries": len(entries), "backfilled_entries": backfilled, "integrity_issues": check_retro_integrity(entries),
         "went_well": went_well, "learn_candidates": learns, "skill_learn_candidates": skill_learns,
         "tool_gaps": tool_gaps, "escalations": escalations,
-        "cids": entry_cids, "transcripts": rows, "transcripts_unavailable": rows is None,
+        "cids": _dedupe_cids([*entry_cids, *active_fcids]), "transcripts": rows, "transcripts_unavailable": rows is None,
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
@@ -283,6 +299,8 @@ from plan_scaffold import (
     _write_scaffold_file,
     format_digest,
     format_workspace_digest,
+    promote_transcript_findings,
+    refresh_stale_retro_entry,
     write_learning_scaffold,
     write_workspace_scaffold,
 )

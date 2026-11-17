@@ -62,6 +62,8 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     notes += [f"- FLAG {cid8}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}" for e in r["parallel_same_file_edits"]]
     if r.get("cdp_live_fallbacks", 0) >= 1:
         notes.append(f"- FLAG {cid8}: {r['cdp_live_fallbacks']} CDP --live->headless fallback(s) (live browser state bypassed)")
+    if r.get("cdp_live_failures", 0) >= 1:
+        notes.append(f"- FLAG {cid8}: {r['cdp_live_failures']} CDP --live handshake failure(s) (Chrome Allow prompt missed/stale DevToolsActivePort)")
     if r.get("changelog_adds", 0) >= 2:
         notes.append(f"- FLAG {cid8}: {r['changelog_adds']} changelog add calls in one session (premature fix clutter)")
     if (r.get("failures") or {}).get("read_fail", 0) >= 2:
