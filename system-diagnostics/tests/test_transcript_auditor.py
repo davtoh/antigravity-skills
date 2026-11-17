@@ -24,11 +24,14 @@ def _planner(*calls: tuple[str, dict]) -> dict:
     return {"type": "PLANNER_RESPONSE", "tool_calls": [{"name": n, "args": a} for n, a in calls]}
 
 
-class TestTranscriptAuditor(unittest.TestCase):
+class _TranscriptTestBase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.brain = Path(self._tmp.name)
+
+
+class TestTranscriptAuditorCore(_TranscriptTestBase):
 
     def test_missing_conversation(self) -> None:
         self.assertTrue(ta.audit_conversation(self.brain, "nope")["missing"])
@@ -141,6 +144,8 @@ class TestTranscriptAuditor(unittest.TestCase):
         os.utime(new_log, (now, now))
         self.assertEqual(ta._resolve_cids(self.brain, None, 1, min_steps=6), ["older-long"])
 
+
+class TestTranscriptAuditorSignals(_TranscriptTestBase):
     def test_markdown_includes_fail_repeat_and_correction(self) -> None:
         _write(self.brain, "diag-1", [
             {"type": "USER_INPUT", "content": "<USER_REQUEST>\nNo, fix parser instead\n</USER_REQUEST>"},

@@ -22,21 +22,15 @@ class StdlibWSClient:
         self._closed = False
 
     @classmethod
-    async def connect(cls, url: str, timeout: float = 10.0) -> "StdlibWSClient":
-        parsed = urlparse(url)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or (443 if parsed.scheme == "wss" else 80)
-        path = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "")
-
-        ssl_ctx = None
-        if parsed.scheme == "wss":
-            import ssl
-            ssl_ctx = ssl.create_default_context()
-
-        coro = asyncio.open_connection(host, port, ssl=ssl_ctx)
-        reader, writer = await asyncio.wait_for(coro, timeout=timeout)
-
-        # Handshake
+    async def _handshake(
+        cls,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        host: str,
+        port: int,
+        path: str,
+        timeout: float,
+    ) -> None:
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         headers = [
             f"GET {path} HTTP/1.1",
@@ -50,7 +44,6 @@ class StdlibWSClient:
         writer.write("\r\n".join(headers).encode("latin1"))
         await writer.drain()
 
-        # Read handshake response
         status_line = await asyncio.wait_for(reader.readline(), timeout=timeout)
         if b"101" not in status_line:
             writer.close()
@@ -62,6 +55,21 @@ class StdlibWSClient:
             if line in (b"\r\n", b"\n", b""):
                 break
 
+    @classmethod
+    async def connect(cls, url: str, timeout: float = 10.0) -> "StdlibWSClient":
+        parsed = urlparse(url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+        path = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "")
+
+        ssl_ctx = None
+        if parsed.scheme == "wss":
+            import ssl
+            ssl_ctx = ssl.create_default_context()
+
+        coro = asyncio.open_connection(host, port, ssl=ssl_ctx)
+        reader, writer = await asyncio.wait_for(coro, timeout=timeout)
+        await cls._handshake(reader, writer, host, port, path, timeout)
         return cls(reader, writer)
 
     async def send(self, data: str) -> None:
@@ -86,30 +94,34 @@ class StdlibWSClient:
         self.writer.write(bytes(header) + masked_payload)
         await self.writer.drain()
 
+    async def _read_frame(self, remaining: float) -> tuple[bool, int, bytes]:
+        header_bytes = await asyncio.wait_for(self.reader.readexactly(2), timeout=remaining)
+        b1, b2 = header_bytes[0], header_bytes[1]
+        fin = bool(b1 & 0x80)
+        opcode = b1 & 0x0F
+        has_mask = bool(b2 & 0x80)
+        length = b2 & 0x7F
+
+        if length == 126:
+            ext = await asyncio.wait_for(self.reader.readexactly(2), timeout=remaining)
+            (length,) = struct.unpack("!H", ext)
+        elif length == 127:
+            ext = await asyncio.wait_for(self.reader.readexactly(8), timeout=remaining)
+            (length,) = struct.unpack("!Q", ext)
+
+        mask = await asyncio.wait_for(self.reader.readexactly(4), timeout=remaining) if has_mask else None
+        data = await asyncio.wait_for(self.reader.readexactly(length), timeout=remaining)
+        if mask:
+            data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+        return fin, opcode, data
+
     async def recv(self, timeout: float = 30.0) -> str:
         deadline = time.time() + timeout
         fragments = []
 
         while True:
             remaining = max(0.1, deadline - time.time())
-            header_bytes = await asyncio.wait_for(self.reader.readexactly(2), timeout=remaining)
-            b1, b2 = header_bytes[0], header_bytes[1]
-            fin = bool(b1 & 0x80)
-            opcode = b1 & 0x0F
-            has_mask = bool(b2 & 0x80)
-            length = b2 & 0x7F
-
-            if length == 126:
-                ext = await asyncio.wait_for(self.reader.readexactly(2), timeout=remaining)
-                (length,) = struct.unpack("!H", ext)
-            elif length == 127:
-                ext = await asyncio.wait_for(self.reader.readexactly(8), timeout=remaining)
-                (length,) = struct.unpack("!Q", ext)
-
-            mask = await asyncio.wait_for(self.reader.readexactly(4), timeout=remaining) if has_mask else None
-            data = await asyncio.wait_for(self.reader.readexactly(length), timeout=remaining)
-            if mask:
-                data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+            fin, opcode, data = await self._read_frame(remaining)
 
             if opcode == 0x8:  # Close
                 self._closed = True
