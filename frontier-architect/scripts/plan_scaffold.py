@@ -110,6 +110,7 @@ def format_workspace_digest(d: dict[str, Any]) -> str:
 def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
     """Deduplicate near-identical /learn candidates and filter out items already codified on a line of AGENTS.md/SKILL.md."""
     import re
+    stop = {"with", "from", "that", "this", "when", "into", "only", "must", "never", "always", "before", "after", "instead", "rather", "than", "also", "keep", "stay", "under", "files"}
     doc_lines = [
         set(re.findall(r"[a-z_][a-z0-9_]{3,}", ln.lower()))
         for p in doc_paths if p.is_file()
@@ -124,10 +125,37 @@ def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
         seen_norm.add(norm)
         ids = {t.lower() for t in re.findall(r"`([A-Za-z_][A-Za-z0-9_]{3,})(?:\(\))?`", raw)}
         ids |= {t.lower() for t in re.findall(r"\b([A-Za-z][a-z]+[A-Z][A-Za-z0-9]*|[a-z]+_[a-z0-9_]{3,})\b", raw)}
-        if len(ids) >= 2 and any(len(ids & line_toks) >= 2 for line_toks in doc_lines):
+        sig = {t for t in re.findall(r"[a-z_][a-z0-9_]{3,}", raw.lower()) if t not in stop}
+        if (len(ids) >= 2 and any(len(ids & lt) >= 2 for lt in doc_lines)) or (len(sig) >= 4 and any(len(sig & lt) * 5 >= len(sig) * 3 for lt in doc_lines)):
             continue
         kept.append(raw)
     return kept
+
+
+def triage_plan_candidates(root: Path, learns: list[str], skill_learns: list[str]) -> tuple[list[str], list[str]]:
+    """Filter per-plan /learn candidates against AGENTS.md/SKILL.md and drop noisy repeated-read warnings."""
+    skill_md = Path(__file__).resolve().parents[1] / "SKILL.md"
+    cleaned_skill = [x for x in skill_learns if not x.startswith("Transcript audit: repeated file reads")]
+    return _triage_candidates(learns, [root / "AGENTS.md"]), _triage_candidates(cleaned_skill, [skill_md])
+
+
+def record_followup_cid(root: Path, slug: str, cid: str | None, brain_dir: str | None = None) -> bool:
+    """Persist a follow-up /app-debugger CID on state.json so future digests keep it in ## Transcripts."""
+    if not cid or not slug:
+        return False
+    from plan_digest import _load_auditor, _resolve_one_cid
+    from plan_state import load_json, save_json
+    st_path = get_frontier_dir(root) / "plans" / slug / "state.json"
+    if not st_path.is_file() or not isinstance(ps := load_json(st_path, {}), dict):
+        return False
+    loaded = _load_auditor(brain_dir)
+    full_cid = _resolve_one_cid(loaded[1], cid.strip()) if loaded else cid.strip()
+    fcids = [str(c) for c in (ps.get("followup_cids") or []) if c]
+    if any(c.lower().startswith(full_cid.lower()) or full_cid.lower().startswith(c.lower()) for c in fcids):
+        return False
+    ps["followup_cids"] = [*fcids, full_cid]
+    save_json(st_path, ps)
+    return True
 
 
 def merge_debug_retro_items(root: Path, learns: list[str], skill_learns: list[str], escalations: list[str]) -> None:
@@ -173,7 +201,7 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
     learns = [item for d in queued for item in d["learn_candidates"]]
     skill_learns = [
         item for d in queued for item in d["skill_learn_candidates"]
-        if not item.startswith("Transcript audit: repeated file reads")
+        if not item.startswith("Transcript audit: repeated file reads") and "parallel same-file edit(s)" not in item
     ]
     gaps = [item for d in queued for item in d["tool_gaps"]]
     escs = [item for d in queued for item in d["escalations"]]

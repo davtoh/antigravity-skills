@@ -275,7 +275,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     entry_cids = _dedupe_cids([str(e["cid"]) for e in entries if e.get("cid")])
     all_recorded = bool(entries) and all(e.get("cid") or e.get("child_slug") for e in entries)
     saved_followups = [str(c) for c in (ps.get("followup_cids") or []) if c]
-    extra_cids = [] if (ps["status"] == "completed" and all_recorded) else _dedupe_cids([*saved_followups, *(cids or [])])
+    extra_cids = _dedupe_cids([*saved_followups, *([] if (ps["status"] == "completed" and all_recorded) else (cids or []))])
     rows = _transcript_rows(_dedupe_cids([*entry_cids, *extra_cids]), brain_dir)
     active_fcids = saved_followups
     if backfill and cids and ps["status"] != "completed" and rows:
@@ -286,6 +286,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
             save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
     promote_transcript_findings(rows, skill_learns, escalations)
     merge_debug_retro_items(root, learns, skill_learns, escalations)
+    learns, skill_learns = triage_plan_candidates(root, learns, skill_learns)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
@@ -300,8 +301,9 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
 
 from plan_scaffold import (
     _build_workspace_digest_core, _write_scaffold_file, format_digest, format_workspace_digest,
-    merge_debug_retro_items, promote_transcript_findings, refresh_stale_retro_entry,
-    write_learning_scaffold, write_workspace_scaffold,
+    merge_debug_retro_items, promote_transcript_findings, record_followup_cid,
+    refresh_stale_retro_entry, triage_plan_candidates, write_learning_scaffold,
+    write_workspace_scaffold,
 )
 
 def build_workspace_digest(root: Path, brain_dir: str | None = None, backfill: bool = False) -> dict[str, Any]:

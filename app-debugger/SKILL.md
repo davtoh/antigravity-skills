@@ -21,7 +21,7 @@ The **App Debugger** skill provides an end-to-end, empirical debugging workflow.
 ### Step 0: Intelligent Architectural Triage Gate & Co-Invocation Protocol
 
 > [!NOTE]
-> **Cross-Conversation Context Inheritance**: At the start of any new `/app-debugger` session, check `.frontier/DEBUG_RETRO.md` first (else `.diagnostics/DEBUG_RETRO.md`) and read its last 3 entries in one `read_file` call. This provides verified root causes, known virtualenv paths, and active trace IDs from prior sessions — avoiding repeated environment discovery sweeps. When invoking `run_diagnose.py` from a product workspace, prefix `<config_dir>/` (`%USERPROFILE%\.gemini\config` on Windows, `~/.gemini/config` on POSIX).
+> **Cross-Conversation Context Inheritance**: At the start of any new `/app-debugger` session, check existence first (`Test-Path .frontier/DEBUG_RETRO.md; Test-Path .diagnostics/DEBUG_RETRO.md` or `ls`) before calling `read_file`—read the last 3 entries if present (prefer `.frontier/DEBUG_RETRO.md` over `.diagnostics/DEBUG_RETRO.md`) to avoid `read_fail` turns. When invoking `run_diagnose.py` from a product workspace, prefix `<config_dir>/` (`%USERPROFILE%\.gemini\config` on Windows, `~/.gemini/config` on POSIX).
 
 Before jumping into code, classify the user's request:
 - **Pure Bug / Regressed State**: Isolated typo, broken selector, missing null-check, or straightforward layout overflow. Proceed directly to Step 1.
@@ -65,6 +65,8 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    ```bash
    python skills/app-debugger/scripts/run_diagnose.py surface --show-ids --show-routes
    python skills/app-debugger/scripts/run_diagnose.py tests
+   # Targeted module runs (enforces 180s --timeout guard against exit/thread hangs):
+   python skills/app-debugger/scripts/run_diagnose.py tests tests.test_mod1 tests.test_mod2
    ```
 2. **Tier 2 (Container Runtime & Sync)**:
    ```bash
@@ -150,7 +152,7 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - **Milestone Recording (Single-Generation Echo Protocol)**: Only after verified confirmation, record via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
 3. **Report Axiom 9 Honest Verification, `debug-retro` & Continuous Learning**:
    - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
-   - For non-trivial sessions (`>= 20` steps, `>= 1` retry, or Mac/cross-platform RCA), record `python "<config_dir>/skills/app-debugger/scripts/run_diagnose.py" debug-retro --symptom "<Symptom>" --cause "<Cause>" --status <verified|unconfirmed> --cid <cid>` (pass `--plan <slug>` if tied to an active `.frontier` plan, `--learn "<project rule>"`, `--skill-learn "<skill lesson>"`; `debug-retro` automatically updates `DEBUG_RETRO.md`, refreshes `.diagnostics/LEARNING_SCAFFOLD.md` or `.frontier/LEARN_QUEUE.md`, and prints a `--- Turn-End Echo ---` block). Run `diagnose.py transcript-audit --latest 1 --workspace .` and copy-paste the emitted `### Continuous Learning & Introspective Options` block (offering **Introspective Options**: `diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist lessons).
+   - For non-trivial sessions (`>= 20` steps, `>= 1` retry, or Mac/cross-platform RCA), execute in this exact order: (1) `python "<config_dir>/skills/app-debugger/scripts/run_diagnose.py" debug-retro --symptom "<Symptom>" --cause "<Cause>" --status <verified|unconfirmed> --cid <cid>` (pass `--plan <slug>` if tied to an active `.frontier` plan—it auto-persists `--cid` into `followup_cids` and backfills `LEARNING_SCAFFOLD.md`—plus `--learn` / `--skill-learn`; updates `DEBUG_RETRO.md`, `.diagnostics/LEARNING_SCAFFOLD.md` or `.frontier/LEARN_QUEUE.md`, and prints `--- Turn-End Echo ---`), then (2) `diagnose.py transcript-audit --latest 1 --workspace .` (never run `transcript-audit` or `digest` *before* `debug-retro`), and copy-paste the emitted `### Continuous Learning & Introspective Options` block (offering **Introspective Options**: `diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist lessons).
    - If a reusable CDP/runtime verification script was written during debugging, promote it into a Chrome-gated `tests/test_*_e2e*.py` test or registered probe (`run_diagnose.py probe save`) rather than leaving it orphaned in `scratch/`.
 
 ---

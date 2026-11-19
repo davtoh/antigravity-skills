@@ -157,6 +157,17 @@
         "Runs an unmocked real-clock boundary check verifying single clock-domain parity (time.monotonic() vs time.time()) instead of relying solely on synthetic now=100.0 stubs",
         "Applies Pending User-Verification Gate on retry >= 1 before running diagnose.py changelog add"
       ]
+    },
+    {
+      "id": 13,
+      "prompt": "Start a new /app-debugger session in a workspace that might not have DEBUG_RETRO.md yet, run two targeted test modules safely against hangs, and close out a 25-step session tied to plan 'cache-fix' in the exact required order.",
+      "expected_output": "Checks Test-Path .frontier/DEBUG_RETRO.md; Test-Path .diagnostics/DEBUG_RETRO.md before calling read_file to avoid read_fail turns, runs targeted modules via run_diagnose.py tests tests.test_mod1 tests.test_mod2 with the 180s --timeout guard, and executes (1) debug-retro --plan cache-fix (auto-persisting --cid into followup_cids and backfilling LEARNING_SCAFFOLD.md) before (2) diagnose.py transcript-audit --latest 1.",
+      "files": [],
+      "expectations": [
+        "Checks existence with Test-Path before calling read_file on DEBUG_RETRO.md to avoid read_fail turns",
+        "Runs targeted module tests through run_diagnose.py tests tests.test_mod1 tests.test_mod2 to enforce the 180s --timeout guard",
+        "Executes debug-retro --plan <slug> before transcript-audit --latest 1 at turn closeout so followup_cids and LEARNING_SCAFFOLD.md are backfilled first"
+      ]
     }
   ]
 }

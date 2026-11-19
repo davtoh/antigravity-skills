@@ -90,6 +90,8 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("pending:<base_sha>",), (r"pending:<base_sha>", r"plan_engine\.py advance"), "Pending base SHA tracking on advance"),
     (("escalates to /app-debugger", "debug-retro --plan"), (r"diagnose\.py debug-retro --plan <slug>", r"--escalate \"<root_cause>\""), "Anti-thrash escalation to debug-retro"),
     (("single clock-domain parity",), (r"single clock-domain parity", r"time\.monotonic\(\).*time\.time\(\)"), "Single clock-domain parity check"),
+    (("diagnose.py tests <modules...>", "180s --timeout"), (r"diagnose\.py\s+tests\s+<modules\.\.\.>", r"180s\s+`?--timeout`?"), "Targeted unittest routed via diagnose.py tests"),
+    (("followup_cids", "transcript-audit --latest 1 last"), (r"followup_cids", r"transcript-audit --latest 1`?\s+last"), "debug-retro auto-records followup_cids and transcript-audit runs last"),
 ]
 
 

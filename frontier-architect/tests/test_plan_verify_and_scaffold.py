@@ -168,6 +168,64 @@ class TestPlanVerifyAndScaffold(unittest.TestCase):
             self.assertEqual(rc, 0)
             proc.wait.assert_called_once_with(timeout=None)
 
+    def test_triage_plan_candidates_and_record_followup_cid(self) -> None:
+        import plan_digest as pd
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AGENTS.md").write_text("- Always preserve has_target_custom=False when injecting built-in rules in resolve_target_filters.\n", encoding="utf-8")
+            (root / ".TODO").mkdir()
+            (root / ".TODO" / "demo.md").write_bytes("# Demo\n\n## Milestone 1: M1\n- [ ] **a.py**: add\n".encode("utf-8"))
+            plan_engine.main(["init", ".TODO/demo.md"], root=root)
+            plan_engine.main(["advance", "demo", "--milestone", "1"], root=root)
+            plan_engine.main(["retrospective", "demo", "--milestone", "1", "--grade", "A", "--steps", "20", "--retries", "0", "--cid", "11111111", "--learn", "Preserve has_target_custom=False in resolve_target_filters when injecting built-in rules", "--skill-learn", "Transcript audit: repeated file reads (>=3x): a.py (3x)"], root=root)
+            self.assertTrue(ps.record_followup_cid(root, "demo", "22222222"))
+            brain = root / "brain"
+            for cid in ("11111111", "22222222"):
+                lp = brain / cid / ".system_generated" / "logs"
+                lp.mkdir(parents=True)
+                (lp / "transcript.jsonl").write_text('{"step_index":0,"type":"USER_INPUT","content":"hi"}\n', encoding="utf-8")
+            d = pd.build_digest(root, "demo", brain_dir=str(brain), backfill=False)
+            self.assertEqual(d["learn_candidates"], [])
+            self.assertEqual(d["skill_learn_candidates"], [])
+            self.assertEqual({r["cid"] for r in d["transcripts"]}, {"11111111", "22222222"})
+
+    def test_followup_cids_preserved_on_reinit_and_completed_plan(self) -> None:
+        import plan_digest as pd
+        import plan_state as pst
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / ".TODO").mkdir()
+            (root / ".TODO" / "demo.md").write_bytes("# Demo\n\n## Milestone 1: M1\n- [ ] **a.py**: add\n".encode("utf-8"))
+            plan_engine.main(["init", ".TODO/demo.md"], root=root)
+            plan_engine.main(["advance", "demo", "--milestone", "1"], root=root)
+            plan_engine.main(["retrospective", "demo", "--milestone", "1", "--grade", "A", "--cid", "11111111"], root=root)
+            self.assertTrue(ps.record_followup_cid(root, "demo", "22222222"))
+            # Re-running init must preserve followup_cids in state.json
+            plan_engine.main(["init", ".TODO/demo.md"], root=root)
+            state_data = pst.load_json(root / ".frontier" / "plans" / "demo" / "state.json", {})
+            self.assertEqual(state_data.get("followup_cids"), ["22222222"])
+            brain = root / "brain"
+            for cid in ("11111111", "22222222"):
+                lp = brain / cid / ".system_generated" / "logs"
+                lp.mkdir(parents=True)
+                (lp / "transcript.jsonl").write_text('{"step_index":0,"type":"USER_INPUT","content":"hi"}\n', encoding="utf-8")
+            d = pd.build_digest(root, "demo", brain_dir=str(brain), backfill=False)
+            self.assertEqual(d["status"], "completed")
+            self.assertEqual({r["cid"] for r in d["transcripts"]}, {"11111111", "22222222"})
+
+    def test_triage_candidates_keeps_distinct_rules_and_dedupes(self) -> None:
+        import plan_scaffold as psc
+        with tempfile.TemporaryDirectory() as tmpdir:
+            doc = Path(tmpdir) / "AGENTS.md"
+            doc.write_text("- Always use monotonic clocks in cache schedulers.\n", encoding="utf-8")
+            items = [
+                "Use monotonic clocks in cache schedulers",
+                "Use monotonic clocks in cache schedulers!",
+                "Validate archive symlinks uniformly across zip and tar extractors",
+            ]
+            kept = psc._triage_candidates(items, [doc])
+            self.assertEqual(kept, ["Validate archive symlinks uniformly across zip and tar extractors"])
+
 
 if __name__ == "__main__":
     unittest.main()

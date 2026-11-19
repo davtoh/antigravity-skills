@@ -110,8 +110,10 @@ def _sync_learning_scaffold(root: Path, retro_path: Path, plan: str | None, cid:
             sys.path.insert(0, str(fa_scripts))
         try:
             import plan_digest as pd
-            if plan and (scaf := pd.write_learning_scaffold(root, plan, backfill=False, brain_dir=brain_dir)):
-                return scaf
+            if plan:
+                pd.record_followup_cid(root, plan, cid, brain_dir=brain_dir)
+                if scaf := pd.write_learning_scaffold(root, plan, backfill=True, brain_dir=brain_dir):
+                    return scaf
             wd = pd.build_workspace_digest(root, brain_dir=brain_dir, backfill=False)
             return pd.write_workspace_scaffold(root, wd)
         except Exception:

@@ -150,7 +150,7 @@ def _build_plan_state(
             for m in parsed["milestones"]
         ],
     }
-    for key in ("parent_plan", "child_plans", "last_advanced_milestone"):
+    for key in ("parent_plan", "child_plans", "last_advanced_milestone", "followup_cids"):
         if existing.get(key) is not None:
             ps[key] = existing[key]
     return ps

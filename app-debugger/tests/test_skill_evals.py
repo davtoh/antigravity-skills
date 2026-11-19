@@ -162,6 +162,18 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         ok = bool(re.search(r"test_\*_e2e\*\.py", text)) and bool(re.search(r"probe save", text, re.I))
         return ok, f"Promote CDP script to e2e test or probe save: {ok}"
 
+    if "test-path" in exp_lower and "read_fail" in exp_lower:
+        ok = bool(re.search(r"Test-Path\s+\.frontier/DEBUG_RETRO\.md", text)) and bool(re.search(r"read_fail", text))
+        return ok, f"Check Test-Path before read_file on DEBUG_RETRO.md: {ok}"
+
+    if "run_diagnose.py tests" in exp_lower and "180s" in exp_lower:
+        ok = bool(re.search(r"run_diagnose\.py\s+tests\s+tests\.test_mod1", text)) and bool(re.search(r"180s\s+--timeout", text))
+        return ok, f"Targeted module runs with 180s --timeout: {ok}"
+
+    if "followup_cids" in exp_lower and "before transcript-audit" in exp_lower:
+        ok = bool(re.search(r"followup_cids", text)) and bool(re.search(r"never run `transcript-audit`.*before.*`debug-retro`", text, re.I))
+        return ok, f"Exact order debug-retro --plan before transcript-audit: {ok}"
+
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_cnt = sum(1 for w in words if w in text.lower())

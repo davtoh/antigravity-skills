@@ -337,6 +337,18 @@
         "Escalates to /app-debugger or diagnose.py debug-retro --plan <slug> after >= 2 failed attempts and passes --escalate instead of none",
         "Verifies single clock-domain parity (time.monotonic() vs time.time()) without hiding behind synthetic now= stubs"
       ]
+    },
+    {
+      "id": 27,
+      "prompt": "During milestone verification I want to run two targeted unittest modules with hang protection, and after a follow-up /app-debugger session on this plan, how should LEARNING_SCAFFOLD.md and transcript-audit be handled?",
+      "expected_output": "Routes targeted Python unittest runs through diagnose.py tests <modules...> to enforce the 180s --timeout guard, relies on diagnose.py debug-retro --plan <slug> --cid <cid> to auto-record followup_cids and refresh LEARNING_SCAFFOLD.md with --backfill (no manual digest needed unless merging external CIDs), and runs diagnose.py transcript-audit --latest 1 last.",
+      "files": [],
+      "expectations": [
+        "Routes targeted Python unittest runs through diagnose.py tests <modules...> so the 180s --timeout guard protects targeted suites",
+        "Runs diagnose.py audit --path <modified_files> before unittest under Zero Audit Evasion",
+        "Uses diagnose.py debug-retro --plan <slug> --cid <cid> to auto-record followup_cids and refresh LEARNING_SCAFFOLD.md with --backfill, running transcript-audit --latest 1 last",
+        "Uses plan_engine.py digest <slug> --cids <all_cids> --backfill --write-scaffold when merging external CIDs"
+      ]
     }
   ]
 }
