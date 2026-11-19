@@ -197,6 +197,23 @@ class TestSubcommandsExecution(unittest.TestCase):
             self.assertIn("--port", called_cmd)
             self.assertIn("9222", called_cmd)
             self.assertIn("--no-fallback-headless", called_cmd)
+            self.assertIn("--capture-runtime", called_cmd)
+
+            args_no_rt = parser.parse_args([
+                "ui", "--url", "http://localhost:8000", "--eval-file", "probe.js", "--no-capture-runtime",
+            ])
+            cmd_no_rt = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_no_rt)
+            self.assertNotIn("--capture-runtime", cmd_no_rt)
+            self.assertIn("--no-capture-runtime", cmd_no_rt)
+
+            args_eval_file = parser.parse_args(["ui", "--url", "http://localhost:8000", "--eval-file", "probe.js"])
+            cmd_eval_file = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_eval_file)
+            self.assertIn("--capture-runtime", cmd_eval_file)
+
+            args_plain = parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout"])
+            cmd_plain = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_plain)
+            self.assertNotIn("--capture-runtime", cmd_plain)
+            self.assertNotIn("--no-capture-runtime", cmd_plain)
 
     def test_stage_standalone_skill_materializes_ssot(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -314,6 +331,19 @@ class TestMainDispatcher(unittest.TestCase):
             with patch.object(sys, "argv", ["diagnose.py", "surface", "--path", tmpdir]):
                 code = diagnose.main()
                 self.assertEqual(code, 0)
+
+    def test_debug_retro_writes_to_diagnostics_or_frontier(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with patch.object(sys, "argv", ["diagnose.py", "debug-retro", "--path", str(root), "--symptom", "Black screen", "--cause", "Stub cam_01", "--learn", "Avoid stub"]):
+                self.assertEqual(diagnose.main(), 0)
+            self.assertTrue((root / ".diagnostics" / "DEBUG_RETRO.md").is_file())
+            (root / ".frontier").mkdir()
+            with patch.object(sys, "argv", ["diagnose.py", "debug-retro", "--path", str(root), "--symptom", "Overlay missing", "--cause", "Stale tab"]):
+                self.assertEqual(diagnose.main(), 0)
+            retro_text = (root / ".frontier" / "DEBUG_RETRO.md").read_text(encoding="utf-8")
+            self.assertIn("Overlay missing", retro_text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,9 +26,10 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body
+from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body, resolve_commit_hint
 from plan_digest import cmd_digest, register_digest_parser, write_learning_scaffold
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
+from plan_reconcile import _find_duplicate_milestones, cmd_reconcile, register_reconcile_parser
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
     link_child_plan, load_json, record_milestone_advance, resolve_plan_path,
@@ -43,6 +44,7 @@ from plan_telemetry import (
     cmd_retrospective,
     cmd_verify,
     get_prior_learn_candidates,
+    get_prior_tool_gaps,
 )
 
 
@@ -88,6 +90,8 @@ def cmd_init(root: Path, args: argparse.Namespace) -> int:
     parsed = parse_plan_markdown(raw_text)
     if scope_msg := assess_plan_scope(parsed, ps, parent_arg):
         print(scope_msg)
+    if dupes := _find_duplicate_milestones(raw_text):
+        print(f"[plan_engine] DUPLICATE MILESTONE WARNING: Milestone(s) {dupes} declared multiple times in {ps['plan_path']}.")
     if port_msg := _check_plan_portability(raw_text):
         print(port_msg)
     return 0
@@ -142,12 +146,12 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
     parsed = parse_plan_markdown(plan_p.read_text(encoding="utf-8"))
     active_idx = ps["active_milestone_index"]
     target_m = next((m for m in parsed["milestones"] if m["index"] == active_idx), None)
-    prior_learns = get_prior_learn_candidates(root, ps["slug"])
+    prior_learns, prior_gaps = get_prior_learn_candidates(root, ps["slug"]), get_prior_tool_gaps(root, ps["slug"])
 
     all_done = ps["status"] == "completed" or (bool(parsed["milestones"]) and all(m["is_complete"] for m in parsed["milestones"]))
     if all_done or not target_m:
         if args.json:
-            payload = {"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, **({"parent_plan": ps["parent_plan"]} if ps.get("parent_plan") else {})}
+            payload = {"status": "completed", "title": ps["title"], "milestone": None, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, "prior_tool_gaps": prior_gaps, **({"parent_plan": ps["parent_plan"]} if ps.get("parent_plan") else {})}
             print(json.dumps(payload, indent=2))
         else:
             print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
@@ -155,22 +159,19 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
                 print(f"[plan_engine] Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']}) -> Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then 'plan_engine.py next {p['slug']}'.")
         return 0
     if args.json:
-        print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns}, indent=2))
+        print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, "prior_tool_gaps": prior_gaps}, indent=2))
         return 0
 
     print(f"=== Active Milestone: {target_m['index']} - {target_m['title']} ===")
-    if ps.get("parent_plan"):
-        p = ps["parent_plan"]
+    if p := ps.get("parent_plan"):
         print(f"Parent Master: {p['slug']} (Step/Milestone {p['milestone']}) -> {p['plan_path']}")
     c_info = ps.get("child_plans", {}).get(str(active_idx))
     if c_info:
-        if c_info.get("status") == "completed":
-            print(f"Linked Child Plan: {c_info['slug']} [completed] -> MASTER STEP SYNC GATE: Run 'plan_engine.py advance {ps['slug']} --milestone {active_idx}' to advance Master Milestone.")
-        else:
-            print(f"Linked Child Plan: {c_info['slug']} [{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'")
+        msg = f"[completed] -> MASTER STEP SYNC GATE: Run 'plan_engine.py advance {ps['slug']} --milestone {active_idx}' to advance Master Milestone." if c_info.get("status") == "completed" else f"[{c_info['status']}] -> Run 'plan_engine.py next {c_info['slug']}'"
+        print(f"Linked Child Plan: {c_info['slug']} {msg}")
     else:
-        print_master_gate(ps, active_idx, target_m.get("child_plan"))
-    print_milestone_body(target_m, parsed, prior_learns)
+        print_master_gate(ps, active_idx, target_m.get("child_plan"), tasks=target_m.get("tasks"))
+    print_milestone_body(target_m, parsed, prior_learns, prior_gaps)
     return 0
 
 
@@ -207,26 +208,7 @@ def _get_working_tree_code_changes(root: Path) -> tuple[list[str], bool]:
         return [], False
 
 
-def _build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
-    """Build a conventional git commit suggestion for the completed milestone."""
-    milestone_title = next(
-        (m["title"] for m in ps.get("milestones", []) if m.get("index") == target_idx),
-        f"milestone {target_idx}",
-    )
-    stripped_title = re.sub(
-        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
-        "",
-        milestone_title,
-        flags=re.IGNORECASE,
-    )
-    stripped_title = re.sub(r"\*?\([^)]*\)\*?", "", stripped_title)
-    clean_scope = ps.get("slug", "feature").replace("_plan", "").replace("_", "-")
-    clean_title = re.sub(r"[^\w\s-]", "", stripped_title).strip().lower()
-    clean_title = re.sub(r"\s+", " ", clean_title) or f"complete milestone {target_idx}"
-    return f'git commit -m "feat({clean_scope}): {clean_title}"'
-
-
-def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: str, no_sync: bool) -> tuple[str, int] | None:
+def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: str, no_sync: bool) -> tuple[str, int, bool] | None:
     """Auto-advance the linked parent Master Milestone when a child plan completes."""
     if no_sync or ps.get("status") != "completed" or not isinstance(ps.get("parent_plan"), dict):
         return None
@@ -242,8 +224,12 @@ def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: 
     parent_ps = record_milestone_advance(get_frontier_dir(root), parent_ps, int(p_idx), sha, now_iso)
     from plan_telemetry import rollup_child_retrospective
     rollup_child_retrospective(root, parent_ps, int(p_idx), refresh=True)
-    write_learning_scaffold(root, parent_ps["slug"], backfill=False)
-    return parent_ps["slug"], int(p_idx)
+    parent_completed = parent_ps.get("status") == "completed"
+    write_learning_scaffold(root, parent_ps["slug"], backfill=parent_completed)
+    if parent_completed:
+        from plan_digest import build_workspace_digest, write_workspace_scaffold
+        write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
+    return parent_ps["slug"], int(p_idx), parent_completed
 
 
 def cmd_advance(root: Path, args: argparse.Namespace) -> int:
@@ -256,17 +242,18 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     target_idx = args.milestone if args.milestone is not None else ps["active_milestone_index"]
 
     patched = patch_milestone_checkboxes(plan_p, target_idx)
-    sha = args.commit or get_git_sha(root)
+    code_changes, is_git = _get_working_tree_code_changes(root)
+    base_sha = get_git_sha(root)
+    if args.commit:
+        sha = args.commit
+    elif is_git and code_changes:
+        sha = f"pending:{base_sha}" if base_sha else "pending"
+    else:
+        sha = base_sha
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
-
-    code_changes, is_git = _get_working_tree_code_changes(root)
-    has_code_diff = bool(code_changes) if is_git else True
-    if is_git and not code_changes:
-        commit_hint = "(None - Milestone was verification/audit only; no application code changes)"
-    else:
-        commit_hint = _build_commit_suggestion(ps, target_idx)
+    commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective
     rollup_child_retrospective(root, ps, target_idx)
@@ -279,6 +266,9 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
             missing_prior_retro = target_idx - 1
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
+    if ps["status"] == "completed":
+        from plan_digest import build_workspace_digest, write_workspace_scaffold
+        write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
     parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
     print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced)
     return 0
@@ -315,7 +305,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
     p_ver.add_argument("--command", "--cmd", dest="command", help="Explicit verifier command")
+    p_ver.add_argument("--timeout", type=float, default=180.0, help="Max seconds before aborting hung verifier (default: 180; 0 disables)")
     register_digest_parser(sub, plan_parent)
+    register_reconcile_parser(sub, root_parent)
 
     return parser
 
@@ -331,7 +323,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     handlers = {
         "discover": cmd_discover, "init": cmd_init, "status": cmd_status,
         "next": cmd_next, "continue": cmd_next, "advance": cmd_advance,
-        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify, "digest": cmd_digest,
+        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify,
+        "digest": cmd_digest, "reconcile": cmd_reconcile,
     }
     handler = handlers.get(cmd)
     if not handler:

@@ -72,6 +72,11 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("cmd /c npx",), (r"cmd\s+/c\s+npx\s+-y",), "cmd /c npx -y"),
     (("git grep",), (r"git grep -n",), "git grep -n"),
     (("crlf/lf",), (r"crlf/lf",), "CRLF/LF preservation"),
+    (("--no-capture-runtime",), (r"--no-capture-runtime", r"--eval-file"), "ui --no-capture-runtime opt-out"),
+    (("- redirect", "workflow/model"), (r"- REDIRECT", r"transcript-audit"), "transcript-audit - REDIRECT"),
+    (("schedule-while-subagent",), (r"schedule-while-subagent", r"transcript-audit"), "transcript-audit schedule-while-subagent"),
+    (("suggested_grade_cap",), (r"grade cap", r"transcript-audit"), "transcript-audit failure-based grade cap"),
+    (("has_debug_retro",), (r"transcript-audit", r"debug-retro|unescalated thrash"), "transcript-audit has_debug_retro tracking"),
 ]
 
 

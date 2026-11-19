@@ -288,6 +288,67 @@
         "Runs plan_engine.py digest --backfill --write-scaffold, diagnose.py changelog add, and provides git diff main...plan/<slug> on final completion",
         "Surfaces LEARNING_SCAFFOLD.md highlights and Introspective Options and advises clicking New Conversation (+) or /compact"
       ]
+    },
+    {
+      "id": 23,
+      "prompt": "We are designing a Master Roadmap with child plans and just finished a 75-step child plan. How should child plans be sized, how does parent milestone sync work on advance, and what audit should run before closing a >60-step turn?",
+      "expected_output": "Consolidates child plans into 2-3 cohesive milestones (~40-70 steps each), relies on plan_engine.py advance to auto-advance any completed child plan's linked parent master milestone (or passes --no-sync-parent to opt out), and runs diagnose.py transcript-audit --latest 1 for >60-step or subagent-heavy runs before closing the turn.",
+      "files": [],
+      "expectations": [
+        "Consolidates child plans into 2-3 cohesive milestones (~40-70 steps each) instead of fracturing 1-2 file edits across tiny conversations",
+        "Auto-advances linked parent master milestone on child plan completion via plan_engine.py advance (with --no-sync-parent opt-out)",
+        "Runs diagnose.py transcript-audit --latest 1 for >60-step or subagent-heavy planning runs to catch parallel-edit or duplicate-read churn",
+        "Enforces Export-Ready Portable Plan Contract with repo-relative paths and portable commands"
+      ]
+    },
+    {
+      "id": 24,
+      "prompt": "We have an already-approved .TODO/ plan to execute, a master roadmap whose child plan just completed without auto-sync, a near-limit 370-line target file, and a milestone requiring CDP E2E verification. How should we execute this cleanly?",
+      "expected_output": "Executes already-approved .TODO/ plans directly in single-agent Hydrogen without toggling IDE Plan/Execution split mode, advances the master milestone via plan_engine.py advance <master_slug> --milestone <N> before next <master_slug>, runs diagnose.py audit --path <target_files> before editing near-limit files, and promotes the CDP E2E probe into a permanent Chrome-gated tests/test_*_e2e*.py test (ephemeral port=0, isolated temp dir).",
+      "files": [],
+      "expectations": [
+        "Executes already-approved .TODO/ plans directly in single-agent Hydrogen rather than toggling IDE Plan/Execution split mode",
+        "Runs plan_engine.py advance <master_slug> --milestone <N> before next <master_slug> when resuming an un-synced master roadmap",
+        "Runs diagnose.py audit --path <target_files> before editing near-limit files or classes",
+        "Promotes milestone CDP E2E probes into permanent Chrome-gated tests/test_*_e2e*.py tests instead of leaving them in scratch/"
+      ]
+    },
+    {
+      "id": 25,
+      "prompt": "When running plan_engine.py verify on a slow or potentially deadlocked test suite, how does timeout handling work and how should I recover if it hits exit code 124?",
+      "expected_output": "Explains that plan_engine.py verify streams unbuffered output live with a default --timeout 180s (0 disables) and exits with 124 on timeout; if partial output shows active test progress, re-run with --timeout 600 or --timeout 0, otherwise debug un-signaled events or blocking I/O.",
+      "files": [],
+      "expectations": [
+        "Documents plan_engine.py verify --timeout (default 180s, 0 disables) returning exit code 124 on timeout",
+        "Streams live output during verify so partial test progress is visible before timeout",
+        "Recommends re-running slow suites with --timeout 600 or --timeout 0 when partial output shows active progress",
+        "Flags deadlocks or blocking I/O when partial output shows no test progress"
+      ]
+    },
+    {
+      "id": 26,
+      "prompt": "We are starting in IDE Plan Mode to draft a plan and hand off execution to another model, then later continuing with /frontier-architect continue when uncommitted edits exist on advance, and hitting 2 failed attempts on a clock-domain bug. How should each gate behave?",
+      "expected_output": "In IDE Plan Mode, drafts the Plan Artifact (RequestFeedback: true) first, calls exit_plan_mode once to authorize Step 1 .TODO/ plan creation + init ONLY, never re-enters Plan Mode, and emits /frontier-architect continue <slug>. On continue, reads references/cli-cheatsheet.md before dispatching plan_engine.py commands. On advance with uncommitted edits, records pending:<base_sha>. On >= 2 failed attempts, escalates to /app-debugger (or debug-retro --plan <slug>) with --escalate <root_cause> and verifies single clock-domain parity.",
+      "files": [],
+      "expectations": [
+        "Reads references/cli-cheatsheet.md before dispatching any plan_engine.py shell command on continue",
+        "Calls exit_plan_mode once to authorize Step 1 .TODO/ plan creation and init only when IDE Plan Mode is active, never re-entering Plan Mode afterward",
+        "Records pending:<base_sha> on plan_engine.py advance when uncommitted code edits exist",
+        "Escalates to /app-debugger or diagnose.py debug-retro --plan <slug> after >= 2 failed attempts and passes --escalate instead of none",
+        "Verifies single clock-domain parity (time.monotonic() vs time.time()) without hiding behind synthetic now= stubs"
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "During milestone verification I want to run two targeted unittest modules with hang protection, and after a follow-up /app-debugger session on this plan, how should LEARNING_SCAFFOLD.md and transcript-audit be handled?",
+      "expected_output": "Routes targeted Python unittest runs through diagnose.py tests <modules...> to enforce the 180s --timeout guard, relies on diagnose.py debug-retro --plan <slug> --cid <cid> to auto-record followup_cids and refresh LEARNING_SCAFFOLD.md with --backfill (no manual digest needed unless merging external CIDs), and runs diagnose.py transcript-audit --latest 1 last.",
+      "files": [],
+      "expectations": [
+        "Routes targeted Python unittest runs through diagnose.py tests <modules...> so the 180s --timeout guard protects targeted suites",
+        "Runs diagnose.py audit --path <modified_files> before unittest under Zero Audit Evasion",
+        "Uses diagnose.py debug-retro --plan <slug> --cid <cid> to auto-record followup_cids and refresh LEARNING_SCAFFOLD.md with --backfill, running transcript-audit --latest 1 last",
+        "Uses plan_engine.py digest <slug> --cids <all_cids> --backfill --write-scaffold when merging external CIDs"
+      ]
     }
   ]
 }

@@ -234,6 +234,21 @@ class TestStaticAuditor(unittest.TestCase):
                 self.assertEqual(data["status"], "DEFECTS_FOUND")
                 self.assertEqual(data["issues"][0]["type"], "missing_file")
 
+    def test_callable_smoke_skips_lazy_proxy_raising_on_attribute_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "lazy_mod.py").write_text(
+                "class _LazyProxy:\n"
+                "    def __getattribute__(self, name):\n"
+                "        raise RuntimeError('Requested settings, but settings are not configured')\n"
+                "settings = _LazyProxy()\n"
+                "class Ok:\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            issues = static_auditor.audit_callable_smoke(tmp / "lazy_mod.py")
+            self.assertEqual(issues, [])
+
 
 if __name__ == "__main__":
     unittest.main()

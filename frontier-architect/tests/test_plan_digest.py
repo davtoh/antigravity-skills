@@ -220,7 +220,8 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         entry = {"skill_learn_candidates": []}
         pt._enrich_entry_from_audit(entry, "abc12345-0000-0000-0000-000000000001", str(brain))
         joined = " | ".join(entry["skill_learn_candidates"])
-        self.assertIn("parallel edits", joined)
+        self.assertIn("parallel same-file edit(s)", joined)
+        self.assertIn("foo.py", joined)
         self.assertIn("bar.py (3x)", joined)
 
         self._write_retros([{"milestone_index": 1, "token_efficiency_grade": "B", "steps": 50, "retries": 2, "learn_candidates": ["L1"]}])
@@ -260,6 +261,86 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         md = pd.format_digest(digest)
         self.assertIn("## /learn Readiness", md)
         self.assertIn("Candidates: 1 project", md)
+
+    def test_verify_extract_leading_env_and_rollup_refresh_preserves_manual_notes(self) -> None:
+        import plan_verify as pv
+        import plan_rollup as pr
+        env, cmd = pv._extract_leading_env("FOO=bar BAZ=1 python -m unittest")
+        self.assertEqual(env, {"FOO": "bar", "BAZ": "1"})
+        self.assertEqual(cmd, "python -m unittest")
+        merged = pr._merge_master_child_entry(
+            {"milestone_index": 1, "child_slug": "c1", "went_well": ["A"], "learn_candidates": ["L1"]},
+            {"master_cid": "mcid-1", "went_well": ["A", "B"], "notes": "Verified"},
+        )
+        self.assertEqual(merged["master_cid"], "mcid-1")
+        self.assertEqual(merged["went_well"], ["A", "B"])
+        self.assertEqual(merged["notes"], "Verified")
+
+    def test_next_surfaces_prior_tool_gaps_and_digest_all_writes_queue(self) -> None:
+        second = self.root / ".TODO" / "second_plan.md"
+        second.write_text("# Plan: Second\n\n## Milestones\n- [ ] **Milestone 1: Only**\n  - [ ] Task\n\n## Verification Commands\n- echo ok\n", encoding="utf-8")
+        self._write_retros([{
+            "milestone_index": 1, "token_efficiency_grade": "A", "steps": 12, "retries": 0,
+            "tool_reliability_scores": {"overall": 5}, "learn_candidates": ["Proj Rule 1"],
+            "tool_gaps": ["static_auditor skips LazySettings"],
+        }])
+        from plan_engine import main as engine_main
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = engine_main(["next", "demo", "--json"], root=self.root)
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["prior_tool_gaps"], ["static_auditor skips LazySettings"])
+
+        rc_all = engine_main(["digest", "--all", "--write-scaffold"], root=self.root)
+        self.assertEqual(rc_all, 0)
+        queue_p = self.root / ".frontier" / "LEARN_QUEUE.md"
+        self.assertTrue(queue_p.is_file())
+        content = queue_p.read_text(encoding="utf-8")
+        self.assertLess(len(content.splitlines()), 80)
+        self.assertIn("Proj Rule 1", content)
+        self.assertIn("static_auditor skips LazySettings", content)
+        self.assertIn("| second_plan |", content)
+
+    def test_backfill_refreshes_stale_latest_cid_and_promotes_transcript_findings(self) -> None:
+        brain = Path(self._tmp.name) / "brain_stale"
+        c1_dir = brain / "conv-stale-1" / ".system_generated" / "logs"
+        c2_dir = brain / "conv-followup-2" / ".system_generated" / "logs"
+        c1_dir.mkdir(parents=True)
+        c2_dir.mkdir(parents=True)
+        c1_steps = [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nContinue plan\n</USER_REQUEST>"},
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nNo, this is still wrong\n</USER_REQUEST>"},
+        ] + [{"type": "GENERIC", "content": "ok"} for _ in range(110)]
+        c2_steps = [
+            {"type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "edit_file", "args": {"Path": "x.js"}},
+                {"name": "edit_file", "args": {"Path": "x.js"}},
+            ]},
+            {"type": "PLANNER_RESPONSE", "tool_calls": [
+                {"name": "read_file", "args": {"Path": "missing1.js"}},
+                {"name": "read_file", "args": {"Path": "missing2.js"}},
+            ]},
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+            {"type": "GENERIC", "content": "file does not exist", "status": "ERROR"},
+        ]
+        (c1_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in c1_steps) + "\n").encode("utf-8"))
+        (c2_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(s) for s in c2_steps) + "\n").encode("utf-8"))
+        self._write_retros([
+            {"milestone_index": 1, "cid": "conv-stale-1", "steps": 40, "retries": 0,
+             "token_efficiency_grade": "A", "tool_reliability_scores": {"token_efficiency": 5, "hypothesis_accuracy": 5, "tool_reliability": 5, "architectural_defense": 5, "overall": 5}},
+        ])
+        digest = pd.build_digest(self.root, "demo", cids=["conv-followup-2"], brain_dir=str(brain), backfill=True)
+        saved = json.loads((self.root / ".frontier" / "plans" / "demo" / "retrospectives.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved[0]["steps"], 112)
+        self.assertEqual(saved[0]["token_efficiency_grade"], "C")
+        self.assertEqual(saved[0]["tool_reliability_scores"]["token_efficiency"], 3)
+        self.assertIn("conv-followup-2", digest["cids"])
+        self.assertIn("User correction (conv-sta): step 1: No, this is still wrong", digest["escalations"])
+        joined_sk = " | ".join(digest["skill_learn_candidates"])
+        self.assertIn("parallel same-file edit(s) (x.js)", joined_sk)
+        self.assertIn("2 read_fail path-guess errors", joined_sk)
 
 
 if __name__ == "__main__":

@@ -9,8 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import json
+import os
 import subprocess
 import sys
+import tempfile
+import time
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -72,11 +75,25 @@ def load_json(path: Path, default: Any = None) -> Any:
 
 
 def save_json(path: Path, data: Any) -> None:
-    """Atomic JSON file writer."""
+    """Atomic JSON file writer safe against concurrent temp-file collisions."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_p = path.with_suffix(".tmp")
-    temp_p.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    temp_p.replace(path)
+    payload = json.dumps(data, indent=2)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp", dir=str(path.parent))
+    tmp_p = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(payload)
+        for attempt in range(3):
+            try:
+                os.replace(tmp_p, path)
+                return
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
+    finally:
+        if tmp_p.exists():
+            tmp_p.unlink(missing_ok=True)
 
 
 def resolve_plan_path(root: Path, target: str | None = None) -> Path | None:
@@ -133,7 +150,7 @@ def _build_plan_state(
             for m in parsed["milestones"]
         ],
     }
-    for key in ("parent_plan", "child_plans", "last_advanced_milestone"):
+    for key in ("parent_plan", "child_plans", "last_advanced_milestone", "followup_cids"):
         if existing.get(key) is not None:
             ps[key] = existing[key]
     return ps

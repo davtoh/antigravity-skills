@@ -109,10 +109,16 @@ class TestFrontierRegressions(unittest.TestCase):
         import plan_telemetry
 
         entry: dict = {}
-        fake_row = {"parallel_same_file_edits": [{"step": 77, "path": "c:/repo/tests/foo.py", "calls": 3}], "repeated_reads": {}}
+        fake_row = {
+            "parallel_same_file_edits": [
+                {"step": 77, "path": "c:/repo/tests/foo.py", "calls": 3},
+                {"step": 80, "path": "c:/repo/tests/foo.py", "calls": 2},
+            ],
+            "repeated_reads": {},
+        }
         with patch("plan_digest.audit_single_cid", return_value=fake_row):
             plan_telemetry._enrich_entry_from_audit(entry, "12345678", None)
-        self.assertEqual(entry["skill_learn_candidates"], ["Transcript audit: step 77 issued 3 parallel edits on foo.py"])
+        self.assertEqual(entry["skill_learn_candidates"], ["Transcript audit: 2 parallel same-file edit(s) (foo.py)"])
 
     def test_cap_tri_by_grade_clamps_token_and_hypothesis_scores(self) -> None:
         import plan_telemetry

@@ -20,6 +20,9 @@ The **App Debugger** skill provides an end-to-end, empirical debugging workflow.
 
 ### Step 0: Intelligent Architectural Triage Gate & Co-Invocation Protocol
 
+> [!NOTE]
+> **Cross-Conversation Context Inheritance**: At the start of any new `/app-debugger` session, check existence first (`Test-Path .frontier/DEBUG_RETRO.md; Test-Path .diagnostics/DEBUG_RETRO.md` or `ls`) before calling `read_file`—read the last 3 entries if present (prefer `.frontier/DEBUG_RETRO.md` over `.diagnostics/DEBUG_RETRO.md`) to avoid `read_fail` turns. When invoking `run_diagnose.py` from a product workspace, prefix `<config_dir>/` (`%USERPROFILE%\.gemini\config` on Windows, `~/.gemini/config` on POSIX).
+
 Before jumping into code, classify the user's request:
 - **Pure Bug / Regressed State**: Isolated typo, broken selector, missing null-check, or straightforward layout overflow. Proceed directly to Step 1.
 - **Quarantined Defect Remediation**: When resolving defects cataloged in `.diagnostics/defect_catalog.json` (or uncovered via `diagnose.py scan`):
@@ -32,6 +35,7 @@ Before jumping into code, classify the user's request:
   1. **Strict Division of Labor**: `app-debugger` handles empirical diagnosis and reproduction (Steps 1–3) strictly under the Pre-Flight Tool-Call Ceiling ($\le 3-5$ tools).
   2. **Yield Gate**: Once the Symptom-to-Root-Cause Matrix is constructed, `app-debugger` **must yield the floor to `frontier-architect`** to evaluate 3-tier SOTA alternatives, establish API contracts, and draft the formal Implementation Plan Artifact before modifying production code.
   3. `app-debugger` resumes in Step 4 for closed-loop verification after architectural plan approval.
+  4. **Mid-Plan Escalation Bridge**: When invoked from `/frontier-architect` Phase 6.5 (`>= 2` failed test/runtime attempts), read `.frontier/plans/<slug>/` contracts and pass `--plan <slug>` to `run_diagnose.py debug-retro` so verified root causes flow directly into `LEARNING_SCAFFOLD.md`.
 
 ### Step 1: Pre-Flight UX Gate (`ask_question`)
 
@@ -39,7 +43,7 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 
 > [!IMPORTANT]
 > **Pre-Flight Tool-Call Ceiling ($\le 3-5$ calls)**:
-> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted grep, or 1 device probe). If port, process, or environment ambiguity remains after 3 tool calls, **STOP immediately and present the Pre-Flight UX Gate (`ask_question`)**. NEVER embark on a 50–100 tool exploration marathon, run repetitive ad-hoc Python socket loops, scan ports blindly, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
+> Before calling `ask_question`, execute at most **3 to 5 targeted tool calls** (e.g. 1 status check, 1 targeted `git grep -n`, or 1 device probe). Never guess file paths in `read_file`—locate paths via `git grep` or `surface` first, and delegate `> 3–4` file sweeps to a `research` subagent (`Model: 'flash'`) regardless of parent model (`Orchestrator`, `Opus`, `Hydrogen`). If port, process, or environment ambiguity remains after 3 tool calls, **STOP immediately and present the Pre-Flight UX Gate (`ask_question`)**. NEVER embark on a 50–100 tool exploration marathon, run repetitive ad-hoc Python socket loops, scan ports blindly, or reverse-engineer the entire architecture before presenting the Pre-Flight UX Gate.
 >
 > **Post-Interview Diagnosis Budget**: Even after the user selects deep diagnosis, cap third-party library inspection (e.g., `uvicorn`, `fastapi`) at **$\le 3$ targeted probes** or delegate to a `research` subagent. Never guess HTTP endpoints (`/api/health`, `/api/system/status`)—run `surface --show-routes` or `git grep` routes first.
 
@@ -48,7 +52,10 @@ Before running browser diagnostics or when the execution mode is ambiguous, ask 
 - **Option 3**: `Backend & Runtime Only - Audit container stats, logs, tracebacks, and tests without browser CDP`
 
 > [!NOTE]
-> If the user has already specified the mode in their prompt (e.g., "debug the live tab", "test in headless mode", or "fix container crash"), **skip** `ask_question` and proceed directly to Step 2.
+> If the user has already specified the mode in their prompt (e.g., "debug the live tab", "test in headless mode", or "fix container crash"), **skip** `ask_question` for mode selection and proceed directly to Step 2.
+> **Live Chrome Authorization & Subagent Guard**: Chrome only shows *"Allow remote debugging?"* when CDP connects, and users should not have to watch the browser mid-session.
+> - **Subagents / `/goal` (No User Access)**: NEVER call `ask_question` inside a subagent or `/goal` run—use `--headless` when isolated checks suffice, or report `UNVERIFIED` and return to the parent coordinator.
+> - **Interactive Parent Coordinator (`--live`)**: NEVER chain `diagnose.py ui --live` behind another command or background it silently. Either trigger a fast `ui --live --list-tabs` handshake up front at Step 2 (so Chrome prompts immediately) or run `--headless` during edits and call `ask_question` at the end before `--live` (and immediately on `TimeoutError: timed out during opening handshake`) with: `(Recommended) Click 'Allow' in Chrome and run/retry --live`, `Use --headless fallback (unattended / user away)`, or `Skip live check (mark UNVERIFIED)`.
 
 ### Step 2: Reproduce First (3-Tier & Dynamic Domain Probes)
 
@@ -58,20 +65,22 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    ```bash
    python skills/app-debugger/scripts/run_diagnose.py surface --show-ids --show-routes
    python skills/app-debugger/scripts/run_diagnose.py tests
+   # Targeted module runs (enforces 180s --timeout guard against exit/thread hangs):
+   python skills/app-debugger/scripts/run_diagnose.py tests tests.test_mod1 tests.test_mod2
    ```
 2. **Tier 2 (Container Runtime & Sync)**:
    ```bash
    python skills/app-debugger/scripts/run_diagnose.py container --lines 100 --sync-check <modified_files>
    ```
-3. **Tier 3 (Browser UI Layout via CDP)**:
+3. **Tier 3 (Browser UI Layout & Runtime Telemetry via CDP)**:
    ```bash
-   # Live visible tab (with optional settle delay for scroll-snap resting offsets and transitions)
-   python skills/app-debugger/scripts/run_diagnose.py ui --live --audit-layout
+   # Live visible tab (brings tab to front, fails loud unless --allow-headless-fallback, captures console/HTTP/localStorage)
+   python skills/app-debugger/scripts/run_diagnose.py ui --live --capture-runtime --audit-layout
    python skills/app-debugger/scripts/run_diagnose.py ui --live --wait 2.0 --audit-layout
    # Evaluate multi-statement JS without PowerShell quote stripping
-   python skills/app-debugger/scripts/run_diagnose.py ui --live --eval-file scratch/probe.js
-   # Or isolated headless background
-   python skills/app-debugger/scripts/run_diagnose.py ui --headless --audit-layout --screenshot scratch/bug_before.jpg
+   python skills/app-debugger/scripts/run_diagnose.py ui --live --capture-runtime --eval-file scratch/probe.js
+   # Or isolated headless background (note: fresh empty profile has no live localStorage/cookies)
+   python skills/app-debugger/scripts/run_diagnose.py ui --headless --capture-runtime --audit-layout --screenshot scratch/bug_before.jpg
    ```
 4. **Dynamic Domain Probes (Hardware, Databases, Network)**:
    - **Do NOT create throwaway scripts in `scratch/`**.
@@ -90,6 +99,12 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    - When diagnosing hardware devices (e.g. OpenCV camera indices, DirectShow locks, OBS virtual loops, COM ports, or audio capture), **do NOT invoke browser CDP layout commands (`ui`)**.
    - Execute the project's native status command (e.g. `python scripts/camera_manager.py --status`) or run dynamic domain probes (`run_diagnose.py probe run camera_hardware`).
    - Always run with the project's active virtualenv (let `run_diagnose.py` auto-resolve `.venv`, or invoke `.venv/bin/python` / `.venv/Scripts/python.exe`) to prevent `ModuleNotFoundError: No module named 'cv2'`.
+
+> [!IMPORTANT]
+> **Cross-Platform Virtualenv Pre-Execution Invariant**: Before running `unittest`, project scripts, or any Python command against the workspace, you MUST verify and use the project's `.venv` interpreter. Never invoke bare `python` or `python3` — these resolve to system Python (which lacks all project dependencies) and will produce `ModuleNotFoundError` cascades that waste diagnostic tokens and produce false negatives.
+> - **macOS / Linux:** `.venv/bin/python -m unittest ...`
+> - **Windows:** `.venv\Scripts\python.exe -m unittest ...`
+> Use `run_diagnose.py` (which auto-resolves `.venv`) or `diagnose.py tests` to run suites safely. If `.venv` is absent, stop and prompt the user to create it (`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`) before proceeding.
 6. **Quarantined Tactical Defect Reproduction (Red-to-Green)**:
    - Unlock the quarantined defect and checkout an isolated micro-branch:
      ```bash
@@ -106,6 +121,13 @@ Never edit code on speculation. Always establish a reproducible failing baseline
 Before touching code, synthesize findings into a structured matrix that maps every observed symptom to its verified root cause:
 
 > [!IMPORTANT]
+> **Diagnostic-Only & RCA Retrospective Gate**:
+> When this session ends at Step 3 without code edits (e.g. investigation-only, trace audit, or RCA artifact generation), do **NOT** skip retrospectives. Apply the following **before ending the turn** if any of these conditions are true: (a) an RCA document was written to `.TODO/` or `.diagnostics/`; (b) investigation exceeded ≥ 30 steps without code edits; or (c) the user requested findings be saved for later planning:
+> 1. **Record:** `python skills/app-debugger/scripts/run_diagnose.py debug-retro --symptom "<Symptom>" --cause "<Cause>" --status unconfirmed --cid <cid>`
+> 2. **Emit** the `### Continuous Learning & Introspective Options` block (offering `diagnose.py transcript-audit --latest 1`, `/learn` to persist lessons, or `plan_engine.py digest <slug> --backfill --write-scaffold` if tied to an active plan).
+> This gate is **not optional** for diagnostic-only sessions — skipping it means lessons and root causes are silently lost between conversations.
+
+> [!IMPORTANT]
 > **Filesystem & Target Path Verification**:
 > Before entering Target File & Line into the matrix, empirically verify that the target path physically exists as a file (os.path.isfile / Test-Path). Never guess filenames or mistake package directories for source files.
 
@@ -117,19 +139,21 @@ Before touching code, synthesize findings into a structured matrix that maps eve
 
 ### Step 4: Surgical Atomic Fix & Hybrid Verification
 
-1. **Apply Surgical Edits**:
+1. **Apply Surgical Edits (or Escalate Multi-Module SSOT Leaks)**:
    - Adhere to Modularity Budgets ($\le$ 350 lines per file, functions $\le$ 30 lines).
    - Fix the identified root causes without side effects or unneeded refactoring.
+   - **SSOT Escalation Gate**: If `git grep` shows `>= 3` files owning the same state (e.g., duplicated defaults) or 1 patch fails live verification, STOP local patching and yield the floor to `/frontier-architect` to establish an SSOT contract before further edits.
 2. **Execute Environment-Parity & Lifecycle Verification**:
-   - Re-run diagnostic commands and domain probes.
-   - **Environment Parity**: Never verify solely against synthetic mocks when a live database or hardware device is configured. Test against real configuration states (e.g. existing database embedding dimensions).
+   - Re-run diagnostic commands and domain probes (`--capture-runtime` for live browser console/HTTP/`localStorage` parity).
+   - **Environment Parity & Real-Clock Checks**: Never verify solely against synthetic mocks, blank `--headless` profiles, or injected `now=100.0` timestamps when live `localStorage`/DB/hardware state or real clocks are involved; run an unmocked boundary check verifying single clock-domain parity (`time.monotonic()` vs `time.time()`).
    - **Resource Lifecycle Check**: Explicitly verify cleanup (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
    - **Test Job & Daemon Cleanup Invariant**: Before completing Step 4, query active background tasks (`manage_task list`) and API job ledgers (`GET /api/.../jobs`). Terminate test daemons (`manage_task kill`) and cancel any unfinished test jobs so zero orphan tasks survive into subsequent user turns.
-   - **Interactive User Gate**: When confidence is partial, physical hardware is involved, or an operation is sensitive/destructive, provide a 1-line verification recipe and prompt the user to confirm live execution before closing the milestone.
-   - **Milestone Recording (Single-Generation Echo Protocol)**: When closing a verified bug fix milestone, record it via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
-3. **Report Axiom 9 Honest Verification & Introspective Options**:
+   - **Pending User-Verification Gate (Zero Premature `CHANGELOG.md` Clutter)**: For interactive UI/live-browser/hardware bugs (or any retry $\ge 1$), do **not** run `diagnose.py changelog add`, claim `"FIXED"`, or emit `*Introspective Options*` until `--live` CDP verifies the exact state transition against the user's real session **or** the user confirms via a 1-click `ask_question` (`Confirmed fixed in my browser` / `Still broken — describe what happened`). Report `"Patch Applied — Ready for Live Verification"` with a 1-line check recipe first; run `changelog add` only after confirmation (pure deterministic backend/unit-test bugs remain exempt).
+   - **Milestone Recording (Single-Generation Echo Protocol)**: Only after verified confirmation, record via `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"`. Re-use the emitted commit command directly rather than regenerating commit prose.
+3. **Report Axiom 9 Honest Verification, `debug-retro` & Continuous Learning**:
    - Clearly report each tier as `VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`.
-   - At task completion, include a 1–2 line **Introspective Options** hint so the user can choose whether to run `python skills/system-diagnostics/scripts/diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist project/skill lessons.
+   - For non-trivial sessions (`>= 20` steps, `>= 1` retry, or Mac/cross-platform RCA), execute in this exact order: (1) `python "<config_dir>/skills/app-debugger/scripts/run_diagnose.py" debug-retro --symptom "<Symptom>" --cause "<Cause>" --status <verified|unconfirmed> --cid <cid>` (pass `--plan <slug>` if tied to an active `.frontier` plan—it auto-persists `--cid` into `followup_cids` and backfills `LEARNING_SCAFFOLD.md`—plus `--learn` / `--skill-learn`; updates `DEBUG_RETRO.md`, `.diagnostics/LEARNING_SCAFFOLD.md` or `.frontier/LEARN_QUEUE.md`, and prints `--- Turn-End Echo ---`), then (2) `diagnose.py transcript-audit --latest 1 --workspace .` (never run `transcript-audit` or `digest` *before* `debug-retro`), and copy-paste the emitted `### Continuous Learning & Introspective Options` block (offering **Introspective Options**: `diagnose.py transcript-audit --latest 1`, `plan_engine.py digest <slug> --backfill --write-scaffold`, or `/learn` to persist lessons).
+   - If a reusable CDP/runtime verification script was written during debugging, promote it into a Chrome-gated `tests/test_*_e2e*.py` test or registered probe (`run_diagnose.py probe save`) rather than leaving it orphaned in `scratch/`.
 
 ---
 

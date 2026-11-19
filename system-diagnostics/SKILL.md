@@ -74,7 +74,8 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | Real-World Scenario / Objective | Mode / Inputs | Key Parameters | Exact Runnable Command |
 | :--- | :--- | :--- | :--- |
 | **Quick 3-Tier Health Audit** | Dev server / repo | Auto-probes ports & containers | `python skills/system-diagnostics/scripts/diagnose.py all` |
-| **Inspect Active Buggy Chrome Tab** | Live visible tab | Attaches via CDP to open tab | `python skills/system-diagnostics/scripts/diagnose.py ui --live --audit-layout` |
+| **Inspect Active Buggy Chrome Tab** | Live visible tab | Brings tab to front; fails loud unless fallback allowed | `python skills/system-diagnostics/scripts/diagnose.py ui --live --capture-runtime --audit-layout` |
+| **Log Debug Retrospective** | Post-fix debug session | Records `DEBUG_RETRO.md`, `LEARNING_SCAFFOLD.md`, & `--- Turn-End Echo ---` (`--plan`, `--learn`, `--skill-learn`) | `python skills/system-diagnostics/scripts/diagnose.py debug-retro --symptom "..." --cause "..." --status verified --cid <cid>` |
 | **Capture Headless Visual Proof** | Headless sandbox | Viewport render to file | `python skills/system-diagnostics/scripts/diagnose.py ui --screenshot scratch/bug.jpg` |
 | **Inspect Target Selectors** | Specific elements | Measures bounding box & styles | `python skills/system-diagnostics/scripts/diagnose.py ui --selectors "#app,#main-canvas,video"` |
 | **Hard Reload & Verify Post-Fix** | Fresh assets reload | Forces page refresh before audit | `python skills/system-diagnostics/scripts/diagnose.py ui --navigate --audit-layout` |
@@ -129,7 +130,9 @@ python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
 - `--click <SELECTOR>`: Clicks an element before measuring.
 - `--window-size <WxH>`: Headless viewport dimensions (default: `1440x900`).
 - `--port <PORT>`: Debugging port override.
-- `--no-fallback-headless`: Fails immediately if live Chrome is unreachable instead of falling back to headless.
+- `--no-fallback-headless`: Fails immediately if live Chrome is unreachable instead of falling back to headless (automatically enforced with `--live` unless `--allow-headless-fallback` is set).
+- `--allow-headless-fallback`: Permits silent fallback to headless Chrome if `--live` fails.
+- `--capture-runtime` / `--no-capture-runtime`: Captures console errors, uncaught JS exceptions, HTTP $\ge 400$ / WebSocket errors, and `localStorage` state (default ON when `--eval` or `--eval-file` is set; pass `--no-capture-runtime` to opt out).
 
 ### Subcommand: `container`
 ```bash
@@ -152,9 +155,10 @@ python skills/system-diagnostics/scripts/diagnose.py surface [OPTIONS]
 
 ### Subcommand: `tests`
 ```bash
-python skills/system-diagnostics/scripts/diagnose.py tests [ARGS...]
+python skills/system-diagnostics/scripts/diagnose.py tests [--timeout 180] [ARGS...]
 ```
 - `--path <DIR>`: Workspace root to scan for `.venv` (default: current directory).
+- `--timeout <SEC>`: Max seconds before aborting a hung suite (default: `180`; `0` disables; exits with `124`).
 - `[ARGS...]`: Arguments forwarded to `python -m unittest` (default: `discover -s tests -p "test_*.py"`).
 
 ### Subcommand: `all`
@@ -204,7 +208,7 @@ python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <I
 - `--cids <IDs...>`: Full UUIDs, 8-char prefixes, or comma-separated IDs from `<appDataDir>/brain`.
 - `--latest <N>` / `--min-steps <N>`: Audit the `N` most recent substantive conversations (prefers `>= 6` steps, skipping empty new chats).
 - `--brain-dir <DIR>`: Override brain directory (or set `AGY_BRAIN_DIR`).
-- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
+- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, `- REDIRECT` workflow/model switches, `schedule-while-subagent` flags, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
 
 ### Subcommand: `resolve-defect` & `dismiss-defect`
 ```bash

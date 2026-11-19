@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import subprocess
 
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
 
@@ -110,3 +111,33 @@ def _refresh_parent_rollup(root: Path, ps: dict[str, Any], brain_dir: str | None
     if rollup_child_retrospective(root, parent_ps, int(parent["milestone"]), refresh=True):
         from plan_digest import write_learning_scaffold
         write_learning_scaffold(root, parent_ps["slug"], backfill=False, brain_dir=brain_dir)
+
+
+def sync_pending_commit_shas(root: Path, ps: dict[str, Any]) -> bool:
+    """Resolve `pending:<base_sha>` milestone commit SHAs from subsequent git commits."""
+    milestones = ps.get("milestones") or []
+    used = {str(m.get("commit_sha") or "") for m in milestones if m.get("commit_sha") and not str(m.get("commit_sha")).startswith("pending")}
+    changed = False
+    for m in milestones:
+        sha = str(m.get("commit_sha") or "")
+        if m.get("status") != "completed" or not sha.startswith("pending"):
+            continue
+        base = sha.split(":", 1)[1] if ":" in sha else ""
+        rev_range = f"{base}..HEAD" if base else "HEAD"
+        try:
+            res = subprocess.run(
+                ["git", "log", rev_range, "--format=%h", "--reverse", "-n", "50"],
+                cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3.0,
+            )
+        except (OSError, subprocess.SubprocessError):
+            break
+        if res.returncode != 0:
+            continue
+        hit = next((h.strip() for h in res.stdout.splitlines() if h.strip() and h.strip() != base and h.strip() not in used), None)
+        if hit:
+            m["commit_sha"] = hit
+            used.add(hit)
+            changed = True
+    if changed:
+        save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
+    return changed
