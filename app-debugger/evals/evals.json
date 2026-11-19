@@ -146,6 +146,17 @@
         "Promotes reusable CDP/runtime verification scripts into Chrome-gated tests/test_*_e2e*.py or run_diagnose.py probe save instead of leaving them orphaned in scratch/",
         "Appends Continuous Learning & Introspective Options and runs diagnose.py transcript-audit --latest 1"
       ]
+    },
+    {
+      "id": 12,
+      "prompt": "We were escalated here from /frontier-architect Phase 6.5 after 2 failed test attempts on a cache TTL bug where unit tests passed with injected now=100.0 stubs but production fails due to time.monotonic() vs time.time() mismatch. How should app-debugger bridge the plan and verify the fix?",
+      "expected_output": "Follows Mid-Plan Escalation Bridge by reading .frontier/plans/<slug>/ contracts and passing --plan <slug> to run_diagnose.py debug-retro so verified root causes flow into LEARNING_SCAFFOLD.md, and runs an unmocked real-clock boundary check verifying single clock-domain parity (time.monotonic() vs time.time()) without hiding behind synthetic now=100.0 stubs.",
+      "files": [],
+      "expectations": [
+        "Reads .frontier/plans/<slug>/ contracts and passes --plan <slug> to run_diagnose.py debug-retro when escalated from /frontier-architect Phase 6.5",
+        "Runs an unmocked real-clock boundary check verifying single clock-domain parity (time.monotonic() vs time.time()) instead of relying solely on synthetic now=100.0 stubs",
+        "Applies Pending User-Verification Gate on retry >= 1 before running diagnose.py changelog add"
+      ]
     }
   ]
 }

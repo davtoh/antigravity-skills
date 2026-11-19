@@ -242,12 +242,17 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     target_idx = args.milestone if args.milestone is not None else ps["active_milestone_index"]
 
     patched = patch_milestone_checkboxes(plan_p, target_idx)
-    sha = args.commit or get_git_sha(root)
+    code_changes, is_git = _get_working_tree_code_changes(root)
+    base_sha = get_git_sha(root)
+    if args.commit:
+        sha = args.commit
+    elif is_git and code_changes:
+        sha = f"pending:{base_sha}" if base_sha else "pending"
+    else:
+        sha = base_sha
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
-
-    code_changes, is_git = _get_working_tree_code_changes(root)
     commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective

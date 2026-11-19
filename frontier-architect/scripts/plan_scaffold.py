@@ -47,6 +47,10 @@ def format_digest(d: dict[str, Any]) -> str:
     lines += [
         "", "## /learn Readiness",
         f"- Candidates: {proj_n} project | {skill_n} skill/tooling | {gap_n} tool gaps | {esc_n} escalations" + (" -> invoke `/learn`." if (proj_n + skill_n + gap_n) else " -> clean (no pending candidates)."),
+        "", "## Learning Scaffold Highlights",
+        f"- Health: {len(alerts)} alert(s), {esc_n} escalation(s)" + (f" ({alerts[0]})" if alerts else ""),
+        f"- Top Project Lesson: {d['learn_candidates'][0]}" if d["learn_candidates"] else "- Top Project Lesson: none",
+        f"- Top Skill/Tooling Lesson: {d['skill_learn_candidates'][0]}" if d.get("skill_learn_candidates") else "- Top Skill/Tooling Lesson: none",
     ]
     ta_cmd = f"`diagnose.py transcript-audit --cids {' '.join(d['cids'])}` (or `--latest 1`)" if d.get("cids") else "`diagnose.py transcript-audit --latest 1`"
     lines += [
@@ -163,7 +167,8 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
         done = sum(1 for m in d["milestones"] if m["status"] == "completed")
         plans.append({"slug": d["slug"], "title": d["title"], "status": d["status"], "done": done, "total": len(d["milestones"]), "retro_entries": d["retro_entries"], "integrity_issues": len(d["integrity_issues"])})
         (completed_digests if d["status"] == "completed" else active_digests).append(d)
-    # Keep active plans + up to 5 recent completed plans in LEARN_QUEUE.md so historical backlogs don't drown active items.
+    # Keep active plans + up to 5 most recent completed plans in LEARN_QUEUE.md so historical backlogs don't drown active items.
+    completed_digests.sort(key=lambda d: str(d.get("latest_retro_at") or ""), reverse=True)
     queued = active_digests + completed_digests[:5]
     learns = [item for d in queued for item in d["learn_candidates"]]
     skill_learns = [
@@ -246,6 +251,8 @@ def promote_transcript_findings(
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
         if (pm := int(r.get("plan_mode_calls", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} called enter/exit_plan_mode ({pm}x)")
+        if int(r.get("total_failures") or 0) >= 4 and not r.get("has_debug_retro"):
+            _append_unique(escalations, f"Unescalated thrash ({cid8}): {r['total_failures']} failures without /app-debugger or debug-retro")
         for corr in r.get("user_corrections") or ():
             _append_unique(escalations, f"User correction ({cid8}): {corr}")
         for redir in r.get("workflow_redirects") or ():

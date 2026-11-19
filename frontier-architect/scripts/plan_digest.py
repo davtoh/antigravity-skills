@@ -16,6 +16,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+from plan_rollup import sync_pending_commit_shas
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
 
 _GRADE_ORDER = "ABCDF"
@@ -264,6 +265,8 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     if not plan_p:
         return None
     _ws, ps = bootstrap_plan(root, plan_p)
+    if backfill:
+        sync_pending_commit_shas(root, ps)
     backfilled = backfill_retrospectives(root, ps, cids, brain_dir) if backfill else 0
     entries = _load_entries(root, ps)
     learns, escalations = _unresolved(entries)
@@ -290,23 +293,16 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "retro_entries": len(entries), "backfilled_entries": backfilled, "integrity_issues": check_retro_integrity(entries),
         "went_well": went_well, "learn_candidates": learns, "skill_learn_candidates": skill_learns,
         "tool_gaps": tool_gaps, "escalations": escalations,
+        "latest_retro_at": max((str(e.get("timestamp") or "") for e in entries), default=str(ps.get("updated_at") or "")),
         "cids": _dedupe_cids([*entry_cids, *active_fcids]), "transcripts": rows, "transcripts_unavailable": rows is None,
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
-
 from plan_scaffold import (
-    _build_workspace_digest_core,
-    _write_scaffold_file,
-    format_digest,
-    format_workspace_digest,
-    merge_debug_retro_items,
-    promote_transcript_findings,
-    refresh_stale_retro_entry,
-    write_learning_scaffold,
-    write_workspace_scaffold,
+    _build_workspace_digest_core, _write_scaffold_file, format_digest, format_workspace_digest,
+    merge_debug_retro_items, promote_transcript_findings, refresh_stale_retro_entry,
+    write_learning_scaffold, write_workspace_scaffold,
 )
-
 
 def build_workspace_digest(root: Path, brain_dir: str | None = None, backfill: bool = False) -> dict[str, Any]:
     """Aggregate active and completed plans across the workspace into one /learn queue."""

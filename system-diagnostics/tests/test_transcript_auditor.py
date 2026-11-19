@@ -60,7 +60,7 @@ class TestTranscriptAuditorCore(_TranscriptTestBase):
         self.assertEqual(row["models"], ["Claude Sonnet 5.5 (Medium)"])
         self.assertEqual(row["reads_after_subagent"], 2)
         self.assertEqual(row["repeated_reads"], {"a.py": 2})
-        self.assertEqual(row["suggested_grade_cap"], "A")
+        self.assertEqual(row["suggested_grade_cap"], "B")
 
     def test_parallel_same_file_edits_flagged(self) -> None:
         _write(self.brain, "c2", [_planner(("edit_file", {"Path": "S.md"}), ("edit_file", {"Path": "S.md"}), ("edit_file", {"Path": "T.md"}))])
@@ -283,6 +283,50 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["workflow_redirects"], [])
         self.assertEqual(len(row["user_corrections"]), 1)
         self.assertEqual(row["schedule_while_subagent"], 0)
+
+    def test_grade_cap_respects_failures_and_tracks_debug_retro(self) -> None:
+        _write(self.brain, "fail-cap-b", [
+            _planner(("run_command", {"CommandLine": "pytest a"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+        ])
+        _write(self.brain, "fail-cap-c", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\n/app-debugger fix bug\n</USER_REQUEST>"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py debug-retro --symptom s --cause c"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+        ])
+        row_b = ta.audit_conversation(self.brain, "fail-cap-b")
+        row_c = ta.audit_conversation(self.brain, "fail-cap-c")
+        self.assertEqual(row_b["suggested_grade_cap"], "B")
+        self.assertFalse(row_b["has_debug_retro"])
+        self.assertEqual(row_c["suggested_grade_cap"], "C")
+        self.assertTrue(row_c["has_debug_retro"])
+
+    def test_markdown_flags_unescalated_thrash_only_without_debug_retro(self) -> None:
+        _write(self.brain, "thrash-no-dbg", [
+            _planner(("run_command", {"CommandLine": "pytest a"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+        ])
+        _write(self.brain, "thrash-with-dbg", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\n/app-debugger fix\n</USER_REQUEST>"},
+            _planner(("run_command", {"CommandLine": "pytest a"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n", "status": "DONE"},
+        ])
+        md = ta.format_markdown([
+            ta.audit_conversation(self.brain, "thrash-no-dbg"),
+            ta.audit_conversation(self.brain, "thrash-with-dbg"),
+        ])
+        self.assertIn("FLAG thrash-n: 4 failures without /app-debugger or debug-retro (unescalated thrash)", md)
+        self.assertNotIn("FLAG thrash-w:", md)
 
 
 if __name__ == "__main__":

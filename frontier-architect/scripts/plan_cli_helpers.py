@@ -15,7 +15,7 @@ def build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
         f"milestone {target_idx}",
     )
     stripped_title = re.sub(
-        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to Next Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
+        r"\s*(?:—|--)\s*\*?(?:Active Execution Target|Deferred to (?:Next|Future) Turn(?:\s*/\s*Milestone)?|Completed|Pending|In Progress)\*?\s*$",
         "",
         milestone_title,
         flags=re.IGNORECASE,

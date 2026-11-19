@@ -85,6 +85,11 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("advance <master_slug>", "before next <master_slug>"), (r"plan_engine\.py advance <master_slug> --milestone <N>", r"next <master_slug>"), "Master advance before next"),
     (("near-limit files", "before editing"), (r"diagnose\.py audit --path <target_files>", r"near-limit files/classes"), "Pre-edit audit on near-limit files"),
     (("test_*_e2e*.py", "cdp e2e probes"), (r"tests/test_\*_e2e\*\.py", r"ephemeral `port=0`"), "Promote CDP E2E probe to permanent test"),
+    (("before dispatching any plan_engine.py",), (r"cli-cheatsheet\.md.*before.*dispatching any `plan_engine\.py`",), "Zero-Plan-Re-Read Gate cli-cheatsheet before commands"),
+    (("calls exit_plan_mode once",), (r"exit_plan_mode.*once.*never re-enter Plan Mode", r"Step 1 `\.TODO/` plan-file creation \+ `init` ONLY"), "IDE Plan Mode single exit_plan_mode handoff"),
+    (("pending:<base_sha>",), (r"pending:<base_sha>", r"plan_engine\.py advance"), "Pending base SHA tracking on advance"),
+    (("escalates to /app-debugger", "debug-retro --plan"), (r"diagnose\.py debug-retro --plan <slug>", r"--escalate \"<root_cause>\""), "Anti-thrash escalation to debug-retro"),
+    (("single clock-domain parity",), (r"single clock-domain parity", r"time\.monotonic\(\).*time\.time\(\)"), "Single clock-domain parity check"),
 ]
 
 

@@ -17,6 +17,7 @@ from typing import Any, Iterator
 from transcript_checks import (
     append_row_notes,
     classify_result,
+    compute_grade_cap,
     extract_user_correction,
     failure_snippet,
 )
@@ -121,8 +122,8 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
         elif name == "run_command":
             cmd_line = str(args.get("CommandLine", "")).strip()
             acc["last_cmd"] = cmd_line
-            if "changelog add" in cmd_line:
-                acc["changelog_adds"] += 1
+            if "changelog add" in cmd_line: acc["changelog_adds"] += 1
+            if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
             acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
@@ -205,7 +206,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
         "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
-        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0,
+        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False,
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -217,6 +218,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             if "Continuous Learning & Introspective Options" in content: acc["has_learning_block"] = True
             _record_calls(step, idx, acc)
         elif kind == "USER_INPUT":
+            if "/app-debugger" in content.lower(): acc["has_debug_retro"] = True
             acc["models"].extend(_extract_models(content))
             extract_user_correction(content, idx, acc)
         else:
@@ -231,18 +233,19 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
     """Collapse accumulators into a JSON-friendly report row."""
     repeats = {p: n for p, n in acc["reads"].items() if n > 1 and p}
     dupes = acc["reads_while_pending"] + acc["overlap_reads"]
+    total_failures = sum(acc["failures"].values())
     return {
         "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"], "tool_calls": dict(acc["tools"]),
-        "failures": dict(acc["failures"]), "total_failures": sum(acc["failures"].values()), "audit_catches": acc["audit_catches"],
+        "failures": dict(acc["failures"]), "total_failures": total_failures, "audit_catches": acc["audit_catches"],
         "failure_samples": acc["failure_samples"], "user_corrections": acc["user_corrections"],
         "workflow_redirects": acc["workflow_redirects"], "subagents": acc["subagents"],
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
         "parallel_same_file_edits": acc["parallel_same_file_edits"], "plan_mode_calls": acc["plan_mode_calls"],
-        "schedule_while_subagent": acc["schedule_while_subagent"],
+        "schedule_while_subagent": acc["schedule_while_subagent"], "has_debug_retro": acc["has_debug_retro"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],
-        "suggested_grade_cap": "C" if steps > 100 else ("B" if steps > 60 else "A"),
+        "suggested_grade_cap": compute_grade_cap(steps, total_failures),
     }
 
 

@@ -222,6 +222,17 @@
         "Documents diagnose.py debug-retro for recording DEBUG_RETRO.md, LEARNING_SCAFFOLD.md, and Turn-End Echo",
         "Supports --plan, --learn, and --skill-learn flags on diagnose.py debug-retro"
       ]
+    },
+    {
+      "id": 19,
+      "prompt": "How does transcript-audit compute suggested_grade_cap when a session has repeated failures, and how does it detect unescalated thrashing?",
+      "expected_output": "Computes suggested_grade_cap using both steps and total_failures (>= 2 failures -> B, > 3 failures -> C) matching plan_digest._grade_cap, and tracks has_debug_retro (/app-debugger or debug-retro) so >= 4 failures without escalation are flagged.",
+      "files": [],
+      "expectations": [
+        "Documents failure-based suggested_grade_cap in transcript-audit matching plan_digest rubric",
+        "Tracks has_debug_retro in transcript-audit to flag unescalated thrashing when failures accumulate",
+        "Supports --json output in transcript-audit for structured metric inspection"
+      ]
     }
   ]
 }

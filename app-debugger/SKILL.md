@@ -35,6 +35,7 @@ Before jumping into code, classify the user's request:
   1. **Strict Division of Labor**: `app-debugger` handles empirical diagnosis and reproduction (Steps 1–3) strictly under the Pre-Flight Tool-Call Ceiling ($\le 3-5$ tools).
   2. **Yield Gate**: Once the Symptom-to-Root-Cause Matrix is constructed, `app-debugger` **must yield the floor to `frontier-architect`** to evaluate 3-tier SOTA alternatives, establish API contracts, and draft the formal Implementation Plan Artifact before modifying production code.
   3. `app-debugger` resumes in Step 4 for closed-loop verification after architectural plan approval.
+  4. **Mid-Plan Escalation Bridge**: When invoked from `/frontier-architect` Phase 6.5 (`>= 2` failed test/runtime attempts), read `.frontier/plans/<slug>/` contracts and pass `--plan <slug>` to `run_diagnose.py debug-retro` so verified root causes flow directly into `LEARNING_SCAFFOLD.md`.
 
 ### Step 1: Pre-Flight UX Gate (`ask_question`)
 
@@ -142,7 +143,7 @@ Before touching code, synthesize findings into a structured matrix that maps eve
    - **SSOT Escalation Gate**: If `git grep` shows `>= 3` files owning the same state (e.g., duplicated defaults) or 1 patch fails live verification, STOP local patching and yield the floor to `/frontier-architect` to establish an SSOT contract before further edits.
 2. **Execute Environment-Parity & Lifecycle Verification**:
    - Re-run diagnostic commands and domain probes (`--capture-runtime` for live browser console/HTTP/`localStorage` parity).
-   - **Environment Parity**: Never verify solely against synthetic mocks or blank `--headless` profiles when live `localStorage`/DB/hardware state is involved.
+   - **Environment Parity & Real-Clock Checks**: Never verify solely against synthetic mocks, blank `--headless` profiles, or injected `now=100.0` timestamps when live `localStorage`/DB/hardware state or real clocks are involved; run an unmocked boundary check verifying single clock-domain parity (`time.monotonic()` vs `time.time()`).
    - **Resource Lifecycle Check**: Explicitly verify cleanup (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
    - **Test Job & Daemon Cleanup Invariant**: Before completing Step 4, query active background tasks (`manage_task list`) and API job ledgers (`GET /api/.../jobs`). Terminate test daemons (`manage_task kill`) and cancel any unfinished test jobs so zero orphan tasks survive into subsequent user turns.
    - **Pending User-Verification Gate (Zero Premature `CHANGELOG.md` Clutter)**: For interactive UI/live-browser/hardware bugs (or any retry $\ge 1$), do **not** run `diagnose.py changelog add`, claim `"FIXED"`, or emit `*Introspective Options*` until `--live` CDP verifies the exact state transition against the user's real session **or** the user confirms via a 1-click `ask_question` (`Confirmed fixed in my browser` / `Still broken — describe what happened`). Report `"Patch Applied — Ready for Live Verification"` with a 1-line check recipe first; run `changelog add` only after confirmation (pure deterministic backend/unit-test bugs remain exempt).

@@ -18,6 +18,15 @@ _NOISE_PREFIXES = (
 )
 
 
+def compute_grade_cap(steps: int, total_failures: int) -> str:
+    """Match plan_digest._grade_cap(steps, retries) rubric across skills."""
+    if steps > 100 or total_failures > 3:
+        return "C"
+    if steps > 60 or total_failures >= 2:
+        return "B"
+    return "A"
+
+
 def classify_result(content: str, status: str, last_cmd: str = "") -> str | None:
     """Classify a tool-result step as cmd_fail / audit_catch / edit_fail / read_fail, else None."""
     head = content[:1500] if "<SYSTEM_MESSAGE>" in content[:150] else content[:400]
@@ -77,6 +86,8 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
         notes.append(f"- FLAG {cid8}: {r['changelog_adds']} changelog add calls in one session (premature fix clutter)")
     if (r.get("failures") or {}).get("read_fail", 0) >= 2:
         notes.append(f"- FLAG {cid8}: {r['failures']['read_fail']} read_fail path-guess errors (use git grep/surface first)")
+    if int(r.get("total_failures") or 0) >= 4 and not r.get("has_debug_retro"):
+        notes.append(f"- FLAG {cid8}: {r['total_failures']} failures without /app-debugger or debug-retro (unescalated thrash)")
     notes += [f"- FAIL {cid8}: {s}" for s in r.get("failure_samples", [])]
     if r.get("plan_mode_calls"):
         notes.append(f"- FLAG {cid8}: called enter/exit_plan_mode ({r['plan_mode_calls']}x)")
