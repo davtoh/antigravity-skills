@@ -20,6 +20,9 @@ The **App Debugger** skill provides an end-to-end, empirical debugging workflow.
 
 ### Step 0: Intelligent Architectural Triage Gate & Co-Invocation Protocol
 
+> [!NOTE]
+> **Cross-Conversation Context Inheritance**: At the start of any new `/app-debugger` session, check if `.diagnostics/DEBUG_RETRO.md` exists in the workspace and read its last 3 entries in one `read_file` call. This provides verified root causes, known virtualenv paths, and active trace IDs from prior sessions — avoiding repeated environment discovery sweeps.
+
 Before jumping into code, classify the user's request:
 - **Pure Bug / Regressed State**: Isolated typo, broken selector, missing null-check, or straightforward layout overflow. Proceed directly to Step 1.
 - **Quarantined Defect Remediation**: When resolving defects cataloged in `.diagnostics/defect_catalog.json` (or uncovered via `diagnose.py scan`):
@@ -93,6 +96,12 @@ Never edit code on speculation. Always establish a reproducible failing baseline
    - When diagnosing hardware devices (e.g. OpenCV camera indices, DirectShow locks, OBS virtual loops, COM ports, or audio capture), **do NOT invoke browser CDP layout commands (`ui`)**.
    - Execute the project's native status command (e.g. `python scripts/camera_manager.py --status`) or run dynamic domain probes (`run_diagnose.py probe run camera_hardware`).
    - Always run with the project's active virtualenv (let `run_diagnose.py` auto-resolve `.venv`, or invoke `.venv/bin/python` / `.venv/Scripts/python.exe`) to prevent `ModuleNotFoundError: No module named 'cv2'`.
+
+> [!IMPORTANT]
+> **Cross-Platform Virtualenv Pre-Execution Invariant**: Before running `unittest`, project scripts, or any Python command against the workspace, you MUST verify and use the project's `.venv` interpreter. Never invoke bare `python` or `python3` — these resolve to system Python (which lacks all project dependencies) and will produce `ModuleNotFoundError` cascades that waste diagnostic tokens and produce false negatives.
+> - **macOS / Linux:** `.venv/bin/python -m unittest ...`
+> - **Windows:** `.venv\Scripts\python.exe -m unittest ...`
+> Use `run_diagnose.py` (which auto-resolves `.venv`) or `diagnose.py tests` to run suites safely. If `.venv` is absent, stop and prompt the user to create it (`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`) before proceeding.
 6. **Quarantined Tactical Defect Reproduction (Red-to-Green)**:
    - Unlock the quarantined defect and checkout an isolated micro-branch:
      ```bash
@@ -107,6 +116,13 @@ Never edit code on speculation. Always establish a reproducible failing baseline
 ### Step 3: Symptom-to-Root-Cause Matrix
 
 Before touching code, synthesize findings into a structured matrix that maps every observed symptom to its verified root cause:
+
+> [!IMPORTANT]
+> **Diagnostic-Only & RCA Retrospective Gate**:
+> When this session ends at Step 3 without code edits (e.g. investigation-only, trace audit, or RCA artifact generation), do **NOT** skip retrospectives. Apply the following **before ending the turn** if any of these conditions are true: (a) an RCA document was written to `.TODO/` or `.diagnostics/`; (b) investigation exceeded ≥ 30 steps without code edits; or (c) the user requested findings be saved for later planning:
+> 1. **Record:** `python skills/app-debugger/scripts/run_diagnose.py debug-retro --symptom "<Symptom>" --cause "<Cause>" --status unconfirmed --cid <cid>`
+> 2. **Emit** the `### Continuous Learning & Introspective Options` block (offering `diagnose.py transcript-audit --latest 1`, `/learn` to persist lessons, or `plan_engine.py digest <slug> --backfill --write-scaffold` if tied to an active plan).
+> This gate is **not optional** for diagnostic-only sessions — skipping it means lessons and root causes are silently lost between conversations.
 
 > [!IMPORTANT]
 > **Filesystem & Target Path Verification**:

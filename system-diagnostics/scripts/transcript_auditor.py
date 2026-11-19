@@ -263,10 +263,33 @@ def _resolve_cid_token(brain_dir: Path, token: str, dirs: list[Path]) -> str:
 
 
 def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, min_steps: int = 6, workspace: str | None = None) -> list[str]:
-    """Pick explicit/prefix ids, or the ``latest`` most recently modified substantive conversations."""
-    dirs = [d for d in brain_dir.iterdir() if (d / _LOG_REL).is_file()] if brain_dir.is_dir() else []
+    """Pick explicit/prefix ids, or the ``latest`` most recently modified substantive conversations.
+
+    macOS/sandbox hardening: ``brain_dir.iterdir()`` raises ``PermissionError`` on AGY
+    sandboxed hosts even when individual subdirectory files are readable.  We therefore
+    wrap the scan defensively and, when explicit ``cids`` tokens are supplied, attempt a
+    direct path probe (``brain_dir / t / _LOG_REL``) so the caller never needs the full
+    ``dirs`` listing.
+    """
+    dirs: list[Path] = []
+    try:
+        if brain_dir.is_dir():
+            dirs = [d for d in brain_dir.iterdir() if (d / _LOG_REL).is_file()]
+    except (PermissionError, OSError):
+        pass  # sandbox restricts iterdir on parent brain dir; direct probes below still work
     if cids:
-        return [_resolve_cid_token(brain_dir, tok.strip(), dirs) for raw in cids for tok in raw.split(",") if tok.strip()]
+        resolved: list[str] = []
+        for raw in cids:
+            for tok in raw.split(","):
+                t = tok.strip()
+                if not t:
+                    continue
+                # Fast path: exact UUID supplied → probe directly without needing dirs scan
+                if (brain_dir / t / _LOG_REL).is_file():
+                    resolved.append(t)
+                else:
+                    resolved.append(_resolve_cid_token(brain_dir, t, dirs))
+        return resolved
     if workspace:
         needle = workspace.replace("\\", "/").rstrip("/").lower()
         dirs = [d for d in dirs if needle in (d / _LOG_REL).read_text(encoding="utf-8", errors="replace").replace("\\\\", "/").replace("\\", "/").lower()]
