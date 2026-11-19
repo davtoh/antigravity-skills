@@ -129,7 +129,8 @@ async def _capture_screenshot(cdp: CDPSession, session_id: str | None, path_str:
 async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> int:
     await cdp.send("Page.enable", session_id=session_id)
     await cdp.send("Runtime.enable", session_id=session_id)
-    capture_rt = getattr(args, "capture_runtime", False)
+    raw_rt = getattr(args, "capture_runtime", False)
+    capture_rt = bool(getattr(args, "eval", None)) if raw_rt is None else bool(raw_rt)
     if capture_rt:
         await enable_runtime_capture(cdp, session_id)
     if args.navigate and args.target_url:
@@ -326,7 +327,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--headless", action="store_true", help="Use isolated auto-cleaned headless browser")
     parser.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
     parser.add_argument("--allow-headless-fallback", action="store_true", help="Permit fallback to headless Chrome if live fails")
-    parser.add_argument("--capture-runtime", action="store_true", help="Capture console errors, exceptions, HTTP>=400, and localStorage")
+    parser.add_argument("--capture-runtime", dest="capture_runtime", action="store_true", default=None, help="Capture console errors, exceptions, HTTP>=400, and localStorage (default ON with --eval/--eval-file)")
+    parser.add_argument("--no-capture-runtime", dest="capture_runtime", action="store_false", help="Disable runtime capture during --eval/--eval-file")
     parser.set_defaults(fallback_headless=True)
     parser.add_argument("--window-size", dest="viewport", type=parse_viewport, default=(1440, 900), help="Headless viewport (default: 1440x900)")
     parser.add_argument("--port", type=int, default=0, help="Headless debugging port (default: 0 = OS-assigned free port)")

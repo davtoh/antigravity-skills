@@ -52,6 +52,9 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest --
 # Deterministic transcript audit (steps, failures, repeated reads, corrections, parallel edits); --cids accepts 8-char prefixes or comma-separated IDs
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <conv_id...> [--json] [--brain-dir <dir>]
 
+# Reconcile stale in_progress states, duplicate milestones, and uncheckboxed bullets
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" reconcile --root . [--apply]
+
 # Lookup historical plans, commit SHAs, and retrospective lessons
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" lookup "<keyword_or_sha>" --root .
 ```
@@ -62,13 +65,13 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" lookup "<
 
 ```bash
 # Attach to active visible Chrome tab (--live) and audit DOM bounding boxes & overflow
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --audit-layout --selectors "#app,.card"
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --capture-runtime --audit-layout --selectors "#app,.card"
 
-# Evaluate multi-statement JS in page context via --eval-file (avoids PowerShell quote stripping)
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --eval-file scratch/probe_dom.js
+# Evaluate multi-statement JS in page context via --eval-file (captures console/JS exceptions by default; pass --no-capture-runtime to opt out)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --capture-runtime --eval-file scratch/probe_dom.js
 
 # Isolated headless inspection with screenshot capture
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --headless --audit-layout --screenshot scratch/ui.jpg
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --headless --capture-runtime --audit-layout --screenshot scratch/ui.jpg
 ```
 
 ---

@@ -134,6 +134,18 @@
         "Applies surgical fix guided by defect's suggested_fix and verifies Green resolution",
         "Yields structural defects to /frontier-architect and /grill-me when classified as track: architectural"
       ]
+    },
+    {
+      "id": 11,
+      "prompt": "We finished a 22-step cross-platform Mac RCA with 1 retry and wrote a reusable CDP verification script in scratch/ to prove the fix. How should we close out the debugging session and handle the scratch script?",
+      "expected_output": "Records debug-retro (triggered at >= 20 steps, >= 1 retry, or Mac/cross-platform RCA) so plan_engine.py digest folds DEBUG_RETRO.md into LEARNING_SCAFFOLD.md and LEARN_QUEUE.md, runs diagnose.py transcript-audit --latest 1, appends Continuous Learning & Introspective Options, and promotes the reusable CDP script into a Chrome-gated tests/test_*_e2e*.py test or registered probe (run_diagnose.py probe save).",
+      "files": [],
+      "expectations": [
+        "Records debug-retro for >= 20 steps, >= 1 retry, or Mac/cross-platform RCA",
+        "Documents that plan_engine.py digest folds DEBUG_RETRO.md into LEARNING_SCAFFOLD.md and LEARN_QUEUE.md",
+        "Promotes reusable CDP/runtime verification scripts into Chrome-gated tests/test_*_e2e*.py or run_diagnose.py probe save instead of leaving them orphaned in scratch/",
+        "Appends Continuous Learning & Introspective Options and runs diagnose.py transcript-audit --latest 1"
+      ]
     }
   ]
 }

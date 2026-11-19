@@ -200,6 +200,17 @@
         "Prefers git grep -n over rg unless rg is verified on PATH",
         "Preserves CRLF/LF line endings on Windows and avoids throwaway python patching scripts"
       ]
+    },
+    {
+      "id": 17,
+      "prompt": "When running diagnose.py ui with --eval-file, do I need to pass --capture-runtime explicitly, and how do I opt out? Also, how does transcript-audit distinguish model/workflow redirects from bug corrections and flag timer polling during pending subagents?",
+      "expected_output": "Documents that --capture-runtime is default ON with --eval/--eval-file (with --no-capture-runtime to opt out), and that transcript-audit separates - REDIRECT workflow/model switches from bug corrections and flags schedule_while_subagent.",
+      "files": [],
+      "expectations": [
+        "Documents --no-capture-runtime opt-out when --capture-runtime defaults ON for --eval/--eval-file",
+        "Documents - REDIRECT workflow/model switches in transcript-audit",
+        "Documents schedule-while-subagent flags in transcript-audit"
+      ]
     }
   ]
 }

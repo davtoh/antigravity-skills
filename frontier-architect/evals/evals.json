@@ -300,6 +300,18 @@
         "Runs diagnose.py transcript-audit --latest 1 for >60-step or subagent-heavy planning runs to catch parallel-edit or duplicate-read churn",
         "Enforces Export-Ready Portable Plan Contract with repo-relative paths and portable commands"
       ]
+    },
+    {
+      "id": 24,
+      "prompt": "We have an already-approved .TODO/ plan to execute, a master roadmap whose child plan just completed without auto-sync, a near-limit 370-line target file, and a milestone requiring CDP E2E verification. How should we execute this cleanly?",
+      "expected_output": "Executes already-approved .TODO/ plans directly in single-agent Hydrogen without toggling IDE Plan/Execution split mode, advances the master milestone via plan_engine.py advance <master_slug> --milestone <N> before next <master_slug>, runs diagnose.py audit --path <target_files> before editing near-limit files, and promotes the CDP E2E probe into a permanent Chrome-gated tests/test_*_e2e*.py test (ephemeral port=0, isolated temp dir).",
+      "files": [],
+      "expectations": [
+        "Executes already-approved .TODO/ plans directly in single-agent Hydrogen rather than toggling IDE Plan/Execution split mode",
+        "Runs plan_engine.py advance <master_slug> --milestone <N> before next <master_slug> when resuming an un-synced master roadmap",
+        "Runs diagnose.py audit --path <target_files> before editing near-limit files or classes",
+        "Promotes milestone CDP E2E probes into permanent Chrome-gated tests/test_*_e2e*.py tests instead of leaving them in scratch/"
+      ]
     }
   ]
 }

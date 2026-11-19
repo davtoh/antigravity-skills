@@ -81,6 +81,10 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("2-3 cohesive milestones", "40-70 steps"), (r"2[–-]3 cohesive milestones", r"40[–-]70 steps"), "Consolidated child plan sizing"),
     (("--no-sync-parent", "auto-advances linked parent"), (r"auto-advance any completed child plan", r"--no-sync-parent"), "Auto-sync parent milestone"),
     ((">60-step", "duplicate-read churn"), (r">60`-step", r"transcript-audit --latest 1"), ">60-step transcript-audit check"),
+    (("single-agent hydrogen", "split mode"), (r"already-approved `\.TODO/` plans directly in single-agent `Hydrogen`", r"Plan/Execution split mode"), "Single-agent Hydrogen execution"),
+    (("advance <master_slug>", "before next <master_slug>"), (r"plan_engine\.py advance <master_slug> --milestone <N>", r"next <master_slug>"), "Master advance before next"),
+    (("near-limit files", "before editing"), (r"diagnose\.py audit --path <target_files>", r"near-limit files/classes"), "Pre-edit audit on near-limit files"),
+    (("test_*_e2e*.py", "cdp e2e probes"), (r"tests/test_\*_e2e\*\.py", r"ephemeral `port=0`"), "Promote CDP E2E probe to permanent test"),
 ]
 
 

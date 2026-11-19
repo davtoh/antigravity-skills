@@ -20,7 +20,8 @@ def register_ui_parser(sub: Any) -> None:
     p.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
     p.add_argument("--allow-headless-fallback", action="store_true", help="Permit fallback to isolated headless Chrome when --live fails")
     p.set_defaults(fallback_headless=True)
-    p.add_argument("--capture-runtime", action="store_true", help="Capture console errors, uncaught exceptions, HTTP>=400, and localStorage")
+    p.add_argument("--capture-runtime", dest="capture_runtime", action="store_true", default=None, help="Capture console errors, uncaught exceptions, HTTP>=400, and localStorage (default ON with --eval/--eval-file)")
+    p.add_argument("--no-capture-runtime", dest="capture_runtime", action="store_false", help="Disable runtime exception capture when running --eval/--eval-file")
     p.add_argument("--audit-layout", action="store_true", help="Audit bounding box overflow")
     p.add_argument("--selectors", default=None, help="Comma-separated CSS selectors to measure")
     p.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
@@ -71,10 +72,15 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     for attr, flag in (
         ("list_tabs", "--list-tabs"), ("audit_layout", "--audit-layout"),
         ("navigate", "--navigate"), ("strict", "--strict"),
-        ("capture_runtime", "--capture-runtime"), ("allow_headless_fallback", "--allow-headless-fallback"),
+        ("allow_headless_fallback", "--allow-headless-fallback"),
     ):
         if getattr(args, attr, False):
             cmd.append(flag)
+    cap_rt = getattr(args, "capture_runtime", None)
+    if cap_rt is True or (cap_rt is None and (getattr(args, "eval", None) or getattr(args, "eval_file", None))):
+        cmd.append("--capture-runtime")
+    elif cap_rt is False:
+        cmd.append("--no-capture-runtime")
     for attr, flag in (
         ("selectors", "--selectors"), ("screenshot", "--screenshot"),
         ("eval", "--eval"), ("eval_file", "--eval-file"),

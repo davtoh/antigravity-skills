@@ -254,6 +254,36 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertNotIn("CDP --live->headless fallback", md)
         self.assertIn("CDP --live handshake failure", md)
 
+    def test_workflow_redirects_separated_and_schedule_flagged(self) -> None:
+        _write(self.brain, "redirect-1", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nContinue plan\n</USER_REQUEST>"},
+            _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
+            _planner(("schedule", {"DurationSeconds": 60, "Prompt": "wait"})),
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nYou don't seem to have used hydrogen agent at all, change to it now\n</USER_REQUEST>"},
+        ])
+        row = ta.audit_conversation(self.brain, "redirect-1")
+        self.assertEqual(row["user_corrections"], [])
+        self.assertEqual(len(row["workflow_redirects"]), 1)
+        self.assertEqual(row["schedule_while_subagent"], 1)
+        md = ta.format_markdown([row])
+        self.assertIn("- REDIRECT redirect:", md)
+        self.assertIn("schedule timer(s) while subagent pending", md)
+
+    def test_bug_symptom_overrides_workflow_redirect_and_completed_subagent_no_schedule_flag(self) -> None:
+        _write(self.brain, "redirect-2", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nContinue plan\n</USER_REQUEST>"},
+            _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
+            {"type": "TOOL_RESPONSE", "content": "conversationId: sub-1"},
+            {"type": "SYSTEM_MESSAGE", "content": "[Message] sender=sub-1 content=done", "status": "DONE"},
+            _planner(("schedule", {"DurationSeconds": 60, "Prompt": "later"})),
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nNo, the agent crashed with an error\n</USER_REQUEST>"},
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>\nCan you ask the research agent to check docs?\n</USER_REQUEST>"},
+        ])
+        row = ta.audit_conversation(self.brain, "redirect-2")
+        self.assertEqual(row["workflow_redirects"], [])
+        self.assertEqual(len(row["user_corrections"]), 1)
+        self.assertEqual(row["schedule_while_subagent"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

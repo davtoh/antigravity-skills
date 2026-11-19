@@ -213,6 +213,20 @@ def _enrich_entry_from_audit(entry: dict[str, Any], cid: str | None, brain_dir: 
             cands.append(msg)
 
 
+def _apply_retry_floors(tri_scores: dict[str, Any], entry: dict[str, Any], retries: int | None, raw_hyp: int | None) -> None:
+    """Ensure tool_reliability <= 4 and hypotheses_tested > 1 when retries occurred."""
+    if retries is None or retries <= 0:
+        return
+    if isinstance(tri_scores.get("tool_reliability"), int):
+        tri_scores["tool_reliability"] = min(tri_scores["tool_reliability"], 4)
+        dims = [tri_scores[k] for k in ("token_efficiency", "hypothesis_accuracy", "tool_reliability", "architectural_defense") if isinstance(tri_scores.get(k), int)]
+        if len(dims) == 4:
+            avg = sum(dims) / 4.0
+            tri_scores["overall"] = int(avg) if avg.is_integer() else round(avg, 2)
+    if (raw_hyp or 1) == 1:
+        entry["hypotheses_tested"] = max(1, 1 + retries)
+
+
 def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     """Record Token Efficiency Grade, TRI, /learn candidates, and refresh LEARNING_SCAFFOLD.md."""
     plan_p = resolve_plan_path(root, args.plan)
@@ -234,6 +248,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     grade = _cap_grade_by_rubric((args.grade or "A").upper(), retries, steps)
     tri_scores = _cap_tri_by_grade(tri_scores, grade)
     entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
+    _apply_retry_floors(tri_scores, entry, retries, args.hypotheses)
     if cid:
         entry["cid"] = cid
         _enrich_entry_from_audit(entry, cid, getattr(args, "brain_dir", None))

@@ -282,6 +282,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
             ps["followup_cids"] = active_fcids = merged_fcids
             save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
     promote_transcript_findings(rows, skill_learns, escalations)
+    merge_debug_retro_items(root, learns, skill_learns, escalations)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
         "milestones": [{"index": m["index"], "title": m["title"], "status": m["status"], "sha": m.get("commit_sha")} for m in ps["milestones"]],
@@ -299,6 +300,7 @@ from plan_scaffold import (
     _write_scaffold_file,
     format_digest,
     format_workspace_digest,
+    merge_debug_retro_items,
     promote_transcript_findings,
     refresh_stale_retro_entry,
     write_learning_scaffold,

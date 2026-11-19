@@ -91,6 +91,9 @@ class TestCDPDiscoveryAndHelpers(unittest.TestCase):
             args = parser.parse_args(["--eval-file", tf_path])
             cdp_inspect._resolve_eval_arg(parser, args)
             self.assertEqual(args.eval, "(() => ({ ok: 1 }))()")
+            self.assertIsNone(args.capture_runtime)
+            args_off = parser.parse_args(["--eval-file", tf_path, "--no-capture-runtime"])
+            self.assertFalse(args_off.capture_runtime)
         finally:
             os.remove(tf_path)
 
@@ -112,6 +115,27 @@ class TestCDPDiscoveryAndHelpers(unittest.TestCase):
         self.assertEqual(summary["consoleErrors"], ["boom"])
         self.assertEqual(summary["exceptions"], ["Uncaught TypeError"])
         self.assertEqual(summary["networkErrors"][0]["status"], 404)
+
+    def test_run_against_target_auto_enables_capture_runtime_for_eval(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        parser = cdp_inspect.build_parser()
+        fake_cdp = MagicMock()
+        fake_cdp.send = AsyncMock(return_value={"result": {"value": {"ok": 1}}})
+
+        args_default = parser.parse_args(["--eval", "(() => ({ ok: 1 }))()"])
+        with patch.object(cdp_inspect, "enable_runtime_capture", new=AsyncMock()) as mock_en, \
+             patch.object(cdp_inspect, "collect_runtime_report", new=AsyncMock(return_value={"consoleErrors": []})):
+            rc = asyncio.run(cdp_inspect.run_against_target(fake_cdp, "sess-1", args_default))
+        self.assertEqual(rc, 0)
+        mock_en.assert_awaited_once()
+
+        args_off = parser.parse_args(["--eval", "(() => ({ ok: 1 }))()", "--no-capture-runtime"])
+        with patch.object(cdp_inspect, "enable_runtime_capture", new=AsyncMock()) as mock_en_off:
+            rc_off = asyncio.run(cdp_inspect.run_against_target(fake_cdp, "sess-1", args_off))
+        self.assertEqual(rc_off, 0)
+        mock_en_off.assert_not_called()
 
 
 class TestCDPTargetAndEval(unittest.TestCase):

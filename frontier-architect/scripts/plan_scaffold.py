@@ -102,13 +102,13 @@ def format_workspace_digest(d: dict[str, Any]) -> str:
 
 
 def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
-    """Deduplicate near-identical /learn candidates and filter out items already codified in AGENTS.md/SKILL.md."""
+    """Deduplicate near-identical /learn candidates and filter out items already codified on a line of AGENTS.md/SKILL.md."""
     import re
-    doc_blob = "\n".join(
-        p.read_text(encoding="utf-8", errors="replace").lower()
+    doc_lines = [
+        set(re.findall(r"[a-z_][a-z0-9_]{3,}", ln.lower()))
         for p in doc_paths if p.is_file()
-    )
-    doc_tokens = set(re.findall(r"[a-z_][a-z0-9_]{3,}", doc_blob))
+        for ln in p.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()
+    ]
     seen_norm: set[str] = set()
     kept: list[str] = []
     for raw in items:
@@ -116,12 +116,28 @@ def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
         if not norm or norm in seen_norm:
             continue
         seen_norm.add(norm)
-        if doc_tokens:
-            bt_ids = {t.lower() for t in re.findall(r"`([A-Za-z_][A-Za-z0-9_]{3,})(?:\(\))?`", raw)}
-            if len(bt_ids) >= 2 and bt_ids.issubset(doc_tokens):
-                continue
+        ids = {t.lower() for t in re.findall(r"`([A-Za-z_][A-Za-z0-9_]{3,})(?:\(\))?`", raw)}
+        ids |= {t.lower() for t in re.findall(r"\b([A-Za-z][a-z]+[A-Z][A-Za-z0-9]*|[a-z]+_[a-z0-9_]{3,})\b", raw)}
+        if len(ids) >= 2 and any(len(ids & line_toks) >= 2 for line_toks in doc_lines):
+            continue
         kept.append(raw)
     return kept
+
+
+def merge_debug_retro_items(root: Path, learns: list[str], skill_learns: list[str], escalations: list[str]) -> None:
+    """Fold DEBUG_RETRO.md lessons and unconfirmed/escalated root causes into digest lists."""
+    import re
+    for cand in (get_frontier_dir(root) / "DEBUG_RETRO.md", root / ".diagnostics" / "DEBUG_RETRO.md"):
+        if not cand.is_file():
+            continue
+        for line in cand.read_text(encoding="utf-8", errors="replace").splitlines():
+            s = line.strip()
+            if m := re.match(r"^##\s+\[[^\]]+\]\s+\[(UNCONFIRMED|ESCALATED)\]\s+(.+)$", s, re.I):
+                _append_unique(escalations, f"Debug retro ({m.group(1).lower()}): {m.group(2).strip()}")
+            elif m := re.match(r"^-\s+\*\*Project\s+`/learn`\*\*:\s*(.+)$", s):
+                _append_unique(learns, m.group(1).strip())
+            elif m := re.match(r"^-\s+\*\*Skill\s+`/learn`\*\*:\s*(.+)$", s):
+                _append_unique(skill_learns, m.group(1).strip())
 
 
 def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bool, build_digest_fn: Any) -> dict[str, Any]:
@@ -148,9 +164,13 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
     # Keep active plans + up to 5 recent completed plans in LEARN_QUEUE.md so historical backlogs don't drown active items.
     queued = active_digests + completed_digests[:5]
     learns = [item for d in queued for item in d["learn_candidates"]]
-    skill_learns = [item for d in queued for item in d["skill_learn_candidates"]]
+    skill_learns = [
+        item for d in queued for item in d["skill_learn_candidates"]
+        if not item.startswith("Transcript audit: repeated file reads")
+    ]
     gaps = [item for d in queued for item in d["tool_gaps"]]
     escs = [item for d in queued for item in d["escalations"]]
+    merge_debug_retro_items(root, learns, skill_learns, escs)
     skill_md = Path(__file__).resolve().parents[1] / "SKILL.md"
     return {
         "plans": plans,

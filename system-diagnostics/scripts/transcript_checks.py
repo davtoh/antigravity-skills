@@ -8,6 +8,9 @@ from typing import Any
 _EXIT_RE = re.compile(r"(?:^|\n)Command exited with code (-?\d+)")
 _USER_REQ_RE = re.compile(r"<USER_REQUEST>(.*?)</USER_REQUEST>", re.DOTALL)
 _CORRECTION_RE = re.compile(r"\b(no|instead|wrong|failed|don't|do not|stop|worthless|why did you)\b", re.I)
+_BUG_SYMPTOM_RE = re.compile(r"\b(bug|broken|error|fail(?:ed|ing)?|crash(?:ed|ing)?|exception|overflow|black|blank|stuck|regression|/app-debugger)\b", re.I)
+_WORKFLOW_REDIRECT_RE = re.compile(r"\b(agent|model|hydrogen|neon|opus|sonnet|flash|plan\s+mode|swarm|unchecked|cleanup|housekeeping)\b", re.I)
+_REDIRECT_VERB_RE = re.compile(r"\b(switch|change\s+to)\b", re.I)
 _FIRST_OVERRIDE_RE = re.compile(r"^(?:no\b|stop\b|wrong\b|don't\b|do not\b|actually\b|wait\b)", re.I)
 _NOISE_PREFIXES = (
     "Created At:", "Completed At:", "Command output:", "Log: file:///",
@@ -42,16 +45,20 @@ def failure_snippet(content: str) -> str:
 
 
 def extract_user_correction(content: str, idx: int, acc: dict[str, Any]) -> None:
-    """Capture up to 3 user correction/override prompts for /learn and eval generation."""
+    """Capture bug/code corrections into ``user_corrections`` and model/workflow switches into ``workflow_redirects``."""
     is_first = not acc["seen_first_user"]
     acc["seen_first_user"] = True
-    if len(acc["user_corrections"]) >= 3:
-        return
     matches = _USER_REQ_RE.findall(content)
     clean_req = " ".join(("\n".join(matches) if matches else content).split())
     if not clean_req or (is_first and not _FIRST_OVERRIDE_RE.match(clean_req)):
         return
-    if _CORRECTION_RE.search(clean_req):
+    is_redirect = _WORKFLOW_REDIRECT_RE.search(clean_req) and not _BUG_SYMPTOM_RE.search(clean_req)
+    if is_redirect and (_CORRECTION_RE.search(clean_req) or _REDIRECT_VERB_RE.search(clean_req)):
+        redirects = acc.setdefault("workflow_redirects", [])
+        if len(redirects) < 3:
+            redirects.append(f"step {idx}: {clean_req[:110]}")
+        return
+    if len(acc["user_corrections"]) < 3 and _CORRECTION_RE.search(clean_req):
         acc["user_corrections"].append(f"step {idx}: {clean_req[:110]}")
 
 
@@ -59,6 +66,8 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     """Append waste flags, failure samples, repeated reads, and user corrections for one row."""
     if r["subagents"] and r["reads_after_subagent"] > 4:
         notes.append(f"- FLAG {cid8}: {r['reads_after_subagent']} subagent duplicate reads ({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)")
+    if r.get("schedule_while_subagent", 0) >= 1:
+        notes.append(f"- FLAG {cid8}: {r['schedule_while_subagent']} schedule timer(s) while subagent pending (use reactive wakeup)")
     notes += [f"- FLAG {cid8}: step {e['step']} issued {e['calls']} parallel edits on {Path(e['path']).name}" for e in r["parallel_same_file_edits"]]
     if r.get("cdp_live_fallbacks", 0) >= 1:
         notes.append(f"- FLAG {cid8}: {r['cdp_live_fallbacks']} CDP --live->headless fallback(s) (live browser state bypassed)")
@@ -74,3 +83,4 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     if reps := ", ".join(f"{Path(p).name} ({n}x)" for p, n in (r.get("repeated_reads") or {}).items() if n >= 2):
         notes.append(f"- REPEAT {cid8}: {reps}")
     notes += [f"- CORRECTION {cid8}: {c}" for c in r.get("user_corrections", [])]
+    notes += [f"- REDIRECT {cid8}: {c}" for c in r.get("workflow_redirects", [])]

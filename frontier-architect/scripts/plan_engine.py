@@ -29,6 +29,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body, resolve_commit_hint
 from plan_digest import cmd_digest, register_digest_parser, write_learning_scaffold
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
+from plan_reconcile import _find_duplicate_milestones, cmd_reconcile, register_reconcile_parser
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
     link_child_plan, load_json, record_milestone_advance, resolve_plan_path,
@@ -89,6 +90,8 @@ def cmd_init(root: Path, args: argparse.Namespace) -> int:
     parsed = parse_plan_markdown(raw_text)
     if scope_msg := assess_plan_scope(parsed, ps, parent_arg):
         print(scope_msg)
+    if dupes := _find_duplicate_milestones(raw_text):
+        print(f"[plan_engine] DUPLICATE MILESTONE WARNING: Milestone(s) {dupes} declared multiple times in {ps['plan_path']}.")
     if port_msg := _check_plan_portability(raw_text):
         print(port_msg)
     return 0
@@ -298,6 +301,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
     p_ver.add_argument("--command", "--cmd", dest="command", help="Explicit verifier command")
     register_digest_parser(sub, plan_parent)
+    register_reconcile_parser(sub, root_parent)
 
     return parser
 
@@ -313,7 +317,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     handlers = {
         "discover": cmd_discover, "init": cmd_init, "status": cmd_status,
         "next": cmd_next, "continue": cmd_next, "advance": cmd_advance,
-        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify, "digest": cmd_digest,
+        "retrospective": cmd_retrospective, "lookup": cmd_lookup, "verify": cmd_verify,
+        "digest": cmd_digest, "reconcile": cmd_reconcile,
     }
     handler = handlers.get(cmd)
     if not handler:

@@ -132,7 +132,7 @@ python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
 - `--port <PORT>`: Debugging port override.
 - `--no-fallback-headless`: Fails immediately if live Chrome is unreachable instead of falling back to headless (automatically enforced with `--live` unless `--allow-headless-fallback` is set).
 - `--allow-headless-fallback`: Permits silent fallback to headless Chrome if `--live` fails.
-- `--capture-runtime`: Captures console errors, uncaught JS exceptions, HTTP $\ge 400$ / WebSocket errors, and `localStorage` state.
+- `--capture-runtime` / `--no-capture-runtime`: Captures console errors, uncaught JS exceptions, HTTP $\ge 400$ / WebSocket errors, and `localStorage` state (default ON when `--eval` or `--eval-file` is set; pass `--no-capture-runtime` to opt out).
 
 ### Subcommand: `container`
 ```bash
@@ -207,7 +207,7 @@ python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <I
 - `--cids <IDs...>`: Full UUIDs, 8-char prefixes, or comma-separated IDs from `<appDataDir>/brain`.
 - `--latest <N>` / `--min-steps <N>`: Audit the `N` most recent substantive conversations (prefers `>= 6` steps, skipping empty new chats).
 - `--brain-dir <DIR>`: Override brain directory (or set `AGY_BRAIN_DIR`).
-- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
+- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, `- REDIRECT` workflow/model switches, `schedule-while-subagent` flags, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
 
 ### Subcommand: `resolve-defect` & `dismiss-defect`
 ```bash

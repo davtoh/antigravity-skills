@@ -197,6 +197,23 @@ class TestSubcommandsExecution(unittest.TestCase):
             self.assertIn("--port", called_cmd)
             self.assertIn("9222", called_cmd)
             self.assertIn("--no-fallback-headless", called_cmd)
+            self.assertIn("--capture-runtime", called_cmd)
+
+            args_no_rt = parser.parse_args([
+                "ui", "--url", "http://localhost:8000", "--eval-file", "probe.js", "--no-capture-runtime",
+            ])
+            cmd_no_rt = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_no_rt)
+            self.assertNotIn("--capture-runtime", cmd_no_rt)
+            self.assertIn("--no-capture-runtime", cmd_no_rt)
+
+            args_eval_file = parser.parse_args(["ui", "--url", "http://localhost:8000", "--eval-file", "probe.js"])
+            cmd_eval_file = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_eval_file)
+            self.assertIn("--capture-runtime", cmd_eval_file)
+
+            args_plain = parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout"])
+            cmd_plain = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_plain)
+            self.assertNotIn("--capture-runtime", cmd_plain)
+            self.assertNotIn("--no-capture-runtime", cmd_plain)
 
     def test_stage_standalone_skill_materializes_ssot(self):
         with tempfile.TemporaryDirectory() as tmpdir:
