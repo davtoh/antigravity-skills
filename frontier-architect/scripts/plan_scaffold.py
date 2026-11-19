@@ -17,7 +17,7 @@ def _build_health_alerts(d: dict[str, Any]) -> list[str]:
     alerts += [f"{r['cid'][:8]}: {len(r['parallel_same_file_edits'])} parallel same-file edit(s)" for r in rows if r.get("parallel_same_file_edits")]
     alerts += [
         f"{r['cid'][:8]}: {r.get('reads_while_pending', 0) + r.get('subagent_overlap_reads', 0)} subagent dup reads"
-        for r in rows if r.get("reads_while_pending", 0) + r.get("subagent_overlap_reads", 0) > 5
+        for r in rows if r.get("reads_while_pending", 0) + r.get("subagent_overlap_reads", 0) >= 4
     ]
     return alerts
 
@@ -55,6 +55,8 @@ def format_digest(d: dict[str, Any]) -> str:
         f"- Transcript Audit: {ta_cmd}",
         "- Persist Lessons: `/learn`",
     ]
+    if proj_n + skill_n + gap_n + esc_n > 0:
+        lines.append(f"- Ready Prompt: `/learn Review .frontier/plans/{d['slug']}/LEARNING_SCAFFOLD.md and propose rules/skill updates (wait for approval)`")
     return "\n".join(lines + ["", f"Next: {d['next_step']}"])
 
 
@@ -242,8 +244,12 @@ def promote_transcript_findings(
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {fb} CDP --live->headless fallback(s)")
         if (lf := int(r.get("cdp_live_failures", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
+        if (pm := int(r.get("plan_mode_calls", 0))) >= 1:
+            _append_unique(skill_learns, f"Transcript audit: {cid8} called enter/exit_plan_mode ({pm}x)")
         for corr in r.get("user_corrections") or ():
             _append_unique(escalations, f"User correction ({cid8}): {corr}")
+        for redir in r.get("workflow_redirects") or ():
+            _append_unique(escalations, f"Workflow redirect ({cid8}): {redir}")
 
 
 def write_workspace_scaffold(root: Path, digest: dict[str, Any]) -> str:

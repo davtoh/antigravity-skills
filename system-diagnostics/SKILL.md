@@ -75,7 +75,7 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | :--- | :--- | :--- | :--- |
 | **Quick 3-Tier Health Audit** | Dev server / repo | Auto-probes ports & containers | `python skills/system-diagnostics/scripts/diagnose.py all` |
 | **Inspect Active Buggy Chrome Tab** | Live visible tab | Brings tab to front; fails loud unless fallback allowed | `python skills/system-diagnostics/scripts/diagnose.py ui --live --capture-runtime --audit-layout` |
-| **Log Debug Retrospective** | Post-fix debug session | Records bounded entry in `.frontier/DEBUG_RETRO.md` or `.diagnostics/DEBUG_RETRO.md` | `python skills/system-diagnostics/scripts/diagnose.py debug-retro --symptom "..." --cause "..." --status verified --cid <cid>` |
+| **Log Debug Retrospective** | Post-fix debug session | Records `DEBUG_RETRO.md`, `LEARNING_SCAFFOLD.md`, & `--- Turn-End Echo ---` (`--plan`, `--learn`, `--skill-learn`) | `python skills/system-diagnostics/scripts/diagnose.py debug-retro --symptom "..." --cause "..." --status verified --cid <cid>` |
 | **Capture Headless Visual Proof** | Headless sandbox | Viewport render to file | `python skills/system-diagnostics/scripts/diagnose.py ui --screenshot scratch/bug.jpg` |
 | **Inspect Target Selectors** | Specific elements | Measures bounding box & styles | `python skills/system-diagnostics/scripts/diagnose.py ui --selectors "#app,#main-canvas,video"` |
 | **Hard Reload & Verify Post-Fix** | Fresh assets reload | Forces page refresh before audit | `python skills/system-diagnostics/scripts/diagnose.py ui --navigate --audit-layout` |
@@ -155,9 +155,10 @@ python skills/system-diagnostics/scripts/diagnose.py surface [OPTIONS]
 
 ### Subcommand: `tests`
 ```bash
-python skills/system-diagnostics/scripts/diagnose.py tests [ARGS...]
+python skills/system-diagnostics/scripts/diagnose.py tests [--timeout 180] [ARGS...]
 ```
 - `--path <DIR>`: Workspace root to scan for `.venv` (default: current directory).
+- `--timeout <SEC>`: Max seconds before aborting a hung suite (default: `180`; `0` disables; exits with `124`).
 - `[ARGS...]`: Arguments forwarded to `python -m unittest` (default: `discover -s tests -p "test_*.py"`).
 
 ### Subcommand: `all`

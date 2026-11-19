@@ -133,11 +133,17 @@ def cmd_tests(args: argparse.Namespace) -> int:
     start_dir = "tests" if (target_path / "tests").is_dir() else "."
     test_args = args.args if args.args else ["discover", "-s", start_dir, "-p", "test_*.py"]
     cmd = [py_bin, "-m", "unittest", *test_args]
+    raw_timeout = getattr(args, "timeout", 180.0)
+    timeout = raw_timeout if (raw_timeout is not None and raw_timeout > 0) else None
 
     print(f"=== Diagnose Tests: Test Suite Runner (Interpreter: {py_bin}) ===")
     print(f"Command: {' '.join(cmd)}\n")
-    res = subprocess.run(cmd, cwd=str(target_path))
-    return res.returncode
+    try:
+        res = subprocess.run(cmd, cwd=str(target_path), timeout=timeout)
+        return res.returncode
+    except subprocess.TimeoutExpired:
+        print(f"[TIMEOUT] Test runner exceeded {timeout}s — check for un-signaled events or blocking I/O.", file=sys.stderr)
+        return 124
 
 def cmd_audit(args: argparse.Namespace) -> int:
     """Execute static quality, defect, and code smell audit."""

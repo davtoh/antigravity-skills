@@ -78,6 +78,60 @@ def record_debug_retro(
     return retro_path
 
 
+def _write_standalone_scaffold(root: Path, retro_path: Path, cid: str | None, brain_dir: str | None) -> str:
+    """Write/refresh .diagnostics/LEARNING_SCAFFOLD.md when no .frontier plan digest runs."""
+    scaf_path = root / ".diagnostics" / "LEARNING_SCAFFOLD.md"
+    scaf_path.parent.mkdir(parents=True, exist_ok=True)
+    raw = retro_path.read_text(encoding="utf-8", errors="replace") if retro_path.is_file() else ""
+    recent = [ln.strip() for ln in raw.splitlines() if ln.startswith(("## [", "- **Root Cause**:", "- **Project", "- **Skill"))][:16]
+    ta_cmd = f"`diagnose.py transcript-audit --cids {cid}`" if cid else "`diagnose.py transcript-audit --latest 1`"
+    lines = [
+        "# Debug Learning Scaffold",
+        f"- **Source Ledger**: `{retro_path.relative_to(root).as_posix() if retro_path.is_relative_to(root) else retro_path}`",
+        f"- **Latest Telemetry**: {_audit_metrics(cid, brain_dir)}",
+        "",
+        "## Recent Debug Entries & `/learn` Candidates",
+        *(recent or ["- none"]),
+        "",
+        "## Introspective Commands (User Choice)",
+        f"- Transcript Audit: {ta_cmd}",
+        "- Persist Lessons: `/learn` (review above candidates and promote to `AGENTS.md` or skill rules)",
+    ]
+    scaf_path.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
+    return scaf_path.relative_to(root).as_posix() if scaf_path.is_relative_to(root) else str(scaf_path)
+
+
+def _sync_learning_scaffold(root: Path, retro_path: Path, plan: str | None, cid: str | None, brain_dir: str | None) -> str:
+    """Refresh .frontier/LEARN_QUEUE.md (and plan scaffold) if frontier-architect is present, else .diagnostics/LEARNING_SCAFFOLD.md."""
+    fa_scripts = Path(__file__).resolve().parents[2] / "frontier-architect" / "scripts"
+    if (root / ".frontier").is_dir() and (fa_scripts / "plan_digest.py").is_file():
+        import sys
+        if str(fa_scripts) not in sys.path:
+            sys.path.insert(0, str(fa_scripts))
+        try:
+            import plan_digest as pd
+            if plan and (scaf := pd.write_learning_scaffold(root, plan, backfill=False, brain_dir=brain_dir)):
+                return scaf
+            wd = pd.build_workspace_digest(root, brain_dir=brain_dir, backfill=False)
+            return pd.write_workspace_scaffold(root, wd)
+        except Exception:
+            pass
+    return _write_standalone_scaffold(root, retro_path, cid, brain_dir)
+
+
+def _print_turn_end_echo(scaffold_rel: str, symptom: str, cause: str, learn: str | None, skill_learn: str | None, plan: str | None) -> None:
+    """Emit copy-pasteable Turn-End Echo block matching frontier-architect format."""
+    print("\n--- Turn-End Echo (Copy-Paste Into Final Response) ---")
+    print("### Continuous Learning & Introspective Options")
+    print(f"- **Root Cause Logged**: `{symptom.strip()}` -> {cause.strip()}")
+    if learn and learn.strip().lower() not in ("", "none", "n/a"):
+        print(f"- **`/learn` candidate (project)**: {learn.strip()}")
+    if skill_learn and skill_learn.strip().lower() not in ("", "none", "n/a"):
+        print(f"- **`/learn` candidate (skill)**: {skill_learn.strip()}")
+    plan_opt = f"`plan_engine.py digest {plan} --backfill --write-scaffold`, " if plan else ""
+    print(f"- **Introspective Options**: Review `{scaffold_rel}`, run `/learn`, {plan_opt}or run `diagnose.py transcript-audit --latest 1`.")
+
+
 def cmd_debug_retro(args: argparse.Namespace) -> int:
     """CLI handler for `diagnose.py debug-retro`."""
     root = Path(args.path or ".").resolve()
@@ -93,6 +147,9 @@ def cmd_debug_retro(args: argparse.Namespace) -> int:
     )
     rel = out.relative_to(root).as_posix() if out.is_relative_to(root) else str(out)
     print(f"[debug-retro] Recorded {args.status} entry in {rel}")
+    scaffold_rel = _sync_learning_scaffold(root, out, getattr(args, "plan", None), args.cid, args.brain_dir)
+    print(f"[debug-retro] Learning scaffold: {scaffold_rel}")
+    _print_turn_end_echo(scaffold_rel, args.symptom, args.cause, args.learn, args.skill_learn, getattr(args, "plan", None))
     return 0
 
 
@@ -104,6 +161,7 @@ def register_parser(subparsers: Any) -> None:
     p.add_argument("--cause", required=True, help="Verified root cause")
     p.add_argument("--status", choices=("verified", "unconfirmed", "escalated"), default="verified")
     p.add_argument("--cid", default=None, help="Conversation ID for transcript telemetry")
+    p.add_argument("--plan", default=None, help="Optional active .frontier plan slug to refresh LEARNING_SCAFFOLD.md")
     p.add_argument("--brain-dir", default=None, help="Optional brain dir override")
     p.add_argument("--learn", default=None, help="Project-level /learn candidate")
     p.add_argument("--skill-learn", default=None, help="Skill/tooling /learn candidate")

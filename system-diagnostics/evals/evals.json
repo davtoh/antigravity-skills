@@ -211,6 +211,17 @@
         "Documents - REDIRECT workflow/model switches in transcript-audit",
         "Documents schedule-while-subagent flags in transcript-audit"
       ]
+    },
+    {
+      "id": 18,
+      "prompt": "How do I prevent diagnose.py tests from hanging forever on a deadlocked test, and how do I log a standalone post-debug retrospective with learning scaffolds?",
+      "expected_output": "Uses diagnose.py tests --timeout <sec> (default 180, 0 disables, exits 124 on timeout) and diagnose.py debug-retro --symptom ... --cause ... --status verified --cid <cid> (updating DEBUG_RETRO.md, LEARNING_SCAFFOLD.md, and printing Turn-End Echo).",
+      "files": [],
+      "expectations": [
+        "Documents diagnose.py tests --timeout (default 180s, 0 disables) returning exit code 124 on hung suites",
+        "Documents diagnose.py debug-retro for recording DEBUG_RETRO.md, LEARNING_SCAFFOLD.md, and Turn-End Echo",
+        "Supports --plan, --learn, and --skill-learn flags on diagnose.py debug-retro"
+      ]
     }
   ]
 }

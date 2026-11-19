@@ -24,8 +24,9 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" status [<
 # Emit ONLY the active milestone's checklist items and verifiers (Zero-Token Slicer)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<plan_or_slug>] --root .
 
-# Run verification command (auto-normalizes leading .venv/bin/python on Windows & parses unittest/pytest counts)
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" --root .
+# Run verification command (auto-normalizes leading .venv/bin/python on Windows, streams live, aborts at --timeout 180s [0 disables] with exit 124)
+# If exit 124 shows active test progress in partial output, re-run slow suites with --timeout 600 (or --timeout 0); otherwise debug deadlocks / blocking I/O.
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" [--timeout 180] --root .
 
 # Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--no-sync-parent] --root .

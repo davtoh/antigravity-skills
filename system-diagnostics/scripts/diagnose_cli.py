@@ -54,6 +54,7 @@ def register_core_parsers(sub: Any) -> None:
 
     p_test = sub.add_parser("tests", help="Run automated tests using discovered virtualenv")
     p_test.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_test.add_argument("--timeout", type=float, default=180.0, help="Max seconds before aborting hung suite (default: 180; 0 disables)")
     p_test.add_argument("args", nargs="*", default=[], help="Arguments passed to test runner")
 
     p_all = sub.add_parser("all", help="Unified 3-Tier Diagnostic Audit in 1 command")

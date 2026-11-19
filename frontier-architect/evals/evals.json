@@ -312,6 +312,18 @@
         "Runs diagnose.py audit --path <target_files> before editing near-limit files or classes",
         "Promotes milestone CDP E2E probes into permanent Chrome-gated tests/test_*_e2e*.py tests instead of leaving them in scratch/"
       ]
+    },
+    {
+      "id": 25,
+      "prompt": "When running plan_engine.py verify on a slow or potentially deadlocked test suite, how does timeout handling work and how should I recover if it hits exit code 124?",
+      "expected_output": "Explains that plan_engine.py verify streams unbuffered output live with a default --timeout 180s (0 disables) and exits with 124 on timeout; if partial output shows active test progress, re-run with --timeout 600 or --timeout 0, otherwise debug un-signaled events or blocking I/O.",
+      "files": [],
+      "expectations": [
+        "Documents plan_engine.py verify --timeout (default 180s, 0 disables) returning exit code 124 on timeout",
+        "Streams live output during verify so partial test progress is visible before timeout",
+        "Recommends re-running slow suites with --timeout 600 or --timeout 0 when partial output shows active progress",
+        "Flags deadlocks or blocking I/O when partial output shows no test progress"
+      ]
     }
   ]
 }
