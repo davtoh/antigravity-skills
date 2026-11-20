@@ -77,6 +77,7 @@ python -m unittest discover -s skills/app-debugger/tests -p "test_*.py"
 | **Unlock Quarantined Tactical Defect** | Quarantined defect | Failing Red repro in `tests/quarantine/` | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001` |
 | **Unlock Defect & Checkout Micro-Branch** | Quarantined defect | Clean git branch + Red repro test | `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id DEFECT-001 --branch` |
 | **Polyglot Latent Defect & Smell Scan** | Source repository | Py, JS/TS, CSS, Dart (SSOT) | `python skills/system-diagnostics/scripts/diagnose.py scan --path src/` |
+| **Record Verified Fix in Changelog** | Post-verification | `--title --type --summary --verify` | `python skills/system-diagnostics/scripts/diagnose.py changelog add --title "<Title>" --type fix --summary "<Summary>" --verify "<Command>"` |
 
 ---
 
