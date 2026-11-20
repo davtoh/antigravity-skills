@@ -57,7 +57,8 @@ Establish a failing baseline with `run_diagnose.py` before editing *(full comman
 3. **Tier 3 (Browser UI & CDP)**:
    - `run_diagnose.py ui --live --capture-runtime --audit-layout`, `--wait 2.0` (scroll-snap / resting offset settle), `--selectors`, `--eval-file scratch/probe.js`, or `--headless --screenshot scratch/bug_before.jpg`.
 4. **Dynamic Domain Probes & Hardware Diagnostic Routing**:
-   - Avoid disposable `scratch/` scripts: use `probe list`, `probe run camera_hardware`, `probe new <name> --domain <domain>`, and `probe save <script> <name>`.
+   - **Discover Workspace Probes First**: Always run `run_diagnose.py probe list` in Step 2 to discover project-specific probes in `.diagnostics/probes/` (and global probes), and execute relevant ones via `run_diagnose.py probe run <name>` before writing ad-hoc checks.
+   - Avoid disposable `scratch/` scripts: use `probe new <name> --domain <domain>` and `probe save <script> <name>`.
    - **Hardware & Device Diagnostic Routing**: For DirectShow locks, OpenCV indices, COM ports, or audio capture, **do NOT invoke browser `ui` CDP**—run native device status or `probe run camera_hardware` under `.venv`.
 5. **Quarantined Tactical Defect (Red-to-Green)**: Run `diagnose.py scaffold-defect --id DEFECT-001 --branch` and verify Red failure in `tests/quarantine/test_defect_001.py`.
 

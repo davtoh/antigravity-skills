@@ -50,6 +50,8 @@ def register_core_parsers(sub: Any) -> None:
     p_surf.add_argument("--show-ids", action="store_true", help="List all HTML element IDs")
     p_surf.add_argument("--show-globals", action="store_true", help="List all window.* JS exports")
     p_surf.add_argument("--show-routes", action="store_true", help="List all backend Python routes")
+    p_surf.add_argument("--verify", action="store_true", help="Verify cross-contract parity (JS fetch vs routes, window.* read/write, JS IDs vs HTML)")
+    p_surf.add_argument("--strict", action="store_true", help="Exit 1 if --verify detects mismatches")
     p_surf.add_argument("--json", action="store_true", help="Output JSON report")
 
     p_test = sub.add_parser("tests", help="Run automated tests using discovered virtualenv")

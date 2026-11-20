@@ -330,9 +330,17 @@ def cmd_surface(args: argparse.Namespace) -> int:
         "interactive_selects": sorted(all_selects), "global_window_exports": sorted(all_globals),
         "backend_routes": all_routes, "css_important_count": important_count,
     }
+    verification = None
+    if getattr(args, "verify", False):
+        try:
+            from surface_verifier import print_verification_report, verify_surface_contracts
+        except ImportError:
+            from .surface_verifier import print_verification_report, verify_surface_contracts
+        verification = verify_surface_contracts(target_path, files, scan_html_surface, scan_js_surface, scan_python_surface)
+        data["verification"] = verification
     if args.json:
         print(json.dumps(data, indent=2))
-        return 0
+        return 1 if (verification and getattr(args, "strict", False) and verification["summary"]["total_mismatches"] > 0) else 0
     print(f"=== Surface Inventory ({target_path}) ===")
     print(f"HTML Files: {len(files['html'])} | Unique IDs: {len(all_ids)} | Selects: {len(all_selects)}")
     print(f"JS Files:   {len(files['js'])} | window.* Globals: {len(all_globals)}")
@@ -344,4 +352,8 @@ def cmd_surface(args: argparse.Namespace) -> int:
         print("\n--- window.* Exports ---\n" + "\n".join(f"  {g}" for g in sorted(all_globals)))
     if args.show_routes and all_routes:
         print("\n--- Backend Routes ---\n" + "\n".join(f"  {r.get('method', 'GET')} {r.get('path', '')}" for r in all_routes))
+    if verification is not None:
+        print_verification_report(verification)
+        if getattr(args, "strict", False) and verification["summary"]["total_mismatches"] > 0:
+            return 1
     return 0

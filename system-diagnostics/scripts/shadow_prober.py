@@ -34,6 +34,7 @@ except ImportError:
 SECRET_REGEX = re.compile(r"""(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password)\s*[:=]\s*['"][a-zA-Z0-9_\-\.]{16,}['"]""")
 DUMMY_SECRET_WORDS = frozenset({"test", "fake", "dummy", "example", "placeholder", "xxx", "sample"})
 SKIP_ARITY_DECORATORS = frozenset({"property", "setter", "deleter", "overload", "abstractmethod"})
+TIMING_MODULE_RE = re.compile(r"(?:worker|scheduler|timing|capture|replay|heartbeat|watchdog)", re.IGNORECASE)
 
 
 @dataclass
@@ -78,6 +79,39 @@ def _extract_callable_sig(node: Any, is_method: bool = False) -> Optional[dict[s
     }
 
 
+def _check_mixed_clock_domains(
+    rel_path: str,
+    time_calls: list[tuple[int, str]],
+    monotonic_calls: list[tuple[int, str]],
+    add_fn: Any,
+) -> None:
+    """Flag mixed time.time() and time.monotonic() usage in the same scope or timing module."""
+    if not (time_calls and monotonic_calls):
+        return
+    by_scope_t = {s: ln for ln, s in time_calls}
+    by_scope_m = {s: ln for ln, s in monotonic_calls}
+    shared = sorted(set(by_scope_t) & set(by_scope_m))
+    if shared:
+        for sc in shared:
+            add_fn(
+                "MIXED_CLOCK_DOMAIN", "BAD_LOGIC", "HIGH", "architectural",
+                min(by_scope_t[sc], by_scope_m[sc]), sc or rel_path,
+                f"Mixed clock domains in '{sc or rel_path}': time.time() (L{by_scope_t[sc]}) and time.monotonic() (L{by_scope_m[sc]}).",
+                "Unify elapsed/deadline timing on time.monotonic() and reserve time.time() for wall-clock/epoch timestamps.",
+                f"clock:{sc}",
+            )
+    elif TIMING_MODULE_RE.search(rel_path):
+        t_ln, _ = time_calls[0]
+        m_ln, _ = monotonic_calls[0]
+        add_fn(
+            "MIXED_CLOCK_DOMAIN", "BAD_LOGIC", "HIGH", "architectural",
+            min(t_ln, m_ln), rel_path,
+            f"Timing/worker module mixes time.time() (L{t_ln}) and time.monotonic() (L{m_ln}).",
+            "Unify elapsed/deadline timing on time.monotonic() and reserve time.time() for wall-clock/epoch timestamps.",
+            f"clock:{rel_path}",
+        )
+
+
 class PythonAstScanner(ast.NodeVisitor):
     """Scope- and receiver-aware AST visitor scanning Python code for latent bugs and smells."""
 
@@ -85,6 +119,10 @@ class PythonAstScanner(ast.NodeVisitor):
         self.rel_path, self.findings = rel_path, []
         self.func_sigs, self.async_funcs = {}, set()
         self.class_methods, self.class_async, self.current_class = {}, {}, None
+        self.current_func: Optional[str] = None
+        self._imported_time_fns: dict[str, str] = {}
+        self._time_calls: list[tuple[int, str]] = []
+        self._monotonic_calls: list[tuple[int, str]] = []
 
     def _add(self, rule: str, cat: str, sev: str, track: str, line: int, sym: str, msg: str, fix: str, fp: str = "") -> None:
         self.findings.append(DefectFinding("", compute_fingerprint(rule, sym, fp or str(line)), rule, cat, sev, track, self.rel_path, line, sym, msg, fix))
@@ -108,7 +146,15 @@ class PythonAstScanner(ast.NodeVisitor):
                             c_sigs[m.name] = msig
                 self.class_methods[stmt.name], self.class_async[stmt.name] = c_sigs, c_async
         self.visit(tree)
+        _check_mixed_clock_domains(self.rel_path, self._time_calls, self._monotonic_calls, self._add)
         return self.findings
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module == "time":
+            for alias in node.names:
+                if alias.name in ("time", "monotonic"):
+                    self._imported_time_fns[alias.asname or alias.name] = alias.name
+        self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         prev, self.current_class = self.current_class, node.name
@@ -116,8 +162,11 @@ class PythonAstScanner(ast.NodeVisitor):
         self.current_class = prev
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        prev_fn = self.current_func
+        self.current_func = f"{self.current_class}.{node.name}" if self.current_class else node.name
         self._check_func_def(node)
         self.generic_visit(node)
+        self.current_func = prev_fn
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def _check_func_def(self, node: Any) -> None:
@@ -155,7 +204,22 @@ class PythonAstScanner(ast.NodeVisitor):
                           f"Prepend 'await {call_name}(...)' or schedule via 'asyncio.create_task({call_name}(...))'.", f"expr:{call_name}")
         self.generic_visit(node)
 
+    def _record_clock_call(self, node: ast.Call) -> None:
+        scope = self.current_func or ""
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "time":
+            if node.func.attr == "time":
+                self._time_calls.append((node.lineno, scope))
+            elif node.func.attr == "monotonic":
+                self._monotonic_calls.append((node.lineno, scope))
+        elif isinstance(node.func, ast.Name) and node.func.id in self._imported_time_fns:
+            orig = self._imported_time_fns[node.func.id]
+            if orig == "time":
+                self._time_calls.append((node.lineno, scope))
+            elif orig == "monotonic":
+                self._monotonic_calls.append((node.lineno, scope))
+
     def visit_Call(self, node: ast.Call) -> None:
+        self._record_clock_call(node)
         call_name, sig, _ = self._resolve_target(node)
         if isinstance(node.func, ast.Name) and call_name in ("eval", "exec"):
             self._add("UNSAFE_EVAL_EXEC", "VULNERABILITY", "HIGH", "architectural", node.lineno, call_name,

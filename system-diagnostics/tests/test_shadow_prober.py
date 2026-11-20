@@ -210,6 +210,28 @@ class TestShadowProber(unittest.TestCase):
         findings = PythonAstScanner("routers/cameras.py", code).scan(tree)
         self.assertEqual(len(findings), 0)
 
+    def test_mixed_clock_domain_flagged_in_same_func_and_timing_module(self):
+        same_fn = "import time\ndef step():\n    a = time.monotonic()\n    b = time.time()\n"
+        f1 = PythonAstScanner("service.py", same_fn).scan(ast.parse(same_fn))
+        self.assertEqual([x.rule_id for x in f1], ["MIXED_CLOCK_DOMAIN"])
+
+        worker_mod = "import time\ndef a(): return time.monotonic()\ndef b(): return time.time()\n"
+        f2 = PythonAstScanner("video/capture_worker.py", worker_mod).scan(ast.parse(worker_mod))
+        self.assertEqual([x.rule_id for x in f2], ["MIXED_CLOCK_DOMAIN"])
+
+        unrelated = "import time\ndef a(): return time.monotonic()\ndef b(): return time.time()\n"
+        f3 = PythonAstScanner("utils/helper.py", unrelated).scan(ast.parse(unrelated))
+        self.assertEqual(f3, [])
+
+        aliased = (
+            "from time import time as wall_time, monotonic as mono\n"
+            "def f1(): return wall_time() - mono()\n"
+            "def f2(): return wall_time() - mono()\n"
+        )
+        f4 = PythonAstScanner("service.py", aliased).scan(ast.parse(aliased))
+        self.assertEqual(len(f4), 2)
+        self.assertTrue(all(x.rule_id == "MIXED_CLOCK_DOMAIN" for x in f4))
+
 
 if __name__ == "__main__":
     unittest.main()
