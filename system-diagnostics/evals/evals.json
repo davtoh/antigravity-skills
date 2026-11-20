@@ -46,7 +46,8 @@
         "Executes diagnose.py surface to statically extract HTML element IDs, selects, and modals without running servers",
         "Discovers window.* global exports and DOM queries in JavaScript and TypeScript files",
         "Extracts backend Python HTTP routes (@app.get, @app.post) from source files",
-        "Counts CSS !important occurrences to protect stylesheet specificity budgets"
+        "Counts CSS !important occurrences to protect stylesheet specificity budgets",
+        "Supports --verify and --strict to cross-verify JS fetch() routes, window.* read/write symmetry, and HTML IDs"
       ]
     },
     {

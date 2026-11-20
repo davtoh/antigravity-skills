@@ -29,6 +29,7 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("sync-check", "md5"), (r"--sync-check|md5",), "Sync check"),
     (("traceback", "--lines", "exception"), (r"--lines|traceback|exception",), "Traceback scan"),
     (("diagnose.py surface", "html element id"), (r"diagnose\.py\s+surface|html element ids?",), "Surface scanning"),
+    (("--verify", "cross-verify"), (r"--verify", r"--strict"), "Surface cross-contract --verify"),
     (("window.*", "global"), (r"window\.\*|global",), "Window globals"),
     (("!important",), (r"!important",), "!important count"),
     (("diagnose.py tests", "virtualenv", ".venv"), (r"diagnose\.py\s+tests|virtualenv|\.venv",), "Virtualenv test runner"),

@@ -33,7 +33,7 @@ The **System Diagnostics** skill provides a zero-overhead, project-agnostic diag
    - Executes a comprehensive 3-tier audit in one shot: Static Surface/Tests $\to$ Docker Container $\to$ Browser UI Layout.
    - Summarizes results under Axiom 9 (Honest Verification Reporting: `VERIFIED`, `UNVERIFIED`, or `SKIPPED`).
 6. **Dynamic & Extensible Probes (`diagnose.py probe`)**:
-   - Discovers, runs, scaffolds, and promotes reusable domain probes (e.g., `camera_hardware`, databases, sockets) across global and workspace `.diagnostics/probes/` registries.
+   - Discovers, runs, scaffolds, and promotes reusable domain probes (e.g., `camera_hardware`, databases, sockets) across global and workspace `.diagnostics/probes/` registries. Run `diagnose.py probe list` when starting diagnostics in a repo to surface project-specific `.diagnostics/probes/*.py` checks.
    - Eliminates disposable scratch script sprawl: agents test domain-specific logic and promote working checks into permanent diagnostic tools via `diagnose.py probe save`.
    - Built-in `camera_hardware.py` probe tests DirectShow, Media Foundation, and V4L2 device indices, validates pixel frame decoding without crashing on `-1.0` register queries, and audits Windows PnP device states.
 7. **Static Quality, Defect & Code Smell Audit (`diagnose.py audit`)**:
@@ -82,6 +82,7 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Verify Docker Container Sync** | Docker service | Compares host vs container MD5s | `python skills/system-diagnostics/scripts/diagnose.py container --sync-check app.py static/app.js` |
 | **Scan Recent Container Tracebacks** | Docker service | Scans recent log lines for panic | `python skills/system-diagnostics/scripts/diagnose.py container --lines 100` |
 | **Scan Surface for Broken IDs/Routes** | Source repository | Static AST scan without server | `python skills/system-diagnostics/scripts/diagnose.py surface --show-ids --show-routes` |
+| **Verify Cross-Contract Surface Parity** | HTML/JS/Python repo | Fetch vs routes, `window.*`, IDs | `python skills/system-diagnostics/scripts/diagnose.py surface --verify --strict` |
 | **Export Full Surface Inventory JSON** | Source repository | JSON contract baseline | `python skills/system-diagnostics/scripts/diagnose.py surface --json` |
 | **Run Test Suite with Virtualenv** | Test suite | Auto-detects `.venv` interpreter | `python skills/system-diagnostics/scripts/diagnose.py tests` |
 | **List Registered Probes** | Probe registry | Discovers global & workspace probes | `python skills/system-diagnostics/scripts/diagnose.py probe list` |
@@ -151,6 +152,8 @@ python skills/system-diagnostics/scripts/diagnose.py surface [OPTIONS]
 - `--show-ids`: Prints all discovered HTML element IDs and interactive controls.
 - `--show-globals`: Prints all discovered `window.*` global exports in JavaScript/TypeScript.
 - `--show-routes`: Prints all discovered backend Python routes.
+- `--verify`: Cross-verifies JS `fetch()` paths vs routes, `window.*` reader/writer symmetry, and JS IDs vs HTML IDs.
+- `--strict`: Exits 1 if `--verify` detects mismatches.
 - `--json`: Outputs structured JSON for automated contracts.
 
 ### Subcommand: `tests`
@@ -278,6 +281,7 @@ skills/system-diagnostics/
 │   ├── audit_layout.js               # Injected DOM bounding box auditor
 │   ├── docker_audit.py               # Docker stats, top, and MD5 sync auditor
 │   ├── surface_scanners.py           # AST surface parser for HTML/JS/Python/CSS
+│   ├── surface_verifier.py           # Cross-contract verifier (fetch vs routes, window.*, IDs)
 │   ├── changelog_manager.py          # Unified changelog, sanitization & auto-archiving engine
 │   └── css_inspector.py              # CSS layout, overflow, and specificity checks
 └── tests/

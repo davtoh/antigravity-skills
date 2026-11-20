@@ -145,6 +145,61 @@ class TestSurfaceScanners(unittest.TestCase):
         self.assertIn("pulse", surf.keyframes)
         self.assertEqual(len(surf.fullscreen_rules), 1)
 
+    def test_verify_surface_contracts_detects_mismatches_and_passes_clean(self):
+        import tempfile
+        from surface_scanners import walk_source_files
+        from surface_verifier import verify_surface_contracts
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text('<div id="live-img"></div>', encoding="utf-8")
+            (root / "app.js").write_text(
+                'document.getElementById("live-img");\n'
+                'document.getElementById("missing-btn");\n'
+                'const t = window.latestTelemetry?.active_tracks;\n'
+                'window.AppReady = true;\n'
+                'fetch(`/api/videos/${fn}/report`);\n'
+                'fetch("/api/videos/123/reports");\n',
+                encoding="utf-8",
+            )
+            (root / "routes.py").write_text(
+                'from fastapi import APIRouter\n'
+                'router = APIRouter(prefix="/api/videos")\n'
+                '@router.get("/{fn}/reports")\n'
+                'def get_reports(fn: str): return []\n',
+                encoding="utf-8",
+            )
+            files = walk_source_files(root)
+            res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
+            self.assertEqual([f["path"] for f in res["unmatched_fetches"]], ["/api/videos/{param}/report"])
+            self.assertEqual([w["symbol"] for w in res["dead_window_reads"]], ["latestTelemetry"])
+            self.assertEqual([m["id"] for m in res["missing_html_ids"]], ["missing-btn"])
+            self.assertEqual(res["summary"]["total_mismatches"], 3)
+
+    def test_verify_surface_contracts_edge_cases(self):
+        import tempfile
+        from surface_scanners import walk_source_files
+        from surface_verifier import verify_surface_contracts
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text('<div id="ok"></div>', encoding="utf-8")
+            (root / "app.js").write_text(
+                'const refUrl = "https://example.com/docs"; fetch("/api/v2/items?page=1");\n'
+                'fetch("/api/v2/items/" + encodeURIComponent(id) + "/edit");\n',
+                encoding="utf-8",
+            )
+            (root / "routes.py").write_text(
+                'from fastapi import APIRouter, Depends\n'
+                'router = APIRouter(dependencies=[Depends(auth)], prefix="/api/v2")\n'
+                '@router.get("/items")\n'
+                'def list_items(): return []\n'
+                '@router.post("/items/{item_id}/edit")\n'
+                'def edit_item(item_id: str): return {}\n',
+                encoding="utf-8",
+            )
+            files = walk_source_files(root)
+            res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
+            self.assertEqual(res["summary"]["total_mismatches"], 0, f"Unexpected mismatches: {res}")
+
 if __name__ == "__main__":
     unittest.main()
 
