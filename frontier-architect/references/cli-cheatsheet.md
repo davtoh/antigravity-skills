@@ -29,6 +29,7 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<pl
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" [--timeout 180] --root .
 
 # Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
+# Never run git add/commit before advance or without user consent; run retrospective sequentially after advance (never in parallel).
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--no-sync-parent] --root .
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
