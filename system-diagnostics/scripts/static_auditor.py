@@ -12,6 +12,7 @@ prevent context window explosion during AI agent interactions.
 """
 
 import ast
+import ctypes
 import enum
 import importlib
 import inspect
@@ -53,7 +54,7 @@ _LIFECYCLE_TOKENS = ("pool", "manager", "source", "capture", "thread", "worker",
 
 def _smoke_check_class(name: str, obj: Any, p: Path) -> dict[str, Any] | None:
     """Validate class signature and parameterless instantiation unless lifecycle/abstract."""
-    if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum)):
+    if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum, ctypes.Structure, ctypes.Union)):
         return None
     try:
         sig = inspect.signature(obj)

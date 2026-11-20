@@ -249,6 +249,18 @@ class TestStaticAuditor(unittest.TestCase):
             issues = static_auditor.audit_callable_smoke(tmp / "lazy_mod.py")
             self.assertEqual(issues, [])
 
+    def test_callable_smoke_skips_ctypes_structures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "win_structs.py").write_text(
+                "import ctypes\n"
+                "class IO_COUNTERS(ctypes.Structure):\n"
+                "    _fields_ = [('ReadOperationCount', ctypes.c_uint64)]\n",
+                encoding="utf-8",
+            )
+            issues = static_auditor.audit_callable_smoke(tmp / "win_structs.py")
+            self.assertEqual(issues, [])
+
 
 if __name__ == "__main__":
     unittest.main()

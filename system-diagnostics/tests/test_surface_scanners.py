@@ -95,6 +95,15 @@ class TestSurfaceScanners(unittest.TestCase):
         self.assertNotIn("localStorage.token", surf.global_exports)
         self.assertNotIn("activeUser", surf.global_exports)
 
+    def test_scan_js_surface_detects_umd_root_export(self):
+        js = """
+        (function (root, factory) {
+          root.TextTruncationManager = factory();
+        })(typeof self !== 'undefined' ? self : this, function () { return {}; });
+        """
+        surf = scan_js_surface(js)
+        self.assertIn("TextTruncationManager", surf.global_exports)
+
     def test_scan_python_surface(self):
         py = """
         from fastapi import APIRouter
