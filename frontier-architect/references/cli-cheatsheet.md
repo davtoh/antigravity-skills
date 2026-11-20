@@ -28,7 +28,7 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<pl
 # If exit 124 shows active test progress in partial output, re-run slow suites with --timeout 600 (or --timeout 0); otherwise debug deadlocks / blocking I/O.
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" [--timeout 180] --root .
 
-# Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
+# Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--no-sync-parent] --root .
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
@@ -36,6 +36,12 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospective <plan_or_slug> \
   --milestone <N> --grade A --cid <conv_id> --tri "5,5,5,5" --hypotheses 1 \
   --went-well "<what worked well>" --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
+
+# Targeted Python unittest execution (enforces 180s --timeout guard against deadlocks/hangs)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" tests <modules...>
+
+# Follow-up /app-debugger escalation linked to an active plan (auto-records followup_cids & refreshes LEARNING_SCAFFOLD.md; run transcript-audit last)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" debug-retro --plan <slug> --cid <conv_id> --symptom "<symptom>" --cause "<cause>" --status <verified|unconfirmed>
 
 # Pre-test modularity & function-length audit (catches >40L functions and >N line overruns before unittest)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path <files...> --max-lines 350 --max-fn-lines 40

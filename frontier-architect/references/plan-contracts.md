@@ -37,7 +37,10 @@ Consult this reference when **authoring a new plan (Phase 5)** or **closing a pl
   - Positional `--tri "5,5,5,5"` maps to: *Token Efficiency (1–5)*, *Hypothesis Accuracy (1–5)* (`<= 2` attempts), *Tool Reliability Index (1–5)*, *Architectural Defense (1–5)*.
   - Grading rubric (auto-capped by `plan_engine.py`): `A` (`0–1` retries, `<= 60` steps), `B` (`2–3` retries or `61–100` steps), `C` (`>3` retries or `>100` steps), `D/F` (thrash or unverified).
   - Pass `--cid <current_cid>` once to auto-populate `--steps`/`--retries`. Echo the printed `--- Turn-End Echo ---` block directly without re-reading `SKILL.md`. Default to running `/learn` once at Child Plan completion via `LEARNING_SCAFFOLD.md` (mid-plan only if a rule prevents an immediate repeat failure).
-- **Tier-1 Audit & Build Nuances**:
+  - For follow-up `/app-debugger` sessions after a milestone, running `diagnose.py debug-retro --plan <slug> --cid <cid>` automatically records `followup_cids` and refreshes `LEARNING_SCAFFOLD.md` with `--backfill` (no manual `digest` re-run needed unless merging external CIDs via `plan_engine.py digest <slug> --cids <all_cids> --backfill --write-scaffold`). Run `diagnose.py scan` *before* `retrospective`/`digest` and `diagnose.py transcript-audit --latest 1` *last*.
+- **Tier-1 Audit, Concurrency & Build Nuances**:
+  - Route targeted Python `unittest` runs through `diagnose.py tests <modules...>` (enforces the 180s `--timeout` guard) before full discovery, and promote milestone CDP E2E probes into permanent Chrome-gated `tests/test_*_e2e*.py` tests (ephemeral `port=0`, isolated temp dir) rather than leaving them in `scratch/`.
+  - Enforce **Second-Check Verification Gate**: verify interruptibility with `threading.Timer`, grep upstream call-sites for shadowing defaults, verify single clock-domain parity (`time.monotonic()` vs `time.time()`) without hiding behind synthetic `now=` stubs, and ensure waits/joins occur strictly outside lock blocks.
   - Preserve `try/except ImportError` availability probes when pruning `arch-map` unused imports.
   - Keep Sphinx `.. automodule::` directives in one canonical `.rst` file for `-W` builds.
   - Use `subprocess.run([sys.executable, ...])` or AST parsing for `sys.modules` / import-boundary tests.
