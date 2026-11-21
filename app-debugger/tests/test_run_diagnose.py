@@ -69,7 +69,7 @@ class TestRunDiagnose(unittest.TestCase):
             mock_py.parent.mkdir(parents=True)
             mock_py.write_text("# mock", encoding="utf-8")
             res = run_diagnose.resolve_python(base_dir=base)
-            self.assertEqual(res, str(mock_py.resolve()))
+            self.assertEqual(res, str(mock_py))
 
     def test_resolve_python_fallback(self):
         """Verify resolve_python falls back to sys.executable when no venv exists."""
@@ -160,7 +160,7 @@ class TestRunDiagnose(unittest.TestCase):
             mock_py.parent.mkdir(parents=True)
             mock_py.write_text("# mock", encoding="utf-8")
             res = run_diagnose.resolve_python(base_dir=base)
-            self.assertEqual(res, str(mock_py.resolve()))
+            self.assertEqual(res, str(mock_py))
 
     def test_main_non_probe_missing_diagnose(self):
         """Verify main exits with 1 when diagnose.py is missing on command invocation."""

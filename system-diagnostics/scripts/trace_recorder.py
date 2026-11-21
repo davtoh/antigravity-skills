@@ -273,11 +273,10 @@ def cmd_traces(args: Any) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
+        import runpy
         target_script = sys.argv[1]
         install_trace_recorder()
         sys.argv = sys.argv[1:]
-        with open(target_script, "rb") as _f:
-            code = compile(_f.read(), target_script, "exec")
-        exec(code, {"__name__": "__main__", "__file__": os.path.abspath(target_script)})
+        runpy.run_path(target_script, run_name="__main__")
     else:
         print("Universal Runtime Diagnostic Trace Recorder\nUsage: python -m trace_recorder <script.py> [args...]")

@@ -23,8 +23,8 @@ python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
 - `--click <SELECTOR>`: Clicks an element before measuring.
 - `--window-size <WxH>`: Headless viewport dimensions (default: `1440x900`).
 - `--wait <SEC>`: Maximum post-load/click settle wait in seconds (default: `1.5`).
-- `--stability-ms <MS>`: Early-exit layout stability window in milliseconds (default: `250`).
-- `--connect-timeout <SEC>`: Live CDP handshake timeout in seconds (default: `10.0`).
+- `--stability-ms <MS>`: Early-exit layout stability window in milliseconds (default: `0`).
+- `--connect-timeout <SEC>`: Live CDP handshake timeout in seconds (default: `15.0`).
 - `--port <PORT>`: Debugging port override.
 - `--strict`: Exits with code `1` if layout overflow warnings or runtime console/JS/network errors are detected.
 - `--no-fallback-headless`: Fails immediately if live Chrome is unreachable instead of falling back to headless (automatically enforced with `--live` unless `--allow-headless-fallback` is set).
@@ -120,8 +120,8 @@ python skills/system-diagnostics/scripts/diagnose.py dismiss-defect --id <ID_FP_
 ```bash
 python skills/system-diagnostics/scripts/diagnose.py changelog {add,migrate,show,status} [OPTIONS]
 ```
-- `add --title "<T>" --type <TYPE> --summary "<S>" [--verify "<V>"] [--fixes "<F>"] [--files <FILES...>] [--path <DIR>] [--max-lines 150] [--no-commit-hint] [--json]`: Appends a sanitized milestone entry to `CHANGELOG.md`, auto-migrates any legacy `MIGRATION_LOG.md`, shards overflow into `.changelogs/`, and prints a copy-pasteable `git commit` snippet by default (pass `--no-commit-hint` to suppress).
-- `migrate [--path <DIR>] [--source-log <NAME>] [--target-log <NAME>] [--max-lines 150] [--json]`: Migrates and shards an oversized legacy log into `CHANGELOG.md`.
+- `add --title "<T>" --type <TYPE> --summary "<S>" [--files <FILES...>] [--verify "<V>"] [--path <DIR>] [--max-lines 150] [--no-commit-hint]`: Appends a sanitized milestone entry to `CHANGELOG.md`, auto-migrates any legacy `MIGRATION_LOG.md`, shards overflow into `.changelogs/`, and prints a copy-pasteable `git commit` snippet by default (pass `--no-commit-hint` to suppress).
+- `migrate [--path <DIR>] [--source-log <NAME>] [--target-log <NAME>] [--max-lines 150]`: Migrates and shards an oversized legacy log into `CHANGELOG.md`.
 - `show [--path <DIR>] [--recent 3] [--json]` / `status [--path <DIR>] [--max-lines 150] [--json]`: Reads recent entries or inspects line/shard status.
 
 ### Subcommand: `transcript-audit`
@@ -132,7 +132,7 @@ python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <I
 - `--latest <N>` / `--min-steps <N>`: Audits the `N` most recent substantive conversations (prefers `>= 6` steps).
 - `--brain-dir <DIR>`: Overrides brain directory (or set `AGY_BRAIN_DIR`).
 - `--workspace <DIR>`: Filters recent conversations to those matching the given workspace path.
-- `--json`: Emits structured JSON reporting `planner_steps`, `total_failures`, `- FAIL`, `- REPEAT`, `- CORRECTION`, `- REDIRECT` workflow/model switches, `schedule_while_subagent`, `parallel_same_file_edits`, `subagent_overlap_reads`, `has_debug_retro` (detecting unescalated thrashing when `>= 4` failures accumulate without `/app-debugger` or `debug-retro`), and failure-based `suggested_grade_cap` matching the `plan_digest` rubric (`>= 2` failures caps at `B`; `> 3` failures caps at `C`).
+- `--json`: Emits structured JSON reporting `steps`, `planner_turns`, `total_failures`, `- FAIL`, `- REPEAT`, `- CORRECTION`, `- REDIRECT` workflow/model switches, `schedule_while_subagent`, `parallel_same_file_edits`, `subagent_overlap_reads`, `has_debug_retro` (detecting unescalated thrashing when `>= 4` failures accumulate without `/app-debugger` or `debug-retro`), and failure-based `suggested_grade_cap` matching the `plan_digest` rubric (`>= 2` failures caps at `B`; `> 3` failures caps at `C`).
 
 ### Subcommand: `debug-retro`
 ```bash
@@ -143,7 +143,7 @@ python skills/system-diagnostics/scripts/diagnose.py debug-retro --symptom "<S>"
 ### Subcommands: `arch-map`, `traces`, `run`, & `package-skill`
 ```bash
 python skills/system-diagnostics/scripts/diagnose.py arch-map [--path <PATHS...>] [--include-tests] [--json] [--full] [--out <FILE>]
-python skills/system-diagnostics/scripts/diagnose.py traces [list|clear|scaffold|resolve] [--id <TRC_ID>] [--path <DIR>] [--recent <N>] [--clear] [--scaffold {fastapi,flask,generic}] [--dest <DIR>] [--json]
+python skills/system-diagnostics/scripts/diagnose.py traces [list|resolve] [--id <TRC_ID>] [--note "<TEXT>"] [--path <DIR>] [--recent <N>] [--clear] [--scaffold {fastapi,flask,generic}] [--dest <DIR>] [--json]
 python skills/system-diagnostics/scripts/diagnose.py run <COMMAND...>
 python skills/system-diagnostics/scripts/diagnose.py package-skill [<SKILL_OR_ALL>] [--out <DIR>]
 ```

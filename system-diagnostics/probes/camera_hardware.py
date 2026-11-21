@@ -14,58 +14,52 @@ import sys
 import time
 from typing import Any
 
+def _probe_index_with_backends(cv2: Any, idx: int, backends: list[tuple[str, Any]]) -> dict[str, Any] | None:
+    """Probe a single camera index across ordered OpenCV backends, guaranteeing handle release."""
+    for b_name, b_val in backends:
+        cap = None
+        try:
+            cap = cv2.VideoCapture(idx, b_val)
+            if not cap.isOpened():
+                continue
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            ret, frame = cap.read()
+            frame_valid = bool(ret and frame is not None and frame.size > 0)
+            return {
+                "index": idx,
+                "backend": b_name,
+                "resolution": f"{w}x{h}" if w > 0 and h > 0 else "Unknown",
+                "fps": fps,
+                "frame_decodable": frame_valid,
+                "status": "ready" if frame_valid else "open_but_empty",
+            }
+        except Exception:
+            continue
+        finally:
+            if cap is not None:
+                cap.release()
+    return None
+
+
 def _probe_opencv_indices(max_indices: int = 5) -> list[dict[str, Any]]:
     """Probe camera indices using OpenCV VideoCapture with cross-platform backends."""
-    results: list[dict[str, Any]] = []
     try:
         import cv2
     except ImportError:
         return [{"warning": "OpenCV (cv2) is not installed in the active environment."}]
 
-    # Determine backend priorities based on OS
     if os.name == "nt":
         backends = [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("ANY", cv2.CAP_ANY)]
     else:
         backends = [("V4L2", getattr(cv2, "CAP_V4L2", cv2.CAP_ANY)), ("ANY", cv2.CAP_ANY)]
 
+    results: list[dict[str, Any]] = []
     for idx in range(max_indices):
-        opened = False
-        detected_backend = None
-        resolution = None
-        fps = 0.0
-        frame_valid = False
-
-        for b_name, b_val in backends:
-            try:
-                cap = cv2.VideoCapture(idx, b_val)
-                if cap.isOpened():
-                    opened = True
-                    detected_backend = b_name
-                    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-                    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-                    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-                    resolution = f"{w}x{h}" if w > 0 and h > 0 else "Unknown"
-
-                    # Decode 1 test frame to verify actual image buffer
-                    ret, frame = cap.read()
-                    if ret and frame is not None and frame.size > 0:
-                        frame_valid = True
-                    cap.release()
-                    break
-                cap.release()
-            except Exception:
-                continue
-
-        if opened:
-            results.append({
-                "index": idx,
-                "backend": detected_backend,
-                "resolution": resolution,
-                "fps": fps,
-                "frame_decodable": frame_valid,
-                "status": "ready" if frame_valid else "open_but_empty",
-            })
-
+        found = _probe_index_with_backends(cv2, idx, backends)
+        if found:
+            results.append(found)
     return results
 
 def _probe_windows_pnp_cameras() -> list[dict[str, Any]]:
@@ -80,7 +74,7 @@ def _probe_windows_pnp_cameras() -> list[dict[str, Any]]:
             "Get-PnpDevice -Class Camera, Image -ErrorAction SilentlyContinue | "
             "Select-Object FriendlyName, Status, Present, InstanceId | ConvertTo-Json -Compress",
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5.0)
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5.0)
         if res.returncode == 0 and res.stdout.strip():
             raw = json.loads(res.stdout.strip())
             items = raw if isinstance(raw, list) else [raw]

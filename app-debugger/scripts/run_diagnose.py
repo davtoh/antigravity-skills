@@ -68,14 +68,14 @@ To resolve this dependency:
     print(msg, file=sys.stderr)
 
 def resolve_python(base_dir: Path | None = None) -> str:
-    """Resolve active workspace virtualenv Python or fallback to sys.executable."""
+    """Resolve active workspace virtualenv Python without dereferencing symlinks."""
     cwd = base_dir.resolve() if base_dir else Path.cwd().resolve()
     for root in [cwd, *cwd.parents[:2]]:
-        for venv in (".venv", "venv"):
+        for venv in (".venv", "venv", "env"):
             for sub in (Path("Scripts") / "python.exe", Path("bin") / "python"):
                 cand = root / venv / sub
                 if cand.is_file():
-                    return str(cand.resolve())
+                    return str(cand)
     return sys.executable
 
 def main(args: list[str] | None = None) -> int:

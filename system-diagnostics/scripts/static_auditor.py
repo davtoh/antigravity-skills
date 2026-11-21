@@ -164,9 +164,9 @@ def audit_platform_smells(target: Path) -> list[dict[str, Any]]:
 def _run_linter(py_bin: str, mod: str, args: list[str], cwd: Path, match_fn: Any, label: str) -> tuple[bool, int, list[str]]:
     """Run one optional linter/typechecker module and return (ran, exit_code, logs)."""
     try:
-        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, capture_output=True, text=True, check=False).returncode != 0:
+        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).returncode != 0:
             return False, 0, []
-        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, capture_output=True, text=True, check=False)
+        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     except Exception:
         return False, 0, []
     if proc.returncode == 0:
@@ -187,8 +187,8 @@ def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
     logs: list[str] = []
     has_run, exit_code = False, 0
     for mod, args, fn, lbl in (
-        ("ruff", ["check", "--select", "E,F,W", "--ignore", "E501,E701,E402", "--output-format", "concise", t_str], lambda ln: bool(ln.strip()) and not ln.startswith("Found "), "lint issue"),
-        ("mypy", ["--no-error-summary", "--ignore-missing-imports", t_str], lambda ln: "error:" in ln, "type error"),
+        ("ruff", ["check", "--no-cache", "--select", "E,F,W", "--ignore", "E501,E701,E402", "--output-format", "concise", t_str], lambda ln: bool(ln.strip()) and not ln.startswith("Found "), "lint issue"),
+        ("mypy", ["--no-incremental", "--cache-dir", os.devnull, "--no-error-summary", "--ignore-missing-imports", t_str], lambda ln: "error:" in ln, "type error"),
     ):
         ran, rc, m_logs = _run_linter(py_bin, mod, args, cwd, fn, lbl)
         if ran:

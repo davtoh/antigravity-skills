@@ -66,6 +66,10 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         ok = bool(re.search(r"suggested_fix", text)) and bool(re.search(r"surgical", text, re.I))
         return ok, f"Surgical fix guided by suggested_fix: {ok}"
 
+    if "followup_cids" in exp_lower and "before transcript-audit" in exp_lower:
+        ok = bool(re.search(r"followup_cids", text)) and bool(re.search(r"never run `transcript-audit`.*before.*`debug-retro`", text, re.I))
+        return ok, f"Exact order debug-retro --plan before transcript-audit: {ok}"
+
     if "probe" in exp_lower or "scaffold" in exp_lower:
         has_probe = bool(re.search(r"probe (?:run|list|new|save)|domain probe|scaffold-defect", text, re.I))
         return has_probe, f"Dynamic domain probe / scaffold: {has_probe}"
@@ -193,10 +197,6 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     if "test-path" in exp_lower and "read_fail" in exp_lower:
         ok = bool(re.search(r"Test-Path\s+\.frontier/DEBUG_RETRO\.md", text)) and bool(re.search(r"read_fail", text))
         return ok, f"Check Test-Path before read_file on DEBUG_RETRO.md: {ok}"
-
-    if "followup_cids" in exp_lower and "before transcript-audit" in exp_lower:
-        ok = bool(re.search(r"followup_cids", text)) and bool(re.search(r"never run `transcript-audit`.*before.*`debug-retro`", text, re.I))
-        return ok, f"Exact order debug-retro --plan before transcript-audit: {ok}"
 
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]

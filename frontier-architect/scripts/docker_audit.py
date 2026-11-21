@@ -45,6 +45,6 @@ _TARGET_PATH, _SSOT_MOD = _load_ssot_module("docker_audit.py")
 globals().update({k: v for k, v in vars(_SSOT_MOD).items() if not k.startswith("__")})
 
 if __name__ == "__main__":
-    runpy.run_path(str(_TARGET_PATH), run_name="__main__")
+    raise SystemExit(_SSOT_MOD.main())
 else:
     sys.modules[__name__] = _SSOT_MOD

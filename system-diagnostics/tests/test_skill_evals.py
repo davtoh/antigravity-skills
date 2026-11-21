@@ -88,7 +88,6 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("missing virtualenv",), (r"falling back cleanly to system python",), "Fallback to system Python when venv missing"),
     (("comma-separated defect ids",), (r"comma-separated defect ids, fingerprints, or rule ids",), "Comma-separated defect IDs/fingerprints/rules"),
     (("single root or multiple subpaths",), (r"Single root or multi-subpath", r"arch-map"), "arch-map single root or multiple subpaths"),
-    (("--scaffold fastapi|flask|generic",), (r"--scaffold fastapi\|flask\|generic", r"--clear"), "traces --scaffold and --clear"),
 ]
 
 

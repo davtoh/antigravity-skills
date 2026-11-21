@@ -222,10 +222,24 @@ class TestSubcommandsExecution(unittest.TestCase):
             staged = diagnose.skill_packager.stage_standalone_skill(fa_dir, Path(tmpdir))
             self.assertFalse((staged / "tests").exists())
             self.assertFalse((staged / "evals").exists())
+            self.assertFalse((staged / "scripts" / ".mypy_cache").exists())
+            self.assertFalse((staged / "scripts" / ".ruff_cache").exists())
             self.assertTrue((staged / "scripts" / "cdp_transport.py").is_file())
             self.assertTrue((staged / "scripts" / "audit_layout.js").is_file())
             cdp_lines = (staged / "scripts" / "cdp_inspect.py").read_text(encoding="utf-8").splitlines()
             self.assertGreater(len(cdp_lines), 100)
+
+            rm_dir = skills_root / "refactor-monolith"
+            rm_staged = diagnose.skill_packager.stage_standalone_skill(rm_dir, Path(tmpdir))
+            proc = subprocess.run(
+                [sys.executable, "-c", "import scripts.css_inspector; import scripts.surface_scanners"],
+                cwd=str(rm_staged),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            self.assertEqual(proc.returncode, 0, f"Standalone import failed: {proc.stderr}")
 
     def test_cmd_container_invokes_docker_audit(self):
         with patch("subprocess.run") as mock_run:

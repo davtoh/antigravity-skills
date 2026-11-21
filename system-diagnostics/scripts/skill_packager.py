@@ -37,6 +37,8 @@ SSOT_BUNDLE_MAP: dict[str, tuple[str, ...]] = {
 DEV_EXCLUDE_NAMES: frozenset[str] = frozenset({
     "tests", "evals", "__pycache__", "node_modules",
     ".diagnostics", ".frontier", ".refactor", ".coverage", ".DS_Store",
+    ".mypy_cache", ".ruff_cache", ".pytest_cache", ".TODO",
+    "dist", "build", "scratch", ".git", ".venv", "venv", "env",
 })
 
 

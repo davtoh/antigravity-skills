@@ -10,7 +10,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from surface_scanners import scan_css_surface
+try:
+    from surface_scanners import scan_css_surface
+except ImportError:
+    from .surface_scanners import scan_css_surface
 try:
     from defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
 except ImportError:
