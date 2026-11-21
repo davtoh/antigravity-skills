@@ -69,15 +69,26 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("arch-map",), (r"diagnose\.py\s+arch-map",), "arch-map"),
     (("--include-tests",), (r"--json", r"--full", r"--include-tests", r"--out"), "arch-map options"),
     (("diagnose.py run",), (r"diagnose\.py\s+run", r"zero-code runner"), "diagnose.py run"),
-    (("diagnose.py traces", "--scaffold"), (r"diagnose\.py\s+traces",), "diagnose.py traces"),
+    (("--scaffold fastapi|flask|generic",), (r"--scaffold fastapi\|flask\|generic", r"--clear"), "traces --scaffold and --clear"),
+    (("diagnose.py traces",), (r"diagnose\.py\s+traces",), "diagnose.py traces"),
     (("cmd /c npx",), (r"cmd\s+/c\s+npx\s+-y",), "cmd /c npx -y"),
     (("git grep",), (r"git grep -n",), "git grep -n"),
     (("crlf/lf",), (r"crlf/lf",), "CRLF/LF preservation"),
     (("--no-capture-runtime",), (r"--no-capture-runtime", r"--eval-file"), "ui --no-capture-runtime opt-out"),
     (("- redirect", "workflow/model"), (r"- REDIRECT", r"transcript-audit"), "transcript-audit - REDIRECT"),
     (("schedule-while-subagent",), (r"schedule-while-subagent", r"transcript-audit"), "transcript-audit schedule-while-subagent"),
-    (("suggested_grade_cap",), (r"grade cap", r"transcript-audit"), "transcript-audit failure-based grade cap"),
-    (("has_debug_retro",), (r"transcript-audit", r"debug-retro|unescalated thrash"), "transcript-audit has_debug_retro tracking"),
+    (("suggested_grade_cap",), (r"suggested_grade_cap", r"plan_digest", r"transcript-audit"), "transcript-audit failure-based grade cap"),
+    (("has_debug_retro",), (r"has_debug_retro", r"unescalated thrashing", r"transcript-audit"), "transcript-audit has_debug_retro tracking"),
+    (("structured metric inspection",), (r"transcript-audit", r"--json"), "transcript-audit --json output"),
+    (("tests --timeout", "exit code 124"), (r"diagnose\.py\s+tests", r"--timeout", r"124"), "diagnose.py tests --timeout 180s / exit 124"),
+    (("diagnose.py debug-retro", "turn-end echo"), (r"debug-retro", r"DEBUG_RETRO\.md", r"LEARNING_SCAFFOLD\.md", r"Turn-End Echo"), "diagnose.py debug-retro artifacts & Turn-End Echo"),
+    (("--plan, --learn, and --skill-learn",), (r"debug-retro", r"--plan", r"--learn", r"--skill-learn"), "diagnose.py debug-retro --plan / --learn / --skill-learn"),
+    (("without manual path activations",), (r"without manual shell activation",), "Tests run without manual shell activation"),
+    (("forwards test arguments cleanly",), (r"forwards test arguments cleanly to `unittest` or `pytest`",), "Forwards test args to unittest/pytest"),
+    (("missing virtualenv",), (r"falling back cleanly to system python",), "Fallback to system Python when venv missing"),
+    (("comma-separated defect ids",), (r"comma-separated defect ids, fingerprints, or rule ids",), "Comma-separated defect IDs/fingerprints/rules"),
+    (("single root or multiple subpaths",), (r"Single root or multi-subpath", r"arch-map"), "arch-map single root or multiple subpaths"),
+    (("--scaffold fastapi|flask|generic",), (r"--scaffold fastapi\|flask\|generic", r"--clear"), "traces --scaffold and --clear"),
 ]
 
 
@@ -131,6 +142,36 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
         """Assert SKILL.md is under the 350-line target (500 hard ceiling)."""
         lines = len(self.skill_text.splitlines())
         self.assertLessEqual(lines, 350, f"SKILL.md exceeds 350-line soft ceiling: {lines} lines")
+
+    def test_zero_unmapped_generic_fallback_expectations(self):
+        """Assert 100% of expectations in evals.json match explicit rules rather than generic keyword fallback."""
+        generic_hits = [
+            f"Eval {e['id']}: '{exp}' ({reason})"
+            for e in self.evals
+            for exp in e.get("expectations", [])
+            for _, reason in (evaluate_expectation(self.skill_text, exp),)
+            if reason.startswith("Generic keywords:")
+        ]
+        self.assertEqual(generic_hits, [], "Unmapped expectations falling back to generic keywords:\n" + "\n".join(generic_hits))
+
+    def test_reference_links_resolve(self):
+        """Verify all relative reference links in SKILL.md resolve to existing files."""
+        refs = re.findall(r"\(\./(references/[^)#\s]+)", self.skill_text)
+        self.assertGreaterEqual(len(refs), 1)
+        for rel in refs:
+            self.assertTrue((SKILL_DIR / rel).is_file(), f"Broken reference link in SKILL.md: {rel}")
+
+    def test_evaluate_expectation_unit_positive_and_negative(self):
+        """Verify evaluate_expectation correctly identifies matches and missing patterns."""
+        mock_doc = "diagnose.py all 3-tier. Axiom 9 VERIFIED. --strict."
+        self.assertTrue(evaluate_expectation(mock_doc, "Executes diagnose.py all 3-tier")[0])
+        self.assertFalse(evaluate_expectation(mock_doc, "Executes diagnose.py container with --sync-check")[0])
+
+    def test_sanitization_gate(self):
+        """Verify committable SKILL.md has zero file-scheme URLs or OS user paths."""
+        self.assertNotIn("file:" + "///", self.skill_text, "Forbidden file URI in SKILL.md")
+        self.assertNotIn("C:\\" + "Users\\", self.skill_text, "Forbidden local absolute path in SKILL.md")
+        self.assertNotIn("/" + "home/", self.skill_text, "Forbidden local absolute path in SKILL.md")
 
 
 if __name__ == "__main__":

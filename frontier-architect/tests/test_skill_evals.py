@@ -92,6 +92,30 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("single clock-domain parity",), (r"single clock-domain parity", r"time\.monotonic\(\).*time\.time\(\)"), "Single clock-domain parity check"),
     (("diagnose.py tests <modules...>", "180s --timeout"), (r"diagnose\.py\s+tests\s+<modules\.\.\.>", r"180s\s+`?--timeout`?"), "Targeted unittest routed via diagnose.py tests"),
     (("followup_cids", "transcript-audit --latest 1 last"), (r"followup_cids", r"transcript-audit --latest 1`?\s+last"), "debug-retro auto-records followup_cids and transcript-audit runs last"),
+    (("subagent map-reduce", "30 components"), (r"subagent map-reduce", r"research"), "Subagent Map-Reduce discovery"),
+    (("atomic vertical slices",), (r"contracts/types\s*→\s*core logic\s*→\s*state/service\s*→\s*ui layout\s*→\s*styling & polish",), "Atomic Vertical Slices sequence"),
+    (("browser/visual ui verification", "web ui layer"), (r"browser inspection|cdp_inspect\.py|/browser",), "Browser/Visual UI verification"),
+    (("model tier escalation", "useg1credits"), (r"model tiers", r"useG1Credits"), "Model Tier Escalation & Quota Strategy"),
+    (("single riskiest assumption", "timeboxed spike"), (r"single riskiest assumption \(sra\)", r"scratch/"), "SPIKE De-risking SRA"),
+    (("package-lock.json", "evidence-based handoff"), (r"verified", r"not verified", r"known risks"), "Evidence-based handoff & conflict safety"),
+    (("new conversation (+)", "/compact"), (r"new conversation \(\+\)", r"/compact"), "New Conversation (+) or /compact hygiene"),
+    (("public interface compatibility", "dual-maintenance"), (r"unify duplicate domain logic via delegation while preserving public interface compatibility",), "Preserve public interface compatibility"),
+    (("plan_engine.py verify and plan_engine.py advance",), (r"plan_engine\.py verify", r"plan_engine\.py advance"), "Run plan_engine.py verify and advance"),
+    (("plan_engine.py verify --timeout", "exit code 124"), (r"plan_engine\.py verify", r"--timeout 180", r"124"), "plan_engine.py verify --timeout 180 / exit 124"),
+    (("streams live output during verify",), (r"plan_engine\.py verify`?\s+streams live",), "plan_engine.py verify live output streaming"),
+    (("--timeout 600", "--timeout 0"), (r"--timeout 600", r"active progress"), "Re-run slow suites with --timeout 600 or 0"),
+    (("deadlocks or blocking i/o",), (r"deadlocks/blocking i/o",), "Debug deadlocks or blocking I/O on no-progress timeout"),
+    (("mixed requests",), (r"split empirical baseline \(`app-debugger`\)", r"phase 2/5"), "Mixed requests split cleanly"),
+    (("surface baseline inventory", "public routes"), (r"document public routes/schemas/selectors upfront",), "Surface Baseline Inventory"),
+    (("thousands separators", "unit test"), (r"pair every slice with tests", r"tactical"), "Unit test pairing for Bucket A"),
+    (("targeted test command", "observed result honestly"), (r"only claim `\"verified\"` when you ran the check",), "Honest targeted test verification"),
+    (("separate branch or leaves changes uncommitted",), (r"non-destructive & reversible", r"consent before hard-to-undo"), "Leave changes safe/uncommitted in unattended mode"),
+    (("Evidence-based handoff separating Verified",), (r"evidence-based handoff separating `verified`, `not verified` \(`unverified`\), and known risks",), "Evidence-based handoff"),
+    (("persistent checkpoint in migration_log.md or agents.md",), (r"checkpoint summaries in `agents\.md`",), "Persistent checkpoint in AGENTS.md"),
+    (("merging external cids", "--cids <all_cids>"), (r"plan_engine\.py digest <slug> --cids <all_cids> --backfill --write-scaffold",), "Merge external CIDs with digest --cids"),
+    (("live browser: unverified", "cannot attach"), (r"live browser: unverified", r"axiom 9"), "Explicit Live Browser: UNVERIFIED status"),
+    (("synthesizes the empirical symptom matrix",), (r"symptom-to-root-cause matrix", r"implementation plan"), "Synthesize Symptom Matrix into Implementation Plan"),
+    (("extracted signal/helper adapter", "getattr stubs"), (r"frozen-monolith signal adapters", r"getattr"), "Frozen-Monolith Signal Adapters"),
 ]
 
 
@@ -229,6 +253,23 @@ class TestSkillEvals(unittest.TestCase):
         ]
         missing = [a for a in required_anchors if a not in self.skill_text]
         self.assertEqual(missing, [], f"Missing critical tool/gate anchors in SKILL.md: {missing}")
+
+    def test_zero_unmapped_generic_fallback_expectations(self):
+        """Assert 100% of expectations in evals.json match explicit rules rather than generic keyword fallback."""
+        generic_hits = [
+            f"Eval {e['id']}: '{exp}' ({reason})"
+            for e in self.evals
+            for exp in e.get("expectations", [])
+            for _, reason in (evaluate_expectation_against_text(self.skill_text, exp),)
+            if reason.startswith("Generic keywords:")
+        ]
+        self.assertEqual(generic_hits, [], "Unmapped expectations falling back to generic keywords:\n" + "\n".join(generic_hits))
+
+    def test_sanitization_gate(self):
+        """Verify committable SKILL.md has zero file-scheme URLs or OS user paths."""
+        self.assertIsNone(re.search(r"file:///[A-Za-z0-9_/]", self.skill_text), "Forbidden file URI in SKILL.md")
+        self.assertNotIn("C:\\" + "Users\\", self.skill_text, "Forbidden local absolute path in SKILL.md")
+        self.assertNotIn("/" + "home/", self.skill_text, "Forbidden local absolute path in SKILL.md")
 
 
 if __name__ == "__main__":

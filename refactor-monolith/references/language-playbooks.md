@@ -59,7 +59,7 @@ When splitting plain browser scripts (`app.js`, `studio.js`) loaded directly via
    In `index.html`, arrange `<script>` tags in strict topological order:
    `Level 0 (Utils / EventBus) -> Level 1 (Feature Controllers) -> Level 2 (Master App Bootstrapper)`.
    Never load a master bootstrapper or modal controller before the feature module that registers its API.
-4. **Automated Parity Verification**: Run `contract_snapshot.py verify --before .refactor_baseline.json` after extracting every JS file to assert zero missing IDs and zero dropped `window.*` exports.
+4. **Automated Parity Verification**: Run `contract_snapshot.py verify --before .refactor/baseline.json` after extracting every JS file to assert zero missing IDs and zero dropped `window.*` exports.
 
 ### Anti-Line-Golfing & Readability Rules (JS/TS)
 When refactoring JavaScript or TypeScript files to meet modularity budgets:

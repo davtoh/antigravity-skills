@@ -29,6 +29,8 @@ SSOT_BUNDLE_MAP: dict[str, tuple[str, ...]] = {
     "refactor-monolith": (
         "css_inspector.py",
         "surface_scanners.py",
+        "surface_contracts.py",
+        "surface_verifier.py",
     ),
 }
 

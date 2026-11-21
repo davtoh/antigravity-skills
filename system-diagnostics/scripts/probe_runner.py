@@ -100,68 +100,9 @@ def find_probe(name_or_path: str, workspace_root: Path | None = None) -> Path | 
             return Path(probe_info.path)
     return None
 
-def run_probe(
-    name_or_path: str,
-    probe_args: list[str] | None = None,
-    python_bin: str | None = None,
-    workspace_root: Path | None = None,
-) -> dict[str, Any]:
-    """Execute a probe in an isolated subprocess and return structured telemetry."""
-    probe_file = find_probe(name_or_path, workspace_root)
-    if not probe_file:
-        return {
-            "status": "error",
-            "probe": name_or_path,
-            "summary": f"Probe '{name_or_path}' not found.",
-            "details": {"searched_dirs": [str(d[0]) for d in get_probe_search_dirs(workspace_root)]},
-            "latency_ms": 0.0,
-        }
-
-    py_exe = python_bin or sys.executable
-    cmd = [py_exe, str(probe_file), *(probe_args or [])]
-
-    start_time = time.perf_counter()
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30.0,
-        )
-        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
-    except subprocess.TimeoutExpired:
-        return {
-            "status": "error",
-            "probe": probe_file.stem,
-            "summary": f"Probe timed out after 30.0s.",
-            "details": {"cmd": cmd},
-            "latency_ms": 30000.0,
-        }
-    except Exception as err:
-        return {
-            "status": "error",
-            "probe": probe_file.stem,
-            "summary": f"Failed to execute probe: {err}",
-            "details": {"exception": str(err)},
-            "latency_ms": 0.0,
-        }
-
-    stdout_clean = proc.stdout.strip()
-    result: dict[str, Any] = {
-        "status": "ok" if proc.returncode == 0 else "error",
-        "probe": probe_file.stem,
-        "summary": "Probe completed successfully." if proc.returncode == 0 else "Probe exited with failure.",
-        "details": {},
-        "latency_ms": elapsed_ms,
-        "exit_code": proc.returncode,
-    }
-
-    # Try parsing stdout as JSON from standard probe protocol
-    parsed = False
+def _populate_probe_output(stdout_clean: str, stderr_clean: str, result: dict[str, Any]) -> None:
+    """Parse trailing JSON payload from probe stdout or fall back to raw stdout/stderr."""
     if stdout_clean:
-        # Search backwards for a JSON block if probe printed logs first
         lines = stdout_clean.splitlines()
         for idx in range(len(lines)):
             chunk = "\n".join(lines[idx:])
@@ -172,31 +113,47 @@ def run_probe(
                         result["details"] = data.get("details", data)
                         result["status"] = data.get("status", result["status"])
                         result["summary"] = data.get("summary", result["summary"])
-                        parsed = True
-                        break
+                        return
                 except Exception:
                     pass
+    result["details"] = {"stdout": stdout_clean, "stderr": stderr_clean}
 
-    if not parsed:
-        result["details"] = {
-            "stdout": stdout_clean,
-            "stderr": proc.stderr.strip(),
+
+def run_probe(
+    name_or_path: str,
+    probe_args: list[str] | None = None,
+    python_bin: str | None = None,
+    workspace_root: Path | None = None,
+) -> dict[str, Any]:
+    """Execute a probe in an isolated subprocess and return structured telemetry."""
+    probe_file = find_probe(name_or_path, workspace_root)
+    if not probe_file:
+        return {
+            "status": "error", "probe": name_or_path, "summary": f"Probe '{name_or_path}' not found.",
+            "details": {"searched_dirs": [str(d[0]) for d in get_probe_search_dirs(workspace_root)]}, "latency_ms": 0.0,
         }
+    cmd = [python_bin or sys.executable, str(probe_file), *(probe_args or [])]
+    start_time = time.perf_counter()
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30.0)
+        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "probe": probe_file.stem, "summary": "Probe timed out after 30.0s.", "details": {"cmd": cmd}, "latency_ms": 30000.0}
+    except Exception as err:
+        return {"status": "error", "probe": probe_file.stem, "summary": f"Failed to execute probe: {err}", "details": {"exception": str(err)}, "latency_ms": 0.0}
 
+    ok = proc.returncode == 0
+    result: dict[str, Any] = {
+        "status": "ok" if ok else "error", "probe": probe_file.stem,
+        "summary": "Probe completed successfully." if ok else "Probe exited with failure.",
+        "details": {}, "latency_ms": elapsed_ms, "exit_code": proc.returncode,
+    }
+    _populate_probe_output(proc.stdout.strip(), proc.stderr.strip(), result)
     return result
 
-def scaffold_probe(name: str, domain: str = "general", target_dir: Path | None = None) -> Path:
-    """Scaffold a new diagnostic probe module adhering to the standard protocol."""
-    dest_dir = target_dir or (Path.cwd() / ".diagnostics" / "probes")
-    dest_dir.mkdir(parents=True, exist_ok=True)
 
-    clean_name = name.lower().replace("-", "_").replace(" ", "_")
-    if not clean_name.endswith(".py"):
-        clean_name += ".py"
-    target_file = dest_dir / clean_name
-
-    template = f'''#!/usr/bin/env python3
-"""Diagnostic Probe: {clean_name[:-3]} ({domain}).
+_PROBE_SCAFFOLD_TEMPLATE = '''#!/usr/bin/env python3
+"""Diagnostic Probe: {probe_name} ({domain}).
 
 Standard Protocol Diagnostic Probe.
 Returns structured JSON telemetry for system-diagnostics & app-debugger.
@@ -208,17 +165,11 @@ import time
 from typing import Any
 
 def probe(*args: str, **kwargs: Any) -> dict[str, Any]:
-    """Execute domain inspection and return structured telemetry.
-
-    Returns:
-        dict with status ('ok', 'warning', 'error'), domain, summary, and details.
-    """
+    """Execute domain inspection and return structured telemetry."""
     start = time.perf_counter()
-    # TODO: Implement domain inspection logic (e.g. check hardware, DB, or network)
     status = "ok"
     summary = "Diagnostic probe completed."
     details: dict[str, Any] = {{"items": []}}
-
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
     return {{
         "status": status,
@@ -236,7 +187,18 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    target_file.write_text(template.replace("\r\n", "\n"), encoding="utf-8")
+
+
+def scaffold_probe(name: str, domain: str = "general", target_dir: Path | None = None) -> Path:
+    """Scaffold a new diagnostic probe module adhering to the standard protocol."""
+    dest_dir = target_dir or (Path.cwd() / ".diagnostics" / "probes")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    clean_name = name.lower().replace("-", "_").replace(" ", "_")
+    if not clean_name.endswith(".py"):
+        clean_name += ".py"
+    target_file = dest_dir / clean_name
+    content = _PROBE_SCAFFOLD_TEMPLATE.format(probe_name=clean_name[:-3], domain=domain)
+    target_file.write_text(content.replace("\r\n", "\n"), encoding="utf-8")
     return target_file
 
 def save_probe(

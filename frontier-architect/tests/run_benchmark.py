@@ -5,7 +5,7 @@ Compares the current skill against historical snapshots using evals/evals.json.
 
 Dual-Tier Testing Architecture:
 1. Fast Deterministic Evaluation (This Script & unittest):
-   - Evaluates SKILL.md against all 9 scenarios and 48 expectations in evals/evals.json.
+   - Evaluates SKILL.md against all 28 scenarios and 125 expectations in evals/evals.json.
    - Dynamically compares pass rate against the historical snapshot (skill-snapshot/SKILL.md).
    - Sub-second execution, zero LLM tokens consumed, 100% offline and cross-platform.
 2. Generative Agent Evaluation (/skill-creator):

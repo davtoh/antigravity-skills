@@ -59,8 +59,8 @@ Establish a failing baseline with `run_diagnose.py` before editing *(full comman
 4. **Dynamic Domain Probes & Hardware Diagnostic Routing**:
    - **Discover Workspace Probes First**: Always run `run_diagnose.py probe list` in Step 2 to discover project-specific probes in `.diagnostics/probes/` (and global probes), and execute relevant ones via `run_diagnose.py probe run <name>` before writing ad-hoc checks.
    - Avoid disposable `scratch/` scripts: use `probe new <name> --domain <domain>` and `probe save <script> <name>`.
-   - **Hardware & Device Diagnostic Routing**: For DirectShow locks, OpenCV indices, COM ports, or audio capture, **do NOT invoke browser `ui` CDP**—run native device status or `probe run camera_hardware` under `.venv`.
-5. **Quarantined Tactical Defect (Red-to-Green)**: Run `diagnose.py scaffold-defect --id DEFECT-001 --branch` and verify Red failure in `tests/quarantine/test_defect_001.py`.
+   - **Hardware & Device Diagnostic Routing**: For DirectShow locks, OpenCV indices, COM ports, or audio capture, **do NOT invoke browser `ui` CDP**—run native device status or `probe run camera_hardware` under `.venv` (if `.venv` is absent, stop and prompt with the venv creation recipe in [`references/environment-and-reporting.md`](./references/environment-and-reporting.md) rather than running `pip install`).
+5. **Quarantined Tactical Defect (Red-to-Green)**: Run `diagnose.py scaffold-defect --id DEFECT-001 --branch`, verify Red failure in `tests/quarantine/test_defect_001.py`, and apply the surgical fix guided by the defect's `suggested_fix` in Step 4.
 
 ### Step 3: Symptom-to-Root-Cause Matrix
 
@@ -75,19 +75,19 @@ Verify every target path exists (`os.path.isfile` / `Test-Path`) before filling 
 
 1. **Surgical Edits & SSOT Escalation**: Adhere to Modularity Budgets ($\le 350$ lines/file, $\le 30$ lines/fn) and defensive CSS containment (`min-width: 0`, overflow containment). If `git grep` shows `>= 3` files owning the same state or 1 patch fails live verification, **STOP** and yield to `/frontier-architect` for an SSOT contract.
 2. **Environment-Parity & Lifecycle Verification**:
-   - Re-run diagnostics (`--capture-runtime`, `hasOverflow: false`, `tests`). Never rely solely on synthetic mocks, blank `--headless` profiles, or `now=100.0` stubs—verify real-clock **single clock-domain parity** (`time.monotonic()` vs `time.time()`) and clean resource release.
-   - **Test Job & Daemon Cleanup**: Query `manage_task list` and kill test daemons (`manage_task kill`) before finishing.
-   - **Pending User-Verification Gate**: For interactive UI/live-browser/hardware bugs (or retry $\ge 1$), report `"Patch Applied — Ready for Live Verification"` and confirm via `--live` or 1-click `ask_question` before running `diagnose.py changelog add` or claiming `"FIXED"`.
+   - Re-run diagnostics (`--capture-runtime`, `hasOverflow: false`, `tests`). Never rely solely on synthetic mocks, blank `--headless` profiles, or `now=100.0` stubs—verify real-clock **single clock-domain parity** (`time.monotonic()` vs `time.time()`) and clean resource release (no lingering DirectShow COM locks, leaked sockets, or orphaned background Python processes).
+   - **Test Job & Daemon Cleanup**: Query `manage_task list` and active API job ledgers (`GET /api/.../jobs`), cancel unfinished test jobs, and kill test daemons (`manage_task kill`) before finishing.
+   - **Pending User-Verification Gate**: For interactive UI/live-browser/hardware bugs (or retry $\ge 1$, exempting pure deterministic backend/unit-test bugs), report `"Patch Applied — Ready for Live Verification"` with a 1-line check recipe, suppress `Introspective Options` until confirmed, and confirm via `--live` or 1-click `ask_question` before running `diagnose.py changelog add` or claiming `"FIXED"`.
 3. **Axiom 9 Reporting, `debug-retro` & Continuous Learning**:
    - Report each tier honestly (`VERIFIED`, `PARTIALLY_VERIFIED (Synthetic Only)`, or `UNVERIFIED`).
-   - For non-trivial sessions (`>= 20` steps, `>= 1` retry, or Mac/cross-platform RCA), execute in exact order: (1) `run_diagnose.py debug-retro --symptom ... --cause ... --status <verified|unconfirmed> --cid <cid>` (pass `--plan <slug>` to auto-persist `followup_cids` and backfill `LEARNING_SCAFFOLD.md`; updates `DEBUG_RETRO.md` and `LEARN_QUEUE.md`, and prints `--- Turn-End Echo ---`), then (2) `diagnose.py transcript-audit --latest 1 --workspace .` (never run `transcript-audit` or `digest` *before* `debug-retro`), and echo `### Continuous Learning & Introspective Options` (`transcript-audit`, `plan_engine.py digest`, `/learn`).
+   - For non-trivial sessions (`>= 20` steps, `>= 1` retry, or Mac/cross-platform RCA), execute in exact order: (1) `run_diagnose.py debug-retro --symptom ... --cause ... --status <verified|unconfirmed> --cid <cid>` (pass `--plan <slug>` to auto-persist `followup_cids` and backfill `LEARNING_SCAFFOLD.md`; updates `DEBUG_RETRO.md`, `.diagnostics/LEARNING_SCAFFOLD.md`, and `LEARN_QUEUE.md` for `plan_engine.py digest`, and prints `--- Turn-End Echo ---`), then (2) `diagnose.py transcript-audit --latest 1 --workspace .` (never run `transcript-audit` or `digest` *before* `debug-retro`), and echo `### Continuous Learning & Introspective Options` (`transcript-audit`, `plan_engine.py digest`, `/learn`).
    - Promote reusable CDP/runtime scripts into Chrome-gated `tests/test_*_e2e*.py` tests or `run_diagnose.py probe save` rather than leaving them in `scratch/`.
 
 ---
 
 ## Operational Guardrails, Dual Output & References
 
-*(Full protocols: [`references/environment-and-reporting.md`](./references/environment-and-reporting.md); full 17-scenario matrix: [`references/command-matrix.md`](./references/command-matrix.md).)*
+*(Full protocols: [`references/environment-and-reporting.md`](./references/environment-and-reporting.md); full 18-scenario matrix: [`references/command-matrix.md`](./references/command-matrix.md).)*
 
 - **Dev Server & Watcher Safety**: When `StatReload` / `uvicorn --reload` / `vite` is active, isolate test fixtures, batch **single-pass atomic edits**, use `--headless` for iterative layout audits to avoid repeated permission popups, and follow **reactive task discipline** (never poll `manage_task status`).
 - **Windows & File Hygiene**: Use `cmd /c npx -y ...`, `git grep -n`, inspect `CRLF` vs `LF` line endings before multi-line edits, and never write disposable `scratch/` file-patching scripts on whitespace mismatches.

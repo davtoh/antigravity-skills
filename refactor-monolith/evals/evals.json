@@ -17,26 +17,26 @@
     {
       "id": 2,
       "prompt": "We have a legacy web project with 8 huge files (database.py at 2,100 lines with 60 methods, app.py at 1,900 lines, worker.py at 950 lines, and several 1,000+ line JS/CSS files). I don't want to go file-by-file figuring out what to ask each time. Please refactor our project to follow a recommended modular structure and migrate it by parts.",
-      "expected_output": "The model runs code_health_audit.py, detects Mode B (PROJECT_CAMPAIGN), proposes a layered directory structure (Level 0 models/utils -> Level 1 repositories -> Level 2 services -> Level 3 routers/UI -> Level 4 facade entrypoints), creates a 4-phase dependency-ordered checklist in MIGRATION_LOG.md, updates AGENTS.md with a Monolith Freeze, and immediately executes Phase 1 Slice 1 with facade re-exports and test verification.",
+      "expected_output": "The model runs code_health_audit.py, detects Mode B (PROJECT_CAMPAIGN), proposes a layered directory structure (Level 0 models/utils -> Level 1 repositories -> Level 2 services -> Level 3 routers/UI -> Level 4 facade entrypoints), creates a 4-phase dependency-ordered checklist in .refactor/plan.md and .refactor/state.json, updates AGENTS.md with a Monolith Freeze, and immediately executes Phase 1 Slice 1 with facade re-exports and test verification.",
       "files": [],
       "expectations": [
         "Runs code_health_audit.py and selects Mode B (PROJECT_CAMPAIGN) for multi-monolith repositories",
         "Designs a layered target directory structure (models/utils, repositories, services, routers, frontend modules)",
-        "Persists a 4-phase dependency-ordered migration checklist in MIGRATION_LOG.md with [ ] checkboxes",
+        "Persists a 4-phase dependency-ordered migration checklist in .refactor/plan.md with [ ] checkboxes and initializes .refactor/state.json",
         "Updates AGENTS.md with a Monolith Freeze and target directory ownership map",
-        "Executes or initiates Phase 1 Slice 1 using the 5-Step Zero-Regression Decomposition Workflow and checkpoints MIGRATION_LOG.md for automatic resume"
+        "Executes or initiates Phase 1 Slice 1 using the 5-Step Zero-Regression Decomposition Workflow and checkpoints .refactor/state.json for automatic resume"
       ]
     },
     {
       "id": 3,
       "prompt": "/refactor-monolith Continue migrating the next part of our project.",
-      "expected_output": "The model checks MIGRATION_LOG.md first (Mode B2 Auto-Resume), automatically identifies the next unchecked [ ] milestone without asking the user which file to pick, runs code_health_audit.py --show-methods on that target file, extracts the cohesive module with zero breaking imports, runs tests, and marks the item [x] in MIGRATION_LOG.md.",
+      "expected_output": "The model checks .refactor/state.json and .refactor/plan.md first (Mode B2 Auto-Resume), automatically identifies the next unchecked [ ] milestone without asking the user which file to pick, runs code_health_audit.py --show-methods on that target file, extracts the cohesive module with zero breaking imports, runs tests, and checkpoints/advances state.",
       "files": [],
       "expectations": [
-        "Reads MIGRATION_LOG.md first and automatically selects the next pending [ ] milestone without requiring the user to specify a filename",
+        "Reads .refactor/state.json and .refactor/plan.md first and automatically selects the next pending [ ] milestone without requiring the user to specify a filename",
         "Runs code_health_audit.py --show-methods on the selected milestone file",
         "Applies the 5-Step Zero-Regression Decomposition Protocol with facade re-exports",
-        "Verifies with unit tests and code_health_audit.py, then marks the milestone [x] in MIGRATION_LOG.md"
+        "Verifies with unit tests and code_health_audit.py, then checkpoints and advances campaign state in .refactor/state.json"
       ]
     },
     {
@@ -111,6 +111,18 @@
         "Quarantines discovered defects directly into .diagnostics/defect_catalog.json using contract_snapshot.py state --record-defect",
         "Maintains zero plan.md drift by referencing .diagnostics/DEFECT_CATALOG.md with a single link instead of duplicating defect tables",
         "Summarizes quarantined defects upon campaign completion with copy-pasteable remediation commands for /app-debugger and /frontier-architect"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "During a sub-phase refactoring of static/scss, we want to format and verify only the active slice without dirtying unrelated repo files with EOL changes or legacy HTML/JS discrepancies, relocate an old thesis script with top-level hardware imports to deprecated/, and fix a bug we found in a skill script.",
+      "expected_output": "Applies Targeted Slicing by running contract_snapshot.py verify --path <target_slice> --strict (with optional format / --format) and normalize-eol --path <active_slice> --to lf rather than repo-wide verify or global normalize-eol during intermediate slices. Wraps deprecated script facade imports in try...except ImportError or lazy __getattr__ lookups, records milestones via diagnose.py changelog add, and follows the In-Flight Tool Elevation Protocol for skill script bugs.",
+      "files": [],
+      "expectations": [
+        "Enforces Targeted Slicing by running contract_snapshot.py verify --path <target_slice> --strict and normalize-eol --path <active_slice> --to lf instead of repo-wide verify or global normalize-eol on intermediate slices",
+        "Supports opportunistic slice formatting via contract_snapshot.py format --files or verify --format",
+        "Applies Safe Deprecated Script Facades using try...except ImportError or lazy __getattr__ lookups instead of eager wildcard imports from deprecated/",
+        "Records milestones and reuses commit snippets via diagnose.py changelog add while obeying the In-Flight Tool Elevation Protocol for skill script bugs"
       ]
     }
   ]

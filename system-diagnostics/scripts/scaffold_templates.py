@@ -28,54 +28,47 @@ def _format_defect_row(d: dict[str, Any], include_resolution: bool = False) -> s
     return f"| {d_id} | `{fp}` | {sev} | {trk} | {sym} | {loc} | {rule} | {status} |"
 
 
+def _build_catalog_header_lines(catalog_data: dict[str, Any], summary: dict[str, Any], active_cnt: int) -> list[str]:
+    """Build markdown header and severity summary lines for DEFECT_CATALOG.md."""
+    by_trk = summary.get("by_track", {})
+    by_sev = summary.get("by_severity", {})
+    return [
+        "# Latent Defect & Code Smell Catalog", "",
+        f"**Workspace:** `{catalog_data.get('workspace', '')}`  ",
+        f"**Last Updated:** `{catalog_data.get('updated_at', '')}`  ",
+        f"**Total Defects:** {summary.get('total', active_cnt)} "
+        f"(Tactical: {by_trk.get('tactical', 0)}, Architectural: {by_trk.get('architectural', 0)}, "
+        f"Resolved: {summary.get('resolved', 0)}, Dismissed: {summary.get('dismissed', 0)})", "",
+        "## Summary by Severity (Active)",
+        f"- **HIGH:** {by_sev.get('HIGH', 0)}",
+        f"- **MEDIUM:** {by_sev.get('MEDIUM', 0)}",
+        f"- **LOW:** {by_sev.get('LOW', 0)}", "",
+        "## Quarantined & Active Defects", "",
+        "| ID | Fingerprint | Severity | Track | Symbol | File:Line | Rule | Status |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+    ]
+
+
 def generate_catalog_markdown(catalog_data: dict[str, Any]) -> str:
     """Generate human-readable markdown representation of defect catalog."""
     summary = catalog_data.get("summary", {})
     defects = catalog_data.get("defects", [])
     active_list = [d for d in defects if d.get("status", "quarantined") not in CLOSED_STATUSES]
     closed_list = [d for d in defects if d.get("status", "quarantined") in CLOSED_STATUSES]
-
-    lines = [
-        "# Latent Defect & Code Smell Catalog",
-        "",
-        f"**Workspace:** `{catalog_data.get('workspace', '')}`  ",
-        f"**Last Updated:** `{catalog_data.get('updated_at', '')}`  ",
-        f"**Total Defects:** {summary.get('total', len(active_list))} "
-        f"(Tactical: {summary.get('by_track', {}).get('tactical', 0)}, "
-        f"Architectural: {summary.get('by_track', {}).get('architectural', 0)}, "
-        f"Resolved: {summary.get('resolved', 0)}, Dismissed: {summary.get('dismissed', 0)})",
-        "",
-        "## Summary by Severity (Active)",
-        f"- **HIGH:** {summary.get('by_severity', {}).get('HIGH', 0)}",
-        f"- **MEDIUM:** {summary.get('by_severity', {}).get('MEDIUM', 0)}",
-        f"- **LOW:** {summary.get('by_severity', {}).get('LOW', 0)}",
-        "",
-        "## Quarantined & Active Defects",
-        "",
-        "| ID | Fingerprint | Severity | Track | Symbol | File:Line | Rule | Status |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
-    ]
-    for d in active_list:
-        lines.append(_format_defect_row(d, include_resolution=False))
-
+    lines = _build_catalog_header_lines(catalog_data, summary, len(active_list))
+    lines.extend(_format_defect_row(d, include_resolution=False) for d in active_list)
     if closed_list:
         lines.extend([
-            "",
-            "## Resolved & Dismissed History",
-            "",
+            "", "## Resolved & Dismissed History", "",
             "| ID | Fingerprint | Severity | Symbol | File:Line | Rule | Status | Resolution Note |",
             "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+            *(_format_defect_row(d, include_resolution=True) for d in closed_list),
         ])
-        for d in closed_list:
-            lines.append(_format_defect_row(d, include_resolution=True))
-
     lines.extend([
-        "",
-        "## Remediation Workflows",
+        "", "## Remediation Workflows",
         "- **Tactical Bugs:** Unlock test via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> --branch` -> solve in `/app-debugger`.",
         "- **Structural Defects:** Elevate via `python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID> --elevate` -> redesign in `/frontier-architect` + `/grill-me`.",
-        "- **Mark Solved / Dismiss:** `python skills/system-diagnostics/scripts/diagnose.py resolve-defect --id <ID> --note \"Fixed\"` or `dismiss-defect --id <ID> --reason \"False positive\"`.",
-        "",
+        "- **Mark Solved / Dismiss:** `python skills/system-diagnostics/scripts/diagnose.py resolve-defect --id <ID> --note \"Fixed\"` or `dismiss-defect --id <ID> --reason \"False positive\"`.", "",
     ])
     return "\n".join(lines) + "\n"
 
@@ -83,31 +76,25 @@ def generate_catalog_markdown(catalog_data: dict[str, Any]) -> str:
 def _build_rule_check_body(d_id: str, rule_id: str, sym_short: str, suggested_fix: str) -> str:
     """Return rule-specific Python unittest assertion block for tactical quarantine tests."""
     fix_esc = suggested_fix.replace('"', '\\"')
-    return f'''        rule = "{rule_id}"
-        is_py = TARGET_FILE.suffix.lower() == ".py"
+    return f'''        rule, is_py = "{rule_id}", TARGET_FILE.suffix.lower() == ".py"
         if rule == "MUTABLE_DEFAULT_ARG" and is_py:
-            tree = ast.parse(self.code)
-            for node in ast.walk(tree):
+            for node in ast.walk(ast.parse(self.code)):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "{sym_short}":
                     for d, p in zip(reversed(node.args.defaults), reversed(node.args.args)):
                         if isinstance(d, (ast.List, ast.Dict, ast.Set)):
                             self.fail(f"[{d_id}] Invariant violation: parameter '{{p.arg}}' in '{{node.name}}' has mutable default. Suggested Fix: {fix_esc}")
         elif rule == "UNREACHABLE_CODE" and is_py:
-            tree = ast.parse(self.code)
-            for node in ast.walk(tree):
+            for node in ast.walk(ast.parse(self.code)):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "{sym_short}":
                     for i, stmt in enumerate(node.body[:-1]):
                         if isinstance(stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
-                            dead = node.body[i + 1]
-                            self.fail(f"[{d_id}] Dead statement at line {{dead.lineno}} following '{{type(stmt).__name__}}'. Suggested Fix: {fix_esc}")
+                            self.fail(f"[{d_id}] Dead statement at line {{node.body[i + 1].lineno}} following '{{type(stmt).__name__}}'. Suggested Fix: {fix_esc}")
         elif rule == "SILENT_BARE_EXCEPT":
             if is_py:
-                tree = ast.parse(self.code)
-                for node in ast.walk(tree):
+                for node in ast.walk(ast.parse(self.code)):
                     if isinstance(node, ast.Try):
-                        for h in node.handlers:
-                            if h.type is None:
-                                self.fail(f"[{d_id}] Silent bare 'except:' clause at line {{h.lineno}}. Suggested Fix: {fix_esc}")
+                        for h in (h for h in node.handlers if h.type is None):
+                            self.fail(f"[{d_id}] Silent bare 'except:' clause at line {{h.lineno}}. Suggested Fix: {fix_esc}")
             elif re.search(r"catch\\s*\\([^)]*\\)\\s*\\{{\\s*\\}}", self.code):
                 self.fail(f"[{d_id}] Empty catch block suppresses errors silently. Suggested Fix: {fix_esc}")
         elif rule == "HARDCODED_SECRET_PATTERN":
@@ -123,16 +110,7 @@ def _build_rule_check_body(d_id: str, rule_id: str, sym_short: str, suggested_fi
             self.assertIsNotNone(ast.parse(self.code))'''
 
 
-def build_tactical_test_code(
-    d_id: str, rule_id: str, rel_file: str, symbol: str, message: str, suggested_fix: str
-) -> str:
-    """Generate self-contained Red-to-Green reproduction unittest."""
-    sym_short = symbol.split(".")[-1] if symbol else "target"
-    cls_name = "Test" + re.sub(r"[^a-zA-Z0-9]", "", d_id.title())
-    id_slug = d_id.lower().replace("-", "_")
-    body_code = _build_rule_check_body(d_id, rule_id, sym_short, suggested_fix)
-
-    return f'''#!/usr/bin/env python3
+_TACTICAL_TEST_TEMPLATE = '''#!/usr/bin/env python3
 """Quarantine Reproduction Test for {d_id} ({rule_id}).
 
 Target: {rel_file} -> {symbol}
@@ -140,8 +118,7 @@ Message: {message}
 Suggested Fix: {suggested_fix}
 
 Workflow (/app-debugger):
-  1. Verify failing test:
-     python -m unittest {QUARANTINE_REL_PATH}/test_{id_slug}.py
+  1. Verify failing test: python -m unittest {quarantine_rel}/test_{id_slug}.py
   2. Apply suggested fix in {rel_file}
   3. Re-verify test passes Green
 """
@@ -170,6 +147,22 @@ class {cls_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 '''
+
+
+def build_tactical_test_code(
+    d_id: str, rule_id: str, rel_file: str, symbol: str, message: str, suggested_fix: str
+) -> str:
+    """Generate self-contained Red-to-Green reproduction unittest."""
+    sym_short = symbol.split(".")[-1] if symbol else "target"
+    cls_name = "Test" + re.sub(r"[^a-zA-Z0-9]", "", d_id.title())
+    id_slug = d_id.lower().replace("-", "_")
+    body_code = _build_rule_check_body(d_id, rule_id, sym_short, suggested_fix)
+    return _TACTICAL_TEST_TEMPLATE.format(
+        d_id=d_id, rule_id=rule_id, rel_file=rel_file, symbol=symbol,
+        message=message, suggested_fix=suggested_fix,
+        quarantine_rel=QUARANTINE_REL_PATH, id_slug=id_slug,
+        cls_name=cls_name, body_code=body_code,
+    )
 
 
 def generate_architectural_brief(defect: dict[str, Any]) -> str:
