@@ -179,11 +179,12 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
         ("diagnose.py" in call_cmd and "--live" in call_cmd and "--allow-headless-fallback" not in call_cmd)
         or ("--no-fallback-headless" in call_cmd)
     )
-    if "[CDP] Falling back to isolated headless browser" in content or (
+    is_cdp_noise = "Showing lines " in content[:220] or "Partial read " in content[:220] or bool(re.search(r"\b(?:unittest|pytest|git\s+(?:diff|grep|show|log))\b", call_cmd))
+    if not is_cdp_noise and ("[CDP] Falling back to isolated headless browser" in content or (
         "[CDP] Live connection failed" in content and not is_live_no_fallback
-    ):
+    )):
         acc["cdp_live_fallbacks"] += 1
-    elif "[CDP] Live connection failed" in content:
+    elif not is_cdp_noise and "[CDP] Live connection failed" in content:
         acc["cdp_live_failures"] += 1
     fail = classify_result(content, status, call_cmd)
     if fail == "audit_catch":

@@ -158,20 +158,34 @@ def record_followup_cid(root: Path, slug: str, cid: str | None, brain_dir: str |
     return True
 
 
-def merge_debug_retro_items(root: Path, learns: list[str], skill_learns: list[str], escalations: list[str]) -> None:
+def _cid_matches(entry_cid: str, cids: list[str] | None) -> bool:
+    """Return True if entry_cid is unscoped (empty) or matches any cid in cids."""
+    if cids is None or not entry_cid:
+        return True
+    return any(c.startswith(entry_cid) or entry_cid.startswith(c) for c in cids if c)
+
+
+def merge_debug_retro_items(
+    root: Path, learns: list[str], skill_learns: list[str], escalations: list[str], cids: list[str] | None = None
+) -> None:
     """Fold DEBUG_RETRO.md lessons and unconfirmed/escalated root causes into digest lists."""
     import re
     for cand in (get_frontier_dir(root) / "DEBUG_RETRO.md", root / ".diagnostics" / "DEBUG_RETRO.md"):
         if not cand.is_file():
             continue
-        for line in cand.read_text(encoding="utf-8", errors="replace").splitlines():
-            s = line.strip()
-            if m := re.match(r"^##\s+\[[^\]]+\]\s+\[(UNCONFIRMED|ESCALATED)\]\s+(.+)$", s, re.I):
-                _append_unique(escalations, f"Debug retro ({m.group(1).lower()}): {m.group(2).strip()}")
-            elif m := re.match(r"^-\s+\*\*Project\s+`/learn`\*\*:\s*(.+)$", s):
-                _append_unique(learns, m.group(1).strip())
-            elif m := re.match(r"^-\s+\*\*Skill\s+`/learn`\*\*:\s*(.+)$", s):
-                _append_unique(skill_learns, m.group(1).strip())
+        blocks = re.split(r"(?=^##\s+\[)", cand.read_text(encoding="utf-8", errors="replace"), flags=re.M)
+        for blk in blocks:
+            m_cid = re.search(r"-\s+\*\*Telemetry\*\*:.*\bcid=([a-zA-Z0-9_-]+)", blk)
+            if not _cid_matches(m_cid.group(1) if m_cid else "", cids):
+                continue
+            for line in blk.splitlines():
+                s = line.strip()
+                if m := re.match(r"^##\s+\[[^\]]+\]\s+\[(UNCONFIRMED|ESCALATED)\]\s+(.+)$", s, re.I):
+                    _append_unique(escalations, f"Debug retro ({m.group(1).lower()}): {m.group(2).strip()}")
+                elif m := re.match(r"^-\s+\*\*Project\s+`/learn`\*\*:\s*(.+)$", s):
+                    _append_unique(learns, m.group(1).strip())
+                elif m := re.match(r"^-\s+\*\*Skill\s+`/learn`\*\*:\s*(.+)$", s):
+                    _append_unique(skill_learns, m.group(1).strip())
 
 
 def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bool, build_digest_fn: Any) -> dict[str, Any]:

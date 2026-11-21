@@ -36,7 +36,7 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
         code = int(match.group(1))
         if code == 1 and re.search(r"\bgit\s+grep\b", last_cmd) and "fatal:" not in content.lower():
             return None
-        if code == 1 and re.search(r"diagnose\.py\s+(?:audit|scan)\b", last_cmd) and "traceback" not in content.lower():
+        if code == 1 and re.search(r"(?:(?:run_)?diagnose\.py|\$diag\b)[^\n]*\b(?:audit|scan|probe\s+run|surface\s+--verify)\b", last_cmd) and "traceback" not in content.lower():
             return "audit_catch"
         return "cmd_fail" if code != 0 else None
     if status == "ERROR":

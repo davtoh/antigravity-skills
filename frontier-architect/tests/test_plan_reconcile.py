@@ -146,6 +146,31 @@ class TestPlanReconcileAndScaffold(unittest.TestCase):
         self.assertEqual(retros[0]["hypotheses_tested"], 3)
         self.assertEqual(retros[0]["tool_reliability_scores"]["tool_reliability"], 4)
 
+    def test_per_plan_digest_filters_unrelated_debug_retro_cids(self) -> None:
+        (self.root / ".frontier").mkdir(parents=True, exist_ok=True)
+        (self.root / ".frontier" / "DEBUG_RETRO.md").write_bytes((
+            "# Debug Retrospectives\n\n"
+            "## [2026-11-20] [UNCONFIRMED] Unrelated stream bug\n"
+            "- **Telemetry**: cid=bbbb2222 steps=50 fails=1 cap=A cdp_fallbacks=0\n"
+            "- **Project `/learn`**: Unrelated lesson\n\n"
+            "## [2026-11-20] [UNCONFIRMED] Related plan bug\n"
+            "- **Telemetry**: cid=aaaa1111 steps=30 fails=0 cap=A cdp_fallbacks=0\n"
+            "- **Project `/learn`**: Related lesson\n"
+        ).encode("utf-8"))
+        (self.root / ".TODO" / "scoped.md").write_bytes("# Scoped\n\n## Milestone 1: A\n- [x] ok\n".encode("utf-8"))
+        plan_engine.main(["init", ".TODO/scoped.md"], root=self.root)
+        plan_engine.main([
+            "retrospective", "scoped", "--milestone", "1", "--grade", "A", "--retries", "0", "--steps", "30",
+            "--tri", "5,5,5,5", "--cid", "aaaa1111-0000-0000-0000-000000000000",
+        ], root=self.root)
+        d = pd.build_digest(self.root, "scoped")
+        self.assertIn("Debug retro (unconfirmed): Related plan bug", d["escalations"])
+        self.assertFalse(any("Unrelated stream bug" in e for e in d["escalations"]))
+        self.assertIn("Related lesson", d["learn_candidates"])
+        self.assertNotIn("Unrelated lesson", d["learn_candidates"])
+        wd = pd.build_workspace_digest(self.root)
+        self.assertIn("Debug retro (unconfirmed): Unrelated stream bug", wd["escalations"])
+
 
 if __name__ == "__main__":
     unittest.main()

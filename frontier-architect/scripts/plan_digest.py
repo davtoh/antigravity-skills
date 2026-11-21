@@ -285,7 +285,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
             ps["followup_cids"] = active_fcids = merged_fcids
             save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
     promote_transcript_findings(rows, skill_learns, escalations)
-    merge_debug_retro_items(root, learns, skill_learns, escalations)
+    merge_debug_retro_items(root, learns, skill_learns, escalations, cids=_dedupe_cids([*entry_cids, *active_fcids]))
     learns, skill_learns = triage_plan_candidates(root, learns, skill_learns)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],

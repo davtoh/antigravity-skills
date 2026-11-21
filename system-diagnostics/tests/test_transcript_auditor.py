@@ -328,6 +328,22 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertIn("FLAG thrash-n: 4 failures without /app-debugger or debug-retro (unescalated thrash)", md)
         self.assertNotIn("FLAG thrash-w:", md)
 
+    def test_ignores_cdp_text_in_reads_and_exempts_probe_verify_audit_catches(self) -> None:
+        _write(self.brain, "clean-probe-run", [
+            _planner(("read_file", {"Path": "test_transcript_auditor.py"})),
+            {"type": "GENERIC", "content": "Showing lines 1-20 of 50\n[CDP] Falling back to isolated headless browser", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python -m unittest discover -s tests"})),
+            {"type": "GENERIC", "content": "[CDP] Falling back to isolated headless browser\nCommand exited with code 0.", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py probe run my_probe"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n[✗] Diagnostic Probe: my_probe", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": ".venv\\Scripts\\python.exe $diag surface --verify"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nSurface mismatch", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "clean-probe-run")
+        self.assertEqual(row["cdp_live_fallbacks"], 0)
+        self.assertEqual(row["total_failures"], 0)
+        self.assertEqual(row["audit_catches"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
