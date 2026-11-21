@@ -8,7 +8,6 @@ and stylesheet custom properties from raw text without external dependencies.
 
 import argparse
 import ast
-import json
 import os
 import re
 import textwrap
@@ -309,53 +308,18 @@ def walk_source_files(root: Path, include_tests: bool = True) -> dict[str, list[
 
 def cmd_surface(args: argparse.Namespace) -> int:
     """Scan directory surface for HTML element IDs, JS globals, and Python routes."""
-    target_path = Path(args.path).resolve() if args.path else Path.cwd()
-    files = walk_source_files(target_path, include_tests=True)
-    all_ids, all_selects, all_globals, all_routes, important_count = set(), set(), set(), [], 0
-
-    def _read(p: Path) -> str:
-        return p.read_text(encoding="utf-8", errors="replace")
-
-    for hp in files["html"]:
-        surf = scan_html_surface(_read(hp))
-        all_ids.update(surf.ids); all_selects.update(surf.selects)
-    for jp in files["js"]:
-        all_globals.update(scan_js_surface(_read(jp)).global_exports)
-    for pp in files["py"]:
-        all_routes.extend(scan_python_surface(_read(pp)).routes)
-    for cp in files["css"]:
-        important_count += scan_css_surface(_read(cp)).important_count
-
-    data = {
-        "workspace": str(target_path), "total_html_files": len(files["html"]),
-        "total_ids": len(all_ids), "ids": sorted(all_ids),
-        "interactive_selects": sorted(all_selects), "global_window_exports": sorted(all_globals),
-        "backend_routes": all_routes, "css_important_count": important_count,
-    }
-    verification = None
-    if getattr(args, "verify", False):
-        try:
-            from surface_verifier import print_verification_report, verify_surface_contracts
-        except ImportError:
-            from .surface_verifier import print_verification_report, verify_surface_contracts
-        verification = verify_surface_contracts(target_path, files, scan_html_surface, scan_js_surface, scan_python_surface)
-        data["verification"] = verification
-    if args.json:
-        print(json.dumps(data, indent=2))
-        return 1 if (verification and getattr(args, "strict", False) and verification["summary"]["total_mismatches"] > 0) else 0
-    print(f"=== Surface Inventory ({target_path}) ===")
-    print(f"HTML Files: {len(files['html'])} | Unique IDs: {len(all_ids)} | Selects: {len(all_selects)}")
-    print(f"JS Files:   {len(files['js'])} | window.* Globals: {len(all_globals)}")
-    print(f"Python Files: {len(files['py'])} | API Routes: {len(all_routes)}")
-    print(f"CSS Files:  {len(files['css'])} | !important Count: {important_count}")
-    if args.show_ids and all_ids:
-        print("\n--- Element IDs ---\n" + "\n".join(f"  #{i}" for i in sorted(all_ids)))
-    if args.show_globals and all_globals:
-        print("\n--- window.* Exports ---\n" + "\n".join(f"  {g}" for g in sorted(all_globals)))
-    if args.show_routes and all_routes:
-        print("\n--- Backend Routes ---\n" + "\n".join(f"  {r.get('method', 'GET')} {r.get('path', '')}" for r in all_routes))
-    if verification is not None:
-        print_verification_report(verification)
-        if getattr(args, "strict", False) and verification["summary"]["total_mismatches"] > 0:
-            return 1
-    return 0
+    try:
+        from surface_contracts import run_surface_cli
+        from surface_verifier import verify_surface_contracts
+    except ImportError:
+        from .surface_contracts import run_surface_cli
+        from .surface_verifier import verify_surface_contracts
+    return run_surface_cli(
+        args,
+        walk_source_files,
+        scan_html_surface,
+        scan_js_surface,
+        scan_python_surface,
+        scan_css_surface,
+        verify_surface_contracts,
+    )

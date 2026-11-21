@@ -31,6 +31,7 @@ def register_ui_parser(sub: Any) -> None:
     p.add_argument("--click", default=None, help="CSS selector to click before auditing")
     p.add_argument("--window-size", default="1440x900", help="Viewport size WxH (default: 1440x900)")
     p.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection (default: 1.5)")
+    p.add_argument("--stability-ms", type=float, default=0, help="Sample DOMRect layout jitter over N ms during --audit-layout")
     p.add_argument("--connect-timeout", type=float, default=None, help="Live CDP WebSocket handshake timeout (seconds)")
     p.add_argument("--port", type=int, default=None, help="Debugging port override")
     p.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
@@ -51,6 +52,7 @@ def register_core_parsers(sub: Any) -> None:
     p_surf.add_argument("--show-globals", action="store_true", help="List all window.* JS exports")
     p_surf.add_argument("--show-routes", action="store_true", help="List all backend Python routes")
     p_surf.add_argument("--verify", action="store_true", help="Verify cross-contract parity (JS fetch vs routes, window.* read/write, JS IDs vs HTML)")
+    p_surf.add_argument("--include-tests", action="store_true", help="Include test directories when running --verify")
     p_surf.add_argument("--strict", action="store_true", help="Exit 1 if --verify detects mismatches")
     p_surf.add_argument("--json", action="store_true", help="Output JSON report")
 
@@ -91,7 +93,7 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     ):
         if val := getattr(args, attr, None):
             cmd.extend([flag, str(val)])
-    for attr, flag in (("wait", "--wait"), ("connect_timeout", "--connect-timeout"), ("port", "--port")):
+    for attr, flag in (("wait", "--wait"), ("stability_ms", "--stability-ms"), ("connect_timeout", "--connect-timeout"), ("port", "--port")):
         if (val := getattr(args, attr, None)) is not None:
             cmd.extend([flag, str(val)])
     no_fallback = (getattr(args, "fallback_headless", True) is False) or (

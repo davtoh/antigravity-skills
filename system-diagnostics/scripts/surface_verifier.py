@@ -2,44 +2,46 @@
 """Cross-contract surface verifier for system-diagnostics.
 
 Cross-references:
-1. JS fetch() paths vs backend FastAPI/Flask route patterns
-2. JS window.* reader/writer symmetry
-3. JS getElementById/querySelector('#id') vs HTML/template IDs
+1. JS fetch() & non-fetch URLs (img.src, video.src, WebSocket, window.open) vs backend routes & HTTP methods
+2. JS window.* reader/writer symmetry & window.<Obj>.<method>() calls
+3. JS getElementById/querySelector('#id') & inline HTML onclick vs HTML/JS contracts
+4. Dead <button id="..."> elements, duplicate button labels, & static JSON response keys
 """
 
 import re
 from pathlib import Path
 from typing import Any
 
+try:
+    from surface_contracts import (
+        check_dead_buttons_and_dupes,
+        check_inline_handlers,
+        check_response_key_contracts,
+        check_window_method_calls,
+        extract_html_buttons,
+        extract_js_fetch_calls,
+        extract_non_fetch_urls,
+        extract_window_object_members,
+        print_verification_report,
+    )
+except ImportError:
+    from .surface_contracts import (
+        check_dead_buttons_and_dupes,
+        check_inline_handlers,
+        check_response_key_contracts,
+        check_window_method_calls,
+        extract_html_buttons,
+        extract_js_fetch_calls,
+        extract_non_fetch_urls,
+        extract_window_object_members,
+        print_verification_report,
+    )
+
 _JS_LINE_COMMENT_RE = re.compile(r"(?<!:)//[^\n]*")
 _JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-_JS_FETCH_TPL_RE = re.compile(r"\bfetch\s*\(\s*`(/[^`\s]+)")
-_JS_FETCH_STR_RE = re.compile(r"""\bfetch\s*\(\s*(['"])(/[^'"\s]+)\1(?:\s*\+\s*([^\n;]+))?""")
-_JS_TPL_EXPR_RE = re.compile(r"\$\{[^}]+\}")
-_JS_DYN_ID_RE = re.compile(r"""(?:\.id\s*=\s*|\bid\s*=\s*["'])([a-zA-Z0-9_\-]+)""")
+_JS_DYN_ID_RE = re.compile(r"""(?:\.id\s*=\s*|\bid\s*=\s*["']|\[id=["'])([a-zA-Z0-9_\-]+)""")
 _PY_PREFIX_RE = re.compile(r"""APIRouter\s*\((?:[^()]|\([^()]*\))*?\bprefix\s*=\s*['"]([^'"]+)['"]""")
 _PY_MOUNT_RE = re.compile(r"""\.mount\s*\(\s*['"]([^'"]+)['"]""")
-
-_BUILTIN_WINDOW_PROPS = frozenset({
-    "location", "document", "navigator", "history", "console", "localStorage",
-    "sessionStorage", "screen", "performance", "visualViewport", "crypto",
-    "indexedDB", "customElements", "innerWidth", "innerHeight", "outerWidth",
-    "outerHeight", "scrollX", "scrollY", "pageXOffset", "pageYOffset",
-    "addEventListener", "removeEventListener", "dispatchEvent", "setTimeout",
-    "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame",
-    "cancelAnimationFrame", "fetch", "alert", "confirm", "prompt", "open",
-    "close", "focus", "blur", "getComputedStyle", "matchMedia", "devicePixelRatio",
-    "onload", "onbeforeunload", "onhashchange", "onresize", "WebSocket", "URL",
-    "Blob", "File", "FormData", "Headers", "Request", "Response", "Event",
-    "CustomEvent", "MutationObserver", "ResizeObserver", "IntersectionObserver",
-    "AbortController", "TextDecoder", "TextEncoder", "Image", "Audio", "Option",
-    "HTMLElement", "parent", "top", "self", "frames", "name", "closed", "opener",
-    "atob", "btoa", "encodeURIComponent", "decodeURIComponent", "parseInt",
-    "parseFloat", "isNaN", "isFinite", "structuredClone", "queueMicrotask",
-    "reportError", "getSelection", "print", "stop", "scrollTo", "scrollBy",
-    "postMessage", "URLSearchParams", "Intl", "Math", "JSON", "Object", "Array",
-    "Number", "String", "Boolean", "Date", "RegExp", "Promise", "Map", "Set",
-})
 
 
 def _strip_js_comments(text: str) -> str:
@@ -47,54 +49,9 @@ def _strip_js_comments(text: str) -> str:
     return _JS_LINE_COMMENT_RE.sub("", _JS_BLOCK_COMMENT_RE.sub("", text))
 
 
-def _slice_first_arg(expr: str) -> str:
-    """Return concatenation expression up to the top-level comma or closing paren."""
-    depth, in_quote = 0, ""
-    for i, ch in enumerate(expr):
-        if in_quote:
-            if ch == in_quote and (i == 0 or expr[i - 1] != "\\"):
-                in_quote = ""
-        elif ch in ("'", '"', "`"):
-            in_quote = ch
-        elif ch in "([":
-            depth += 1
-        elif ch in ")]":
-            if depth == 0:
-                return expr[:i]
-            depth -= 1
-        elif ch == "," and depth == 0:
-            return expr[:i]
-    return expr
-
-
-def _build_concat_path(base: str, tail: str) -> str:
-    """Normalize a JS string-concatenated fetch() path into a parameterized route."""
-    parts = [base]
-    for seg in _slice_first_arg(tail).split("+"):
-        lit = re.match(r"""^\s*(['"])([^'"]*)\1\s*$""", seg)
-        if lit:
-            parts.append(lit.group(2))
-        else:
-            if not parts[-1].endswith("/"):
-                parts.append("/")
-            parts.append("{param}")
-    return "".join(parts).replace("//", "/").split("?", 1)[0].rstrip("/") or "/"
-
-
 def extract_js_fetch_paths(text: str) -> list[str]:
     """Extract normalized API/relative paths from JS fetch() calls."""
-    cleaned = _strip_js_comments(text)
-    paths: set[str] = set()
-    for raw in _JS_FETCH_TPL_RE.findall(cleaned):
-        norm = _JS_TPL_EXPR_RE.sub("{param}", raw).split("?", 1)[0].rstrip("/") or "/"
-        paths.add(norm)
-    for m in _JS_FETCH_STR_RE.finditer(cleaned):
-        base, tail = m.group(2), m.group(3)
-        if tail is not None:
-            paths.add(_build_concat_path(base, tail))
-        else:
-            paths.add(base.split("?", 1)[0].rstrip("/") or "/")
-    return sorted(paths)
+    return sorted({c["path"] for c in extract_js_fetch_calls(_strip_js_comments(text))})
 
 
 def extract_router_prefix(py_text: str) -> str:
@@ -119,29 +76,40 @@ def _compile_route_regex(route_path: str) -> re.Pattern[str]:
     return re.compile("^" + "".join(regex_parts) + "$")
 
 
-def _route_matches(fetch_path: str, route_patterns: list[re.Pattern[str]], mount_prefixes: list[str]) -> bool:
-    """Return True if fetch_path matches any declared route pattern or StaticFiles mount."""
+def _route_matches(
+    fetch_path: str,
+    method: str,
+    route_specs: list[tuple[str, re.Pattern[str]]],
+    mount_prefixes: list[str],
+) -> bool:
+    """Return True if fetch_path + method matches any declared route or StaticFiles mount."""
     probe = re.sub(r"\{[^}]+\}", "__PARAM__", fetch_path.rstrip("/") or "/")
-    if any(pat.match(probe) for pat in route_patterns):
-        return True
-    return any(probe == mp or probe.startswith(mp + "/") for mp in mount_prefixes if mp != "/")
+    for r_method, pat in route_specs:
+        if pat.match(probe) and (method == "ANY" or r_method == method):
+            return True
+    return method in ("GET", "ANY") and any(probe == mp or probe.startswith(mp + "/") for mp in mount_prefixes if mp != "/")
 
 
 def _rel_path(path: Path, root: Path) -> str:
     return str(path.relative_to(root)).replace("\\", "/") if path.is_relative_to(root) else path.name
 
 
-def _collect_py_contracts(target_path: Path, py_files: list[Path], scan_py_fn: Any) -> tuple[list[re.Pattern[str]], list[str]]:
-    routes: list[dict[str, Any]] = []
+def _collect_py_contracts(
+    target_path: Path, py_files: list[Path], scan_py_fn: Any
+) -> tuple[list[tuple[str, re.Pattern[str]]], list[str], list[tuple[str, str]]]:
+    specs: list[tuple[str, re.Pattern[str]]] = []
     mount_prefixes: list[str] = []
+    py_items: list[tuple[str, str]] = []
     for pp in py_files:
         text = pp.read_text(encoding="utf-8", errors="replace")
+        rel = _rel_path(pp, target_path)
+        py_items.append((rel, text))
         prefix = extract_router_prefix(text)
         mount_prefixes.extend(extract_mount_prefixes(text))
-        for r in scan_py_fn(text, rel_path=_rel_path(pp, target_path)).routes:
+        for r in scan_py_fn(text, rel_path=rel).routes:
             full_path = (prefix + r["path"]) if prefix and not r["path"].startswith(prefix) else r["path"]
-            routes.append({**r, "path": full_path})
-    return [_compile_route_regex(r["path"]) for r in routes], mount_prefixes
+            specs.append((r.get("method", "GET").upper(), _compile_route_regex(full_path)))
+    return specs, mount_prefixes, py_items
 
 
 def _find_dead_window_reads(js_reads: list[dict[str, str]], js_writes: set[str]) -> list[dict[str, str]]:
@@ -157,6 +125,67 @@ def _find_dead_window_reads(js_reads: list[dict[str, str]], js_writes: set[str])
     return dead
 
 
+_BUILTIN_WINDOW_PROPS = frozenset({
+    "location", "document", "navigator", "history", "console", "localStorage",
+    "sessionStorage", "screen", "performance", "visualViewport", "crypto",
+    "indexedDB", "customElements", "innerWidth", "innerHeight", "outerWidth",
+    "outerHeight", "scrollX", "scrollY", "pageXOffset", "pageYOffset",
+    "addEventListener", "removeEventListener", "dispatchEvent", "setTimeout",
+    "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame",
+    "cancelAnimationFrame", "fetch", "alert", "confirm", "prompt", "open",
+    "close", "focus", "blur", "getComputedStyle", "matchMedia", "devicePixelRatio",
+    "onload", "onbeforeunload", "onhashchange", "onresize", "WebSocket", "URL",
+    "Blob", "File", "FormData", "Headers", "Request", "Response", "Event",
+    "CustomEvent", "MutationObserver", "ResizeObserver", "IntersectionObserver",
+    "AbortController", "TextDecoder", "TextEncoder", "Image", "Audio", "Option",
+    "HTMLElement", "parent", "top", "self", "frames", "name", "closed", "opener",
+    "atob", "btoa", "encodeURIComponent", "decodeURIComponent", "parseInt",
+    "parseFloat", "isNaN", "isFinite", "structuredClone", "queueMicrotask",
+    "reportError", "getSelection", "print", "stop", "scrollTo", "scrollBy",
+    "postMessage", "URLSearchParams", "Intl", "Math", "JSON", "Object", "Array",
+    "Number", "String", "Boolean", "Date", "RegExp", "Promise", "Map", "Set",
+})
+
+
+def _scan_html_contracts(target_path: Path, html_files: list[Path], scan_html_fn: Any) -> tuple[set[str], list[dict[str, str]], list[dict[str, Any]], list[dict[str, str]]]:
+    all_ids: set[str] = set()
+    handlers, buttons, media_urls = [], [], []
+    for hp in html_files:
+        text, rel = hp.read_text(encoding="utf-8", errors="replace"), _rel_path(hp, target_path)
+        surf = scan_html_fn(text)
+        all_ids.update(surf.ids)
+        handlers.extend({**h, "file": rel} for h in surf.inline_handlers)
+        buttons.extend(extract_html_buttons(text, rel))
+        media_urls.extend({**u, "file": rel} for u in extract_non_fetch_urls("", text))
+    return all_ids, handlers, buttons, media_urls
+
+
+def _collect_js_contracts(
+    target_path: Path, js_files: list[Path], scan_js_fn: Any, html_urls: list[dict[str, str]]
+) -> dict[str, Any]:
+    all_dyn_ids, writes, es_exp, queried = set(), set(), set(), set()
+    obj_members: dict[str, set[str]] = {}
+    id_refs, calls, reads, texts = [], list(html_urls), [], []
+    for jp in js_files:
+        text, rel = jp.read_text(encoding="utf-8", errors="replace"), _rel_path(jp, target_path)
+        cleaned = _strip_js_comments(text)
+        texts.append((rel, cleaned))
+        surf = scan_js_fn(text)
+        all_dyn_ids.update(_JS_DYN_ID_RE.findall(text))
+        queried.update(surf.queried_ids)
+        id_refs.extend({"id": qid, "file": rel} for qid in surf.queried_ids)
+        calls.extend({**c, "file": rel} for c in extract_js_fetch_calls(cleaned) + extract_non_fetch_urls(cleaned))
+        writes.update(surf.global_exports)
+        es_exp.update(surf.es_exports)
+        for obj, mems in extract_window_object_members(cleaned).items():
+            obj_members.setdefault(obj, set()).update(mems)
+        reads.extend({"symbol": r, "file": rel} for r in surf.global_reads if r.split(".")[0] not in _BUILTIN_WINDOW_PROPS and r not in surf.global_exports)
+    return {
+        "dyn_ids": all_dyn_ids, "writes": writes, "es_exports": es_exp, "queried": queried,
+        "obj_members": obj_members, "id_refs": id_refs, "calls": calls, "reads": reads, "texts": texts,
+    }
+
+
 def verify_surface_contracts(
     target_path: Path,
     files: dict[str, list[Path]],
@@ -165,48 +194,24 @@ def verify_surface_contracts(
     scan_py_fn: Any,
 ) -> dict[str, Any]:
     """Run cross-contract verification across HTML, JS, and Python files."""
-    all_html_ids = {
-        hid for hp in files["html"]
-        for hid in scan_html_fn(hp.read_text(encoding="utf-8", errors="replace")).ids
-    }
-    route_patterns, mount_prefixes = _collect_py_contracts(target_path, files["py"], scan_py_fn)
-
-    all_js_dyn_ids: set[str] = set()
-    js_id_refs, js_fetches, js_reads = [], [], []
-    js_writes: set[str] = set()
-    for jp in files["js"]:
-        text, rel = jp.read_text(encoding="utf-8", errors="replace"), _rel_path(jp, target_path)
-        surf = scan_js_fn(text)
-        all_js_dyn_ids.update(_JS_DYN_ID_RE.findall(text))
-        js_id_refs.extend({"id": qid, "file": rel} for qid in surf.queried_ids)
-        js_fetches.extend({"path": fpath, "file": rel} for fpath in extract_js_fetch_paths(text))
-        js_writes.update(surf.global_exports)
-        js_reads.extend(
-            {"symbol": rsym, "file": rel} for rsym in surf.global_reads
-            if rsym.split(".")[0] not in _BUILTIN_WINDOW_PROPS and rsym not in surf.global_exports
-        )
-
-    unmatched = [f for f in js_fetches if not _route_matches(f["path"], route_patterns, mount_prefixes)]
-    dead_reads = _find_dead_window_reads(js_reads, js_writes)
-    missing_ids = [ref for ref in js_id_refs if ref["id"] not in (all_html_ids | all_js_dyn_ids)]
+    all_html_ids, html_handlers, html_buttons, html_urls = _scan_html_contracts(target_path, files["html"], scan_html_fn)
+    route_specs, mount_prefixes, py_items = _collect_py_contracts(target_path, files["py"], scan_py_fn)
+    js = _collect_js_contracts(target_path, files["js"], scan_js_fn, html_urls)
+    unmatched = [c for c in js["calls"] if not _route_matches(c["path"], c["method"], route_specs, mount_prefixes)]
+    dead_reads = _find_dead_window_reads(js["reads"], js["writes"]) + check_window_method_calls(js["texts"], js["writes"], js["obj_members"])
+    missing_ids = [ref for ref in js["id_refs"] if ref["id"] not in (all_html_ids | js["dyn_ids"])]
+    missing_handlers = check_inline_handlers(html_handlers, js["writes"], js["es_exports"])
+    dead_btns, dupe_labels = check_dead_buttons_and_dupes(html_buttons, js["queried"], js["dyn_ids"])
+    resp_mismatches = check_response_key_contracts(py_items, js["texts"], scan_py_fn, extract_router_prefix)
+    total = len(unmatched) + len(dead_reads) + len(missing_ids) + len(missing_handlers) + len(dead_btns) + len(dupe_labels) + len(resp_mismatches)
     return {
         "unmatched_fetches": unmatched, "dead_window_reads": dead_reads, "missing_html_ids": missing_ids,
+        "missing_inline_handlers": missing_handlers, "dead_buttons": dead_btns,
+        "duplicate_button_labels": dupe_labels, "response_key_mismatches": resp_mismatches,
         "summary": {
             "unmatched_fetches": len(unmatched), "dead_window_reads": len(dead_reads),
-            "missing_html_ids": len(missing_ids),
-            "total_mismatches": len(unmatched) + len(dead_reads) + len(missing_ids),
+            "missing_html_ids": len(missing_ids), "missing_inline_handlers": len(missing_handlers),
+            "dead_buttons": len(dead_btns), "duplicate_button_labels": len(dupe_labels),
+            "response_key_mismatches": len(resp_mismatches), "total_mismatches": total,
         },
     }
-
-
-def print_verification_report(verification: dict[str, Any]) -> None:
-    """Print human-readable cross-contract verification summary."""
-    s = verification["summary"]
-    print(f"\n--- Contract Verification (Mismatches: {s['total_mismatches']}) ---")
-    print(f"  Unmatched JS fetch(): {s['unmatched_fetches']} | Dead window.* reads: {s['dead_window_reads']} | Missing HTML IDs: {s['missing_html_ids']}")
-    for f in verification["unmatched_fetches"][:15]:
-        print(f"  [UNMATCHED_FETCH] {f['path']} ({f['file']})")
-    for w in verification["dead_window_reads"][:15]:
-        print(f"  [DEAD_WINDOW_READ] window.{w['symbol']} ({w['file']})")
-    for m in verification["missing_html_ids"][:15]:
-        print(f"  [MISSING_HTML_ID] #{m['id']} ({m['file']})")

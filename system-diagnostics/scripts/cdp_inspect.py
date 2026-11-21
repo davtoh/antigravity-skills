@@ -91,10 +91,10 @@ def find_chrome_executable() -> str:
 
     return shutil.which("chrome") or shutil.which("google-chrome") or "google-chrome"
 
-def build_generic_audit_js(custom_selectors: list[str]) -> str:
+def build_generic_audit_js(custom_selectors: list[str], stability_ms: float = 0) -> str:
     js_path = Path(__file__).parent / "audit_layout.js"
     base_js = js_path.read_text(encoding="utf-8")
-    return f"window.__FRONTIER_SELECTORS__ = {json.dumps(custom_selectors)};\n{base_js}"
+    return f"window.__FRONTIER_SELECTORS__ = {json.dumps(custom_selectors)};\nwindow.__FRONTIER_STABILITY_MS__ = {float(stability_ms)};\n{base_js}"
 
 async def evaluate(cdp: CDPSession, session_id: str | None, expression: str):
     """Evaluate JS and surface page-side exceptions instead of silently printing null."""
@@ -142,10 +142,10 @@ async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> i
         await _click_selector(cdp, session_id, args.click)
     custom_sels = [s.strip() for s in args.selectors.split(",") if s.strip()] if args.selectors else []
     if args.audit_layout or custom_sels:
-        result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels))
+        result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels, getattr(args, "stability_ms", 0)))
         print(json.dumps(result, indent=2, ensure_ascii=False))
         if getattr(args, "strict", False) and isinstance(result, dict):
-            if result.get("layoutOverflowWarnings") or result.get("viewport", {}).get("hasHorizontalWindowScroll", False):
+            if result.get("layoutOverflowWarnings") or result.get("layoutJitterWarnings") or result.get("viewport", {}).get("hasHorizontalWindowScroll", False):
                 exit_code = 1
     if args.eval:
         eval_result = await evaluate(cdp, session_id, args.eval)
@@ -322,6 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
     parser.add_argument("--navigate", action="store_true", help="Force (re)navigation to target URL, e.g. a hard reload after a fix")
     parser.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection")
+    parser.add_argument("--stability-ms", type=float, default=0, help="Sample DOMRect layout jitter over N ms during --audit-layout")
     parser.add_argument("--connect-timeout", type=float, default=15.0, help="Live CDP handshake timeout (seconds)")
     parser.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     parser.add_argument("--headless", action="store_true", help="Use isolated auto-cleaned headless browser")

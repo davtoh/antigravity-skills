@@ -105,6 +105,7 @@ Before multi-step edits *(full contracts & templates: [`references/plan-contract
 2. **Surface, Modularity, Portability & SSOT**:
    - Document public routes/schemas/selectors upfront; delegate deep monolith splits to `/refactor-monolith` (`davtoh/antigravity-skills`).
    - Run `diagnose.py audit --path <targets>`: enforce **350 lines** soft / **500 lines** hard ceiling, $\le 10–12$ methods/class, $\le 40$L/fn; calibrate tighter limits via **Plan Budget Calibration Rule** (`--max-lines <N>`).
+   - **UI Component Reuse & Ask-Before-Creating-New-Component Gate**: Before proposing any new UI control, modal, card, or partial, inspect existing UI components/partials first, prefer presentation/CSS variants of existing components, and invoke `ask_question` before introducing any overlapping UI control/component.
    - Enforce **Export-Ready Portable Plan Contract** (POSIX repo-relative paths, zero `file:///` URIs, OS-agnostic test commands, **Scenario Combinations Matrix**), zero zombie re-export facades, unify duplicate domain logic via delegation while preserving public interface compatibility, verify file paths, and merge rules into `AGENTS.md` / `.agents/rules/`.
 
 ---
