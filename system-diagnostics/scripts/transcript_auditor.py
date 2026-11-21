@@ -122,7 +122,7 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
         elif name == "run_command":
             cmd_line = str(args.get("CommandLine", "")).strip()
             acc["last_cmd"] = cmd_line
-            if "changelog add" in cmd_line: acc["changelog_adds"] += 1
+            if "changelog add" in cmd_line and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", cmd_line): acc["changelog_adds"] += 1
             if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
@@ -179,7 +179,7 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
         ("diagnose.py" in call_cmd and "--live" in call_cmd and "--allow-headless-fallback" not in call_cmd)
         or ("--no-fallback-headless" in call_cmd)
     )
-    is_cdp_noise = "Showing lines " in content[:220] or "Partial read " in content[:220] or bool(re.search(r"\b(?:unittest|pytest|git\s+(?:diff|grep|show|log))\b", call_cmd))
+    is_cdp_noise = "Showing lines " in content[:220] or "Partial read " in content[:220] or ".system_generated" in call_cmd or bool(re.search(r"\b(?:unittest|pytest|Select-String|Get-Content|git\s+(?:diff|grep|show|log))\b", call_cmd, re.I))
     if not is_cdp_noise and ("[CDP] Falling back to isolated headless browser" in content or (
         "[CDP] Live connection failed" in content and not is_live_no_fallback
     )):
@@ -302,7 +302,9 @@ def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, m
         needle = workspace.replace("\\", "/").rstrip("/").lower()
         dirs = [d for d in dirs if needle in (d / _LOG_REL).read_text(encoding="utf-8", errors="replace").replace("\\\\", "/").replace("\\", "/").lower()]
     dirs.sort(key=lambda d: (d / _LOG_REL).stat().st_mtime, reverse=True)
-    limit, substantive, short = latest or 1, [], []
+    limit = latest or 1
+    substantive: list[str] = []
+    short: list[str] = []
     for d in dirs:
         (substantive if _has_min_steps(d / _LOG_REL, min_steps) else short).append(d.name)
         if len(substantive) >= limit:
@@ -312,7 +314,8 @@ def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, m
 
 def format_markdown(rows: list[dict[str, Any]]) -> str:
     """Render a compact markdown table plus waste, failure, repeat, and correction diagnostics."""
-    out, notes = ["| cid | steps | fails | subagents | dup reads | grade cap |", "|---|---:|---:|---:|---:|:--:|"], []
+    out = ["| cid | steps | fails | subagents | dup reads | grade cap |", "|---|---:|---:|---:|---:|:--:|"]
+    notes: list[str] = []
     for r in rows:
         cid8 = r["cid"][:8]
         if r.get("missing"):

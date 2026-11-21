@@ -133,10 +133,12 @@ def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
 
 
 def triage_plan_candidates(root: Path, learns: list[str], skill_learns: list[str]) -> tuple[list[str], list[str]]:
-    """Filter per-plan /learn candidates against AGENTS.md/SKILL.md and drop noisy repeated-read warnings."""
+    """Filter per-plan /learn candidates against AGENTS.md/.agents/rules/SKILL.md and drop noisy repeated-read warnings."""
     skill_md = Path(__file__).resolve().parents[1] / "SKILL.md"
+    rules_dir = root / ".agents" / "rules"
+    proj_docs = [root / "AGENTS.md", *(sorted(rules_dir.glob("*.md")) if rules_dir.is_dir() else ())]
     cleaned_skill = [x for x in skill_learns if not x.startswith("Transcript audit: repeated file reads")]
-    return _triage_candidates(learns, [root / "AGENTS.md"]), _triage_candidates(cleaned_skill, [skill_md])
+    return _triage_candidates(learns, proj_docs), _triage_candidates(cleaned_skill, [skill_md])
 
 
 def record_followup_cid(root: Path, slug: str, cid: str | None, brain_dir: str | None = None) -> bool:
@@ -176,8 +178,11 @@ def merge_debug_retro_items(
         blocks = re.split(r"(?=^##\s+\[)", cand.read_text(encoding="utf-8", errors="replace"), flags=re.M)
         for blk in blocks:
             m_cid = re.search(r"-\s+\*\*Telemetry\*\*:.*\bcid=([a-zA-Z0-9_-]+)", blk)
-            if not _cid_matches(m_cid.group(1) if m_cid else "", cids):
+            ecid = m_cid.group(1) if m_cid else ""
+            if not _cid_matches(ecid, cids):
                 continue
+            if ecid:
+                escalations[:] = [x for x in escalations if not x.startswith(f"Unescalated thrash ({ecid[:8]}):")]
             for line in blk.splitlines():
                 s = line.strip()
                 if m := re.match(r"^##\s+\[[^\]]+\]\s+\[(UNCONFIRMED|ESCALATED)\]\s+(.+)$", s, re.I):
@@ -200,7 +205,7 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
             seen_paths.add(rp)
             candidates.append(rp)
     seen_slugs: set[str] = set()
-    plans, active_digests, completed_digests = [], [], []
+    plans, active_digests, completed_digests = [list[dict[str, Any]]() for _ in range(3)]
     for p in candidates:
         slug = slugify(p.stem)
         if slug in seen_slugs or not (d := build_digest_fn(root, str(p), None, brain_dir, backfill)):
@@ -209,7 +214,6 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
         done = sum(1 for m in d["milestones"] if m["status"] == "completed")
         plans.append({"slug": d["slug"], "title": d["title"], "status": d["status"], "done": done, "total": len(d["milestones"]), "retro_entries": d["retro_entries"], "integrity_issues": len(d["integrity_issues"])})
         (completed_digests if d["status"] == "completed" else active_digests).append(d)
-    # Keep active plans + up to 5 most recent completed plans in LEARN_QUEUE.md so historical backlogs don't drown active items.
     completed_digests.sort(key=lambda d: str(d.get("latest_retro_at") or ""), reverse=True)
     queued = active_digests + completed_digests[:5]
     learns = [item for d in queued for item in d["learn_candidates"]]
@@ -220,13 +224,10 @@ def _build_workspace_digest_core(root: Path, brain_dir: str | None, backfill: bo
     gaps = [item for d in queued for item in d["tool_gaps"]]
     escs = [item for d in queued for item in d["escalations"]]
     merge_debug_retro_items(root, learns, skill_learns, escs)
-    skill_md = Path(__file__).resolve().parents[1] / "SKILL.md"
+    learns, skill_learns = triage_plan_candidates(root, learns, skill_learns)
     return {
-        "plans": plans,
-        "learn_candidates": _triage_candidates(learns, [root / "AGENTS.md"]),
-        "skill_learn_candidates": _triage_candidates(skill_learns, [skill_md]),
-        "tool_gaps": list(dict.fromkeys(gaps)),
-        "escalations": list(dict.fromkeys(escs)),
+        "plans": plans, "learn_candidates": learns, "skill_learn_candidates": skill_learns,
+        "tool_gaps": list(dict.fromkeys(gaps)), "escalations": list(dict.fromkeys(escs)),
     }
 
 
@@ -293,7 +294,8 @@ def promote_transcript_findings(
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
         if (pm := int(r.get("plan_mode_calls", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} called enter/exit_plan_mode ({pm}x)")
-        if int(r.get("total_failures") or 0) >= 4 and not r.get("has_debug_retro"):
+        cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0)
+        if cmd_fails >= 4 and not r.get("has_debug_retro"):
             _append_unique(escalations, f"Unescalated thrash ({cid8}): {r['total_failures']} failures without /app-debugger or debug-retro")
         for corr in r.get("user_corrections") or ():
             _append_unique(escalations, f"User correction ({cid8}): {corr}")

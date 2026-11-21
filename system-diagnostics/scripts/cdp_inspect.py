@@ -14,7 +14,7 @@ Generic Capabilities:
   --selectors "#app,.card"     Inspect specific CSS selectors (bounding boxes, styles, media state)
   --click "#submit-btn"        Click an element before auditing/evaluating
   --eval "document.title"      Evaluate arbitrary JS expression and print JSON result
-  --eval-file                  Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page  
+  --eval-file                  Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page
   --screenshot out.jpg         Capture JPEG screenshot of the viewport
 """
 
@@ -40,8 +40,8 @@ try:
         urls_match,
     )
 except ImportError:
-    from scripts.cdp_transport import CDPSession, connect_ws
-    from scripts.cdp_runtime import (
+    from scripts.cdp_transport import CDPSession, connect_ws  # type: ignore[no-redef]
+    from scripts.cdp_runtime import (  # type: ignore[no-redef]
         collect_runtime_report,
         enable_runtime_capture,
         find_devtools_active_port,
@@ -49,12 +49,12 @@ except ImportError:
     )
 
 # Ensure UTF-8 output across Windows, macOS, and Linux terminals
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            getattr(_stream, "reconfigure")(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 def find_chrome_executable() -> str:
     """Locate Chrome, Chromium, or Edge binary across Windows, macOS, Linux, and WSL."""
@@ -124,7 +124,7 @@ async def _capture_screenshot(cdp: CDPSession, session_id: str | None, path_str:
         out_path = Path(path_str)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(base64.b64decode(data))
-        print(f"[CDP] Saved screenshot to {out_path.resolve()}")
+        print(f"[CDP] Saved screenshot to {out_path.resolve()}", file=sys.stderr)
 
 async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> int:
     await cdp.send("Page.enable", session_id=session_id)

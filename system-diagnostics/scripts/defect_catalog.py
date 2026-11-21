@@ -20,7 +20,7 @@ try:
         CLOSED_STATUSES, build_tactical_test_code, generate_architectural_brief, generate_catalog_markdown,
     )
 except ImportError:
-    from .scaffold_templates import (
+    from .scaffold_templates import (  # type: ignore[no-redef]
         CLOSED_STATUSES, build_tactical_test_code, generate_architectural_brief, generate_catalog_markdown,
     )
 

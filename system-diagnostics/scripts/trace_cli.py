@@ -11,6 +11,7 @@ def register_parser(sub: Any) -> None:
     p = sub.add_parser("traces", help="Inspect, summarize, and manage runtime crash and trace catalog")
     p.add_argument("action", nargs="?", choices=["list", "resolve"], default="list", help="Action: list (default) or resolve")
     p.add_argument("--id", dest="issue_id", default=None, help="Trace issue ID for 'resolve' (e.g. TRC-001)")
+    p.add_argument("--note", default=None, help="Optional resolution audit note for 'resolve'")
     p.add_argument("--path", default=None, help="Root directory (default: current directory)")
     p.add_argument("--recent", type=int, default=5, help="Number of recent issues to display (default: 5)")
     p.add_argument("--json", action="store_true", help="Output full JSON catalog")
@@ -19,7 +20,7 @@ def register_parser(sub: Any) -> None:
     p.add_argument("--dest", default="services", help="Destination folder for scaffold bridge (default: services)")
 
 
-def resolve_trace_issue(mgr: Any, issue_id: str | None) -> int:
+def resolve_trace_issue(mgr: Any, issue_id: str | None, note: str | None = None) -> int:
     """Mark a trace issue by ID as resolved in trace_catalog.json."""
     if not issue_id:
         print("[diagnose traces resolve] Error: --id <TRC-ID> is required.", flush=True)
@@ -31,6 +32,8 @@ def resolve_trace_issue(mgr: Any, issue_id: str | None) -> int:
         print(f"[diagnose traces resolve] Error: Issue '{issue_id}' not found in {mgr.catalog_path}.")
         return 1
     matched["status"] = "resolved"
+    if note:
+        matched["resolution_note"] = note
     issues = catalog.get("issues", [])
     catalog["summary"] = {
         "total_events": sum(i.get("occurrence_count", 1) for i in issues),
@@ -74,7 +77,7 @@ def cmd_traces(args: Any, mgr_cls: Any) -> int:
     root = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd().resolve()
     mgr = mgr_cls(root)
     if getattr(args, "action", "list") == "resolve":
-        return resolve_trace_issue(mgr, getattr(args, "issue_id", None))
+        return resolve_trace_issue(mgr, getattr(args, "issue_id", None), getattr(args, "note", None))
     if getattr(args, "clear", False):
         if mgr.catalog_path.exists():
             mgr.catalog_path.unlink()

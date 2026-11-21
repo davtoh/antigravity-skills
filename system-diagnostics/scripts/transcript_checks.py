@@ -86,7 +86,8 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
         notes.append(f"- FLAG {cid8}: {r['changelog_adds']} changelog add calls in one session (premature fix clutter)")
     if (r.get("failures") or {}).get("read_fail", 0) >= 2:
         notes.append(f"- FLAG {cid8}: {r['failures']['read_fail']} read_fail path-guess errors (use git grep/surface first)")
-    if int(r.get("total_failures") or 0) >= 4 and not r.get("has_debug_retro"):
+    cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0)
+    if cmd_fails >= 4 and not r.get("has_debug_retro"):
         notes.append(f"- FLAG {cid8}: {r['total_failures']} failures without /app-debugger or debug-retro (unescalated thrash)")
     notes += [f"- FAIL {cid8}: {s}" for s in r.get("failure_samples", [])]
     if r.get("plan_mode_calls"):
