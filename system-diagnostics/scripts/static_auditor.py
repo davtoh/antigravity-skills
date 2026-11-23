@@ -221,7 +221,7 @@ def audit_modularity_budgets(
             tree = ast.parse(code, filename=str(p))
         except Exception:
             continue
-        lines = len(code.splitlines())
+        lines = sum(1 for ln in code.splitlines() if ln.strip() and not ln.lstrip().startswith("#"))
         if lines >= max_lines:
             issues.append({"type": "file_budget_overrun", "file": str(p), "line": 1, "message": f"File has {lines} lines (budget < {max_lines})."})
         for node in ast.walk(tree):

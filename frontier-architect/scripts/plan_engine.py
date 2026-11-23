@@ -32,7 +32,7 @@ from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_che
 from plan_reconcile import _find_duplicate_milestones, cmd_reconcile, register_reconcile_parser
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
-    link_child_plan, load_json, record_milestone_advance, resolve_plan_path,
+    link_child_plan, load_json, reconcile_pending_commits, record_milestone_advance, resolve_plan_path,
 )
 from plan_telemetry import (
     _extract_leading_env,  # noqa: F401
@@ -104,6 +104,7 @@ def cmd_status(root: Path, args: argparse.Namespace) -> int:
         print("[plan_engine] No active or discovered plan. Run 'plan_engine.py init <path>' first.")
         return 1
     ws, ps = bootstrap_plan(root, plan_p)
+    reconcile_pending_commits(root, ps)
     if args.json:
         print(json.dumps({"workspace": ws, "plan": ps}, indent=2))
         return 0

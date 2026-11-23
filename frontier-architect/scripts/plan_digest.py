@@ -17,7 +17,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from plan_rollup import sync_and_rollup_plan
-from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
+from plan_state import bootstrap_plan, get_frontier_dir, load_json, reconcile_pending_commits, resolve_plan_path, save_json
 
 _GRADE_ORDER = "ABCDF"
 _IGNORED_ESCALATIONS = {"", "none", "n/a", "null"}
@@ -265,6 +265,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     if not plan_p:
         return None
     _ws, ps = bootstrap_plan(root, plan_p)
+    reconcile_pending_commits(root, ps)
     backfilled = backfill_retrospectives(root, ps, cids, brain_dir) if backfill else 0
     if backfill:
         sync_and_rollup_plan(root, ps)

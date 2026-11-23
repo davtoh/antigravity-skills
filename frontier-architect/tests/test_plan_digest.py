@@ -339,7 +339,9 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         self.assertIn("conv-followup-2", digest["cids"])
         self.assertIn("User correction (conv-sta): step 1: No, this is still wrong", digest["escalations"])
         joined_sk = " | ".join(digest["skill_learn_candidates"])
-        self.assertIn("parallel same-file edit(s) (x.js)", joined_sk)
+        import plan_scaffold as ps
+        self.assertNotIn("parallel same-file edit(s)", joined_sk)
+        self.assertTrue(any("parallel same-file edit(s)" in a for a in ps._build_health_alerts(digest)))
         self.assertIn("2 read_fail path-guess errors", joined_sk)
 
 

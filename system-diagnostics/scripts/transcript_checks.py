@@ -104,8 +104,11 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     if (r.get("failures") or {}).get("read_fail", 0) >= 2:
         notes.append(f"- FLAG {cid8}: {r['failures']['read_fail']} read_fail path-guess errors (use git grep/surface first)")
     cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
-    cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0) - cli_errs
-    if cmd_fails >= 4 and not r.get("has_debug_retro"):
+    raw_cmd = (r.get("failures") or {}).get("cmd_fail")
+    samples = r.get("failure_samples") or []
+    non_tdd_fails = sum(1 for s in samples if "unittest" not in s and "AssertionError" not in s and "plan_engine.py" not in s)
+    cmd_fails = (int(raw_cmd) if raw_cmd is not None else int(r.get("total_failures") or 0)) - cli_errs
+    if cmd_fails >= 4 and (not samples or non_tdd_fails >= 2) and not r.get("has_debug_retro"):
         notes.append(f"- FLAG {cid8}: {r['total_failures']} failures without /app-debugger or debug-retro (unescalated thrash)")
     notes += [f"- FAIL {cid8}: {s}" for s in r.get("failure_samples", [])]
     if r.get("plan_mode_calls"):

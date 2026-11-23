@@ -126,8 +126,10 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             acc["pending_unnamed"] += 1
             if acc["first_subagent_step"] is None:
                 acc["first_subagent_step"] = idx
-        elif name in ("enter_plan_mode", "exit_plan_mode"):
+        elif name == "enter_plan_mode":
             acc["plan_mode_calls"] += 1
+        elif name == "exit_plan_mode":
+            acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
         elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
             acc["schedule_while_subagent"] += 1
         acc["last_target"] = target
@@ -243,7 +245,8 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "workflow_redirects": acc["workflow_redirects"], "subagents": acc["subagents"],
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
-        "parallel_same_file_edits": acc["parallel_same_file_edits"], "plan_mode_calls": acc["plan_mode_calls"],
+        "parallel_same_file_edits": acc["parallel_same_file_edits"],
+        "plan_mode_calls": acc["plan_mode_calls"] + max(0, acc.get("exit_plan_mode_calls", 0) - 1),
         "schedule_while_subagent": acc["schedule_while_subagent"], "has_debug_retro": acc["has_debug_retro"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],
