@@ -8,9 +8,10 @@ This reference provides project-agnostic, language-transferable blueprints for d
 1. [Pattern 1: The Package Facade Conversion (Zero Breaking Imports)](#1-pattern-1-the-package-facade-conversion-zero-breaking-imports)
 2. [Pattern 2: Web & API Monolith Decomposition (Routers + Services)](#2-pattern-2-web--api-monolith-decomposition-routers--services)
 3. [Pattern 3: God Class Decomposition (Composition vs. Cohesive Mixins)](#3-pattern-3-god-class-decomposition-composition-vs-cohesive-mixins)
-4. [Pattern 4: Frontend Script & Stylesheet Decomposition](#4-pattern-4-frontend-script--stylesheet-decomposition)
-5. [Circular Dependency Prevention Rules](#5-circular-dependency-prevention-rules)
-6. [Performance Guards, Mid-Flight Escalation & Safe Revert ("Do No Harm")](#6-performance-guards-mid-flight-escalation--safe-revert-do-no-harm)
+4. [Pattern 4: The Bidirectional Proxy Bridge (For Monkeypatched Test Globals)](#4-pattern-4-the-bidirectional-proxy-bridge-for-monkeypatched-test-globals)
+5. [Pattern 5: Frontend Script & Stylesheet Decomposition](#5-pattern-5-frontend-script--stylesheet-decomposition)
+6. [Circular Dependency Prevention Rules](#6-circular-dependency-prevention-rules)
+7. [Performance Guards, Mid-Flight Escalation & Safe Revert ("Do No Harm")](#7-performance-guards-mid-flight-escalation--safe-revert-do-no-harm)
 
 ---
 
@@ -203,7 +204,7 @@ Split multi-thousand-line CSS files into logical partials:
 
 ---
 
-## 5. Circular Dependency Prevention Rules
+## 6. Circular Dependency Prevention Rules
 
 Whenever splitting a file into multiple submodules, enforce a strict **Directed Acyclic Graph (DAG)** of imports:
 
@@ -222,7 +223,7 @@ flowchart TD
 
 ---
 
-## 6. Performance Guards, Mid-Flight Escalation & Safe Revert ("Do No Harm")
+## 7. Performance Guards, Mid-Flight Escalation & Safe Revert ("Do No Harm")
 
 Modularity should never degrade runtime performance, memory locality, or reliability. Apply these guards before and during every extraction slice:
 

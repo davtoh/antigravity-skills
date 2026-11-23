@@ -20,7 +20,7 @@ try:
         CLOSED_STATUSES, build_tactical_test_code, generate_architectural_brief, generate_catalog_markdown,
     )
 except ImportError:
-    from .scaffold_templates import (
+    from .scaffold_templates import (  # type: ignore[no-redef]
         CLOSED_STATUSES, build_tactical_test_code, generate_architectural_brief, generate_catalog_markdown,
     )
 
@@ -94,6 +94,28 @@ def _merge_scan_defects(
     return merged
 
 
+def _summarize_defect_counts(defect_dicts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute active, resolved, dismissed, track, and severity summary counts."""
+    by_track: dict[str, int] = {"tactical": 0, "architectural": 0}
+    by_severity: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    active = resolved = dismissed = 0
+    for d in defect_dicts:
+        st = d.get("status", "quarantined")
+        if st == "resolved":
+            resolved += 1
+        elif st == "dismissed":
+            dismissed += 1
+        else:
+            active += 1
+            by_track[d.get("track", "tactical")] = by_track.get(d.get("track", "tactical"), 0) + 1
+            by_severity[d.get("severity", "MEDIUM")] = by_severity.get(d.get("severity", "MEDIUM"), 0) + 1
+    return {
+        "total": active, "active": active, "resolved": resolved,
+        "dismissed": dismissed, "total_tracked": len(defect_dicts),
+        "by_track": by_track, "by_severity": by_severity,
+    }
+
+
 def save_catalog(
     workspace: Path, defects: list[Any], reconcile_scan: bool = False, prune: bool = False
 ) -> tuple[Path, Path]:
@@ -106,32 +128,11 @@ def save_catalog(
     elif prune:
         defect_dicts = [d for d in defect_dicts if d.get("status", "quarantined") not in CLOSED_STATUSES]
 
-    by_track: dict[str, int] = {"tactical": 0, "architectural": 0}
-    by_severity: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
-    active_count = resolved_count = dismissed_count = 0
-
-    for d_dict in defect_dicts:
-        st = d_dict.get("status", "quarantined")
-        if st == "resolved":
-            resolved_count += 1
-        elif st == "dismissed":
-            dismissed_count += 1
-        else:
-            active_count += 1
-            trk = d_dict.get("track", "tactical")
-            by_track[trk] = by_track.get(trk, 0) + 1
-            sev = d_dict.get("severity", "MEDIUM")
-            by_severity[sev] = by_severity.get(sev, 0) + 1
-
     catalog_data = {
         "schema_version": CATALOG_SCHEMA_VERSION,
         "workspace": str(workspace.resolve()).replace("\\", "/"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "summary": {
-            "total": active_count, "active": active_count, "resolved": resolved_count,
-            "dismissed": dismissed_count, "total_tracked": len(defect_dicts),
-            "by_track": by_track, "by_severity": by_severity,
-        },
+        "summary": _summarize_defect_counts(defect_dicts),
         "defects": defect_dicts,
     }
     json_path.write_text(json.dumps(catalog_data, indent=2) + "\n", encoding="utf-8")

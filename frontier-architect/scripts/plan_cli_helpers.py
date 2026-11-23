@@ -76,6 +76,8 @@ def _suggest_slice_tools(target_m: dict[str, Any]) -> list[str]:
         tools.append("diagnose.py probe list")
     if any(k in blob for k in ("defect", "bug", "fix", "scan", "regression")):
         tools.append("diagnose.py scan --path .")
+    if any(k in blob for k in ("extract", "split", "helper", ".js", ".py")):
+        tools.append('git grep -n "<modified_module_stem>" tests/ (run matching legacy tests before advance)')
     return tools
 
 
@@ -202,13 +204,22 @@ def print_advance_summary(
         print("=" * 72)
 
 
+def _parse_hypotheses_arg(val: str) -> int:
+    """Accept either an integer count or a descriptive hypothesis summary string."""
+    s = str(val).strip()
+    if s.isdigit():
+        return max(1, int(s))
+    clauses = [c.strip() for c in re.split(r"[;\n]+|\bH\d+\s*:", s) if c.strip()]
+    return max(1, len(clauses))
+
+
 def add_retrospective_parser(sub: Any, plan_parent: argparse.ArgumentParser) -> None:
     """Register the ``retrospective`` subcommand on plan_engine's subparsers."""
     p_retro = sub.add_parser("retrospective", parents=[plan_parent], help="Log retrospective telemetry")
     p_retro.add_argument("--milestone", type=int, help="Milestone index")
     p_retro.add_argument("--grade", default="A", help="Token Efficiency Grade (A-F)")
     p_retro.add_argument("--tri", help="Tool Reliability Index score (1-5 or tool=score)")
-    p_retro.add_argument("--hypotheses", type=int, default=1, help="Hypotheses tested")
+    p_retro.add_argument("--hypotheses", type=_parse_hypotheses_arg, default=1, help="Hypotheses tested (int or summary string)")
     p_retro.add_argument("--retries", type=int, default=None, help="Failed verification/test retries during milestone")
     p_retro.add_argument("--steps", type=int, default=None, help="Total conversation/turn steps taken for milestone")
     p_retro.add_argument("--cid", default=None, help="Conversation ID to auto-populate --steps and --retries from transcript")

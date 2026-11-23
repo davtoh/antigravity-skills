@@ -210,6 +210,63 @@ class TestShadowProber(unittest.TestCase):
         findings = PythonAstScanner("routers/cameras.py", code).scan(tree)
         self.assertEqual(len(findings), 0)
 
+    def test_mixed_clock_domain_flagged_in_same_func_and_timing_module(self):
+        same_fn = "import time\ndef step():\n    a = time.monotonic()\n    b = time.time()\n"
+        f1 = PythonAstScanner("service.py", same_fn).scan(ast.parse(same_fn))
+        self.assertEqual([x.rule_id for x in f1], ["MIXED_CLOCK_DOMAIN"])
+
+        worker_mod = "import time\ndef a(): return time.monotonic()\ndef b(): return time.time()\n"
+        f2 = PythonAstScanner("video/capture_worker.py", worker_mod).scan(ast.parse(worker_mod))
+        self.assertEqual([x.rule_id for x in f2], ["MIXED_CLOCK_DOMAIN"])
+
+        unrelated = "import time\ndef a(): return time.monotonic()\ndef b(): return time.time()\n"
+        f3 = PythonAstScanner("utils/helper.py", unrelated).scan(ast.parse(unrelated))
+        self.assertEqual(f3, [])
+
+        aliased = (
+            "from time import time as wall_time, monotonic as mono\n"
+            "def f1(): return wall_time() - mono()\n"
+            "def f2(): return wall_time() - mono()\n"
+        )
+        f4 = PythonAstScanner("service.py", aliased).scan(ast.parse(aliased))
+        self.assertEqual(len(f4), 2)
+        self.assertTrue(all(x.rule_id == "MIXED_CLOCK_DOMAIN" for x in f4))
+
+    def test_cross_module_exempts_wall_helpers_dynamic_bases_store_attrs_and_subclasses(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            (ws / "worker.py").write_text(
+                "import time\n"
+                "def _wall_now():\n"
+                "    return time.time()\n"
+                "def step():\n"
+                "    return time.monotonic(), _wall_now()\n",
+                encoding="utf-8",
+            )
+            (ws / "types.py").write_text(
+                "import ctypes\n"
+                "class BaseEvent:\n"
+                "    camera_id = 'c1'\n"
+                "class ZoneEvent(BaseEvent):\n"
+                "    zone_id = 'z1'\n"
+                "class Track:\n"
+                "    track_id = 1\n"
+                "class LimitInfo(ctypes.Structure):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            (ws / "consumer.py").write_text(
+                "from types import BaseEvent, Track, LimitInfo\n"
+                "def attach(t: Track, ev: BaseEvent, info: LimitInfo):\n"
+                "    t.reid_score = 0.9\n"
+                "    return t.reid_score, ev.zone_id, info.BasicLimitInformation\n",
+                encoding="utf-8",
+            )
+            findings = scan_path(ws)
+            rules = {f.rule_id for f in findings}
+            self.assertNotIn("MIXED_CLOCK_DOMAIN", rules)
+            self.assertNotIn("CROSS_MODULE_MISSING_ATTR", rules)
+
 
 if __name__ == "__main__":
     unittest.main()

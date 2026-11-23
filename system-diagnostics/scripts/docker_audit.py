@@ -43,6 +43,33 @@ def host_md5(path: str) -> str:
     # usedforsecurity=False keeps this working on FIPS-enforced hosts; MD5 is only a sync fingerprint here.
     return hashlib.md5(p.read_bytes(), usedforsecurity=False).hexdigest()
 
+def _audit_container_sync(container: str, workdir: str, sync_check: list[str]) -> None:
+    """Compare host vs container MD5 checksums for the requested relative paths."""
+    wdir = workdir.rstrip("/")
+    print(f"\n=== 3. HOST vs CONTAINER FILE SYNC ({container}:{wdir}) ===")
+    container_paths = [f"{wdir}/{p.replace(chr(92), '/')}" for p in sync_check]
+    out = run_cmd(["docker", "exec", container, "md5sum", *container_paths])
+    lowered = out.lower()
+    if any(msg in lowered for msg in ("executable file not found", "md5sum: not found", "no such container", "is not running")):
+        # Distroless/scratch images lack md5sum; a stopped container can't exec. Don't misreport as STALE.
+        print(f"  UNVERIFIABLE: cannot hash inside container ({out.strip().splitlines()[0]})")
+        print("  Fallback: `docker cp <container>:<path> -` and compare, or check the image build timestamp.")
+        return
+    container_hashes: dict[str, str] = {}
+    for line in out.splitlines():
+        clean = line.strip()
+        if not clean.startswith(("md5sum:", "Error:")):
+            parts = clean.split(None, 1)
+            if len(parts) == 2 and len(parts[0]) == 32:
+                container_hashes[parts[1].strip()] = parts[0].strip().lower()
+    for rel in sync_check:
+        c_path = f"{wdir}/{rel.replace(chr(92), '/')}"
+        h_hash = host_md5(rel).lower()
+        c_hash = container_hashes.get(c_path, "MISSING_IN_CONTAINER")
+        status = "IN_SYNC" if h_hash == c_hash else "STALE_IN_CONTAINER (Needs docker cp, volume mount, or rebuild!)"
+        print(f"  {rel}: {status} (host={h_hash[:8]} vs container={c_hash[:8]})")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Frontier Architect Cross-Platform Docker CPU & Sync Auditor")
     parser.add_argument("--container", default=os.getenv("DOCKER_CONTAINER"), help="Target container name (defaults to $DOCKER_CONTAINER)")
@@ -68,31 +95,7 @@ def main():
         print(run_cmd(["docker", "top", args.container]).strip())
 
     if args.sync_check and args.container:
-        workdir = args.workdir.rstrip("/")
-        print(f"\n=== 3. HOST vs CONTAINER FILE SYNC ({args.container}:{workdir}) ===")
-        container_paths = [f"{workdir}/{p.replace(chr(92), '/')}" for p in args.sync_check]
-        out = run_cmd(["docker", "exec", args.container, "md5sum", *container_paths])
-        lowered = out.lower()
-        if "executable file not found" in lowered or "md5sum: not found" in lowered or "no such container" in lowered or "is not running" in lowered:
-            # Distroless/scratch images lack md5sum; a stopped container can't exec. Don't misreport as STALE.
-            print(f"  UNVERIFIABLE: cannot hash inside container ({out.strip().splitlines()[0]})")
-            print("  Fallback: `docker cp <container>:<path> -` and compare, or check the image build timestamp.")
-            args.sync_check = []
-        container_hashes = {}
-        for line in out.splitlines():
-            clean = line.strip()
-            if clean.startswith("md5sum:") or clean.startswith("Error:"):
-                continue
-            parts = clean.split(None, 1)
-            if len(parts) == 2 and len(parts[0]) == 32:
-                container_hashes[parts[1].strip()] = parts[0].strip().lower()
-
-        for rel in args.sync_check:
-            c_path = f"{workdir}/{rel.replace(chr(92), '/')}"
-            h_hash = host_md5(rel).lower()
-            c_hash = container_hashes.get(c_path, "MISSING_IN_CONTAINER")
-            status = "IN_SYNC" if h_hash == c_hash else "STALE_IN_CONTAINER (Needs docker cp, volume mount, or rebuild!)"
-            print(f"  {rel}: {status} (host={h_hash[:8]} vs container={c_hash[:8]})")
+        _audit_container_sync(args.container, args.workdir, list(args.sync_check))
 
     if args.tail_errors > 0 and args.container:
         print(f"\n=== 4. RECENT CONTAINER EXCEPTIONS / ERRORS ({args.container}) ===")

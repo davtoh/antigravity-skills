@@ -5,9 +5,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import argparse
-import os
-import re
-import subprocess
 import sys
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -16,7 +13,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from plan_cli_helpers import print_retrospective_summary
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
-from plan_verify import (
+from plan_verify import (  # noqa: F401
     _extract_leading_env,
     _normalize_verify_cmd,
     _parse_test_counts,
@@ -92,6 +89,8 @@ def get_prior_tool_gaps(root: Path, slug: str) -> list[str]:
 
 def _cap_grade_by_rubric(grade: str, retries: int | None, steps: int | None) -> str:
     """Cap retrospective Token Efficiency Grade against --retries and --steps thresholds."""
+    norm = (grade or "A").strip().upper()[:1]
+    grade = norm if norm in ("A", "B", "C", "D", "F") else "A"
     if retries is not None:
         if retries > 3 and grade in ("A", "B"):
             print(f"[plan_engine] Rubric Guard: {retries} retries > 3 -> capping Token Grade '{grade}' to 'C'.")
@@ -175,7 +174,7 @@ def _resolve_cid_telemetry(
     return steps, retries, cid
 
 
-from plan_rollup import (
+from plan_rollup import (  # noqa: F401
     _merge_list_unique,
     _merge_master_child_entry,
     _refresh_parent_rollup,

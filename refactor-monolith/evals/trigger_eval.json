@@ -44,7 +44,7 @@
     "should_trigger": true
   },
   {
-    "query": "Continue migrating the next part of our monolithic codebase from MIGRATION_LOG.md.",
+    "query": "Continue migrating the next part of our monolithic codebase from .refactor/plan.md.",
     "should_trigger": true
   },
   {

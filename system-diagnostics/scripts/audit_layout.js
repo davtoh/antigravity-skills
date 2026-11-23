@@ -155,7 +155,53 @@
     }
   }
 
-  return {
+  const flushControlWarnings = [];
+  for (const container of document.querySelectorAll('header, nav, .toolbar, [role="toolbar"], .actions, .btn-row, div')) {
+    const ccs = window.getComputedStyle(container);
+    if (ccs.display !== 'flex' && ccs.display !== 'inline-flex') continue;
+    if (ccs.visibility === 'hidden' || /btn-group|segmented|input-group/.test(container.className || '')) continue;
+    const kids = Array.from(container.children).filter((k) => {
+      const kr = k.getBoundingClientRect();
+      const kcs = window.getComputedStyle(k);
+      return kr.width > 0 && kr.height > 0 && kcs.display !== 'none' && k.matches('button, a, select, input');
+    });
+    for (let i = 0; i < kids.length - 1 && flushControlWarnings.length < 15; i += 1) {
+      const a = kids[i].getBoundingClientRect(), b = kids[i + 1].getBoundingClientRect();
+      const sameRow = Math.abs(a.top - b.top) < Math.min(a.height, b.height);
+      const gap = sameRow ? (b.left - a.right) : (b.top - a.bottom);
+      if (gap < 4) {
+        flushControlWarnings.push({
+          container: formatSelector(container),
+          controls: [formatSelector(kids[i]), formatSelector(kids[i + 1])],
+          gapPx: Math.round(gap * 10) / 10,
+          warning: 'Adjacent interactive controls have < 4px spacing (flush/colliding)',
+        });
+      }
+    }
+  }
+
+  const duplicateControlWarnings = [];
+  const seenLabelsByScope = new Map();
+  for (const btn of document.querySelectorAll('button, [role="button"]')) {
+    const br = btn.getBoundingClientRect();
+    const bcs = window.getComputedStyle(btn);
+    if (br.width === 0 || br.height === 0 || bcs.display === 'none' || bcs.visibility === 'hidden') continue;
+    const label = (btn.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (label.length < 2) continue;
+    const scopeEl = btn.closest('.modal, section, dialog, [role="dialog"], main') || document.body;
+    const scopeKey = `${formatSelector(scopeEl)}::${label}`;
+    const count = (seenLabelsByScope.get(scopeKey) || 0) + 1;
+    seenLabelsByScope.set(scopeKey, count);
+    if (count === 2 && duplicateControlWarnings.length < 15) {
+      duplicateControlWarnings.push({
+        scope: formatSelector(scopeEl),
+        label: (btn.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60),
+        warning: 'Duplicate visible button/control label in active view',
+      });
+    }
+  }
+
+  const report = {
     title: document.title,
     url: window.location.href,
     viewport: {
@@ -171,6 +217,39 @@
     },
     mediaElements,
     queriedSelectors: customSelectors.length ? queriedSelectors : undefined,
-    layoutOverflowWarnings
+    layoutOverflowWarnings,
+    flushControlWarnings,
+    duplicateControlWarnings,
+    layoutJitterWarnings: []
   };
+
+  const stabilityMs = Number(window.__FRONTIER_STABILITY_MS__ || 0);
+  if (!(stabilityMs > 0)) return report;
+
+  return (async () => {
+    const watchNodes = Array.from(document.querySelectorAll('header, nav, [class*="hud"], [class*="header"], [class*="card"], [class*="panel"]')).slice(0, 40);
+    const snap = () => watchNodes.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { el, x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+    const base = snap();
+    const stepMs = Math.max(50, Math.round(stabilityMs / 3));
+    for (let s = 0; s < 3; s += 1) {
+      await new Promise((r) => setTimeout(r, stepMs));
+      const cur = snap();
+      for (let i = 0; i < cur.length; i += 1) {
+        const dx = Math.abs(cur[i].x - base[i].x), dy = Math.abs(cur[i].y - base[i].y);
+        const dw = Math.abs(cur[i].w - base[i].w), dh = Math.abs(cur[i].h - base[i].h);
+        if (dx > 2 || dy > 2 || dw > 2 || dh > 2) {
+          report.layoutJitterWarnings.push({
+            selector: formatSelector(cur[i].el),
+            delta: { dx: Math.round(dx), dy: Math.round(dy), dw: Math.round(dw), dh: Math.round(dh) },
+            warning: 'Layout instability / CLS jitter (>2px DOMRect shift) during live sampling',
+          });
+          base[i] = cur[i];
+        }
+      }
+    }
+    return report;
+  })();
 })()

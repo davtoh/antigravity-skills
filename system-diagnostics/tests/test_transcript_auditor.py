@@ -37,15 +37,9 @@ class TestTranscriptAuditorCore(_TranscriptTestBase):
         self.assertTrue(ta.audit_conversation(self.brain, "nope")["missing"])
 
     def test_failures_models_and_subagent_duplication(self) -> None:
+        user_msg = "<USER_REQUEST>\nModel Selection` from A to Fake In User Prompt. No need\n</USER_REQUEST>\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Claude Sonnet 5.5 (Medium). No need to comment\n</USER_SETTINGS_CHANGE>"
         _write(self.brain, "c1", [
-            {
-                "type": "USER_INPUT",
-                "content": (
-                    "<USER_REQUEST>\nModel Selection` from A to Fake In User Prompt. No need\n</USER_REQUEST>\n"
-                    "<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to "
-                    "Claude Sonnet 5.5 (Medium). No need to comment\n</USER_SETTINGS_CHANGE>"
-                ),
-            },
+            {"type": "USER_INPUT", "content": user_msg},
             _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
             _planner(("read_file", {"Path": "a.py"}), ("read_file", {"Path": "a.py"})),
             {"type": "GENERIC", "content": "Showing lines 1-5\nModel Selection` from X to Fake Read. No need\n", "status": "DONE"},
@@ -145,7 +139,6 @@ class TestTranscriptAuditorCore(_TranscriptTestBase):
         self.assertEqual(ta._resolve_cids(self.brain, None, 1, min_steps=6), ["older-long"])
 
 
-class TestTranscriptAuditorSignals(_TranscriptTestBase):
     def test_markdown_includes_fail_repeat_and_correction(self) -> None:
         _write(self.brain, "diag-1", [
             {"type": "USER_INPUT", "content": "<USER_REQUEST>\nNo, fix parser instead\n</USER_REQUEST>"},
@@ -163,6 +156,8 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertIn("- REPEAT diag-1: foo.py (2x)", md)
         self.assertIn("- CORRECTION diag-1: step 0: No, fix parser instead", md)
 
+
+class TestTranscriptAuditorSignals(_TranscriptTestBase):
     def test_git_grep_exit_1_not_counted_as_cmd_fail(self) -> None:
         _write(self.brain, "grep-1", [
             _planner(("run_command", {"CommandLine": 'git grep -n "missing_sym" src/'})),
@@ -327,6 +322,43 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         ])
         self.assertIn("FLAG thrash-n: 4 failures without /app-debugger or debug-retro (unescalated thrash)", md)
         self.assertNotIn("FLAG thrash-w:", md)
+
+    def test_ignores_cdp_text_in_reads_and_exempts_probe_verify_audit_catches(self) -> None:
+        _write(self.brain, "clean-probe-run", [
+            _planner(("read_file", {"Path": "test_transcript_auditor.py"})),
+            {"type": "GENERIC", "content": "Showing lines 1-20 of 50\n[CDP] Falling back to isolated headless browser", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python -m unittest discover -s tests"})),
+            {"type": "GENERIC", "content": "[CDP] Falling back to isolated headless browser\nCommand exited with code 0.", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --help"})),
+            {"type": "GENERIC", "content": "usage: diagnose.py changelog add", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "Select-String -Path C:\\brain\\.system_generated\\tasks\\task-1.log -Pattern FAIL"})),
+            {"type": "GENERIC", "content": "[CDP] Falling back to isolated headless browser\nCommand exited with code 0.", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py probe run my_probe"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n[✗] Diagnostic Probe: my_probe", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": ".venv\\Scripts\\python.exe $diag surface --verify"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nSurface mismatch", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "clean-probe-run")
+        self.assertEqual(row["cdp_live_fallbacks"], 0)
+        self.assertEqual(row["changelog_adds"], 0)
+        self.assertEqual(row["total_failures"], 0)
+        self.assertEqual(row["audit_catches"], 2)
+
+    def test_cli_usage_errors_are_cmd_fail_and_failed_changelog_add_not_counted(self) -> None:
+        _write(self.brain, "cli-err-1", [
+            _planner(("run_command", {"CommandLine": "python diagnose.py audit --path a.py --no-tests"})),
+            {"type": "GENERIC", "content": "Command exited with code 2.\nusage: diagnose.py\ndiagnose.py: error: unrecognized arguments: --no-tests\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py scan --path . ; plan_engine.py retrospective --hypotheses '1:text'"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nplan_engine.py retrospective: error: argument --hypotheses: invalid int value: '1:text'\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --category Fixed"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\ndiagnose.py changelog add: error: the following arguments are required: --title\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --title Done ; python diagnose.py scan --strict"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n[changelog add] Added entry to CHANGELOG.md\n[scan] DEFECTS_FOUND\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "cli-err-1")
+        self.assertEqual(row["failures"], {"cmd_fail": 3})
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["changelog_adds"], 1)
 
 
 if __name__ == "__main__":

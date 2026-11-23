@@ -91,7 +91,7 @@
         "Recognizes the mega-turn context trap and explicitly refuses single-turn execution of all 4 phases",
         "Enforces the 1-Phase-Per-Turn Gate, scoping active implementation strictly to Phase 1",
         "Explicitly marks subsequent phases (Phases 2-4) as Deferred to Next Turn / Milestone",
-        "Establishes a persistent checkpoint in MIGRATION_LOG.md or AGENTS.md at the milestone boundary before requesting user approval to proceed to Phase 2",
+        "Establishes a persistent checkpoint in AGENTS.md at the milestone boundary before requesting user approval to proceed to Phase 2",
         "Advises user to click New Conversation (+) or run /compact after Phase 1 completion to preserve reasoning depth"
       ]
     },

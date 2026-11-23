@@ -12,12 +12,12 @@ prevent context window explosion during AI agent interactions.
 """
 
 import ast
+import ctypes
 import enum
 import importlib
 import inspect
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +26,7 @@ from typing import Any
 try:
     from defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
 except ImportError:
-    from .defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS
+    from .defect_catalog import IGNORED_WORKSPACE_DIRS as IGNORED_DIRS  # type: ignore[no-redef]
 
 PLATFORM_MODULE_HINTS = frozenset({
     "win32api", "win32con", "win32gui", "win32process", "_winreg", "winreg",
@@ -53,7 +53,7 @@ _LIFECYCLE_TOKENS = ("pool", "manager", "source", "capture", "thread", "worker",
 
 def _smoke_check_class(name: str, obj: Any, p: Path) -> dict[str, Any] | None:
     """Validate class signature and parameterless instantiation unless lifecycle/abstract."""
-    if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum)):
+    if inspect.isabstract(obj) or getattr(obj, "_is_protocol", False) or issubclass(obj, (BaseException, enum.Enum, ctypes.Structure, ctypes.Union)):
         return None
     try:
         sig = inspect.signature(obj)
@@ -164,9 +164,9 @@ def audit_platform_smells(target: Path) -> list[dict[str, Any]]:
 def _run_linter(py_bin: str, mod: str, args: list[str], cwd: Path, match_fn: Any, label: str) -> tuple[bool, int, list[str]]:
     """Run one optional linter/typechecker module and return (ran, exit_code, logs)."""
     try:
-        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, capture_output=True, text=True, check=False).returncode != 0:
+        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).returncode != 0:
             return False, 0, []
-        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, capture_output=True, text=True, check=False)
+        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     except Exception:
         return False, 0, []
     if proc.returncode == 0:
@@ -179,14 +179,16 @@ def _run_linter(py_bin: str, mod: str, args: list[str], cwd: Path, match_fn: Any
 
 
 def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
-    """Execute ruff, mypy, or pyright on target with token-capped output."""
+    """Execute ruff, mypy, or pyright on Python targets with token-capped output."""
+    if target.is_file() and target.suffix.lower() != ".py":
+        return 0, [f"[typecheck] SKIPPED: Non-Python target {target.name}."]
     cwd = target if target.is_dir() else target.parent
     t_str = str(target)
     logs: list[str] = []
     has_run, exit_code = False, 0
     for mod, args, fn, lbl in (
-        ("ruff", ["check", "--select", "E,F,W", t_str], lambda l: bool(l.strip()), "lint issue"),
-        ("mypy", ["--no-error-summary", "--ignore-missing-imports", t_str], lambda l: "error:" in l, "type error"),
+        ("ruff", ["check", "--no-cache", "--select", "E,F,W", "--ignore", "E501,E701,E402", "--output-format", "concise", t_str], lambda ln: bool(ln.strip()) and not ln.startswith("Found "), "lint issue"),
+        ("mypy", ["--no-incremental", "--cache-dir", os.devnull, "--no-error-summary", "--ignore-missing-imports", "--follow-imports=silent", t_str], lambda ln: "error:" in ln, "type error"),
     ):
         ran, rc, m_logs = _run_linter(py_bin, mod, args, cwd, fn, lbl)
         if ran:
@@ -224,7 +226,7 @@ def audit_modularity_budgets(
             issues.append({"type": "file_budget_overrun", "file": str(p), "line": 1, "message": f"File has {lines} lines (budget < {max_lines})."})
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and getattr(node, "end_lineno", None):
-                span = node.end_lineno - node.lineno + 1
+                span = (node.end_lineno or node.lineno) - node.lineno + 1
                 if span > max_fn_lines:
                     issues.append({"type": "function_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Function '{node.name}' is {span} lines (budget <= {max_fn_lines})."})
             elif isinstance(node, ast.ClassDef):

@@ -3,7 +3,6 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 import argparse
 import os
 import re
@@ -45,10 +44,48 @@ def _resolve_venv_python(root: Path) -> str | None:
     return None
 
 
+def _resolve_missing_skill_script(rest: str, root: Path) -> str:
+    """Resolve repo-relative skills/<name>/... tokens to sibling skills dir when absent under root."""
+    skills_root = _SCRIPTS_DIR.parent.parent
+
+    def _repl(match: re.Match[str]) -> str:
+        rel = match.group(1)
+        if (root / rel).is_file():
+            return match.group(0)
+        cand = skills_root / rel.removeprefix("skills/")
+        return f'"{cand}"' if cand.is_file() else match.group(0)
+
+    return re.sub(r'(?<!["\\/])(skills/[a-z0-9_-]+/[^\s"\']+)', _repl, rest)
+
+
+def _split_compound_commands(cmd: str) -> list[str]:
+    """Split ';'-chained commands outside quotes and filter PowerShell $LASTEXITCODE guards."""
+    parts, buf, in_q = [], [], ""
+    for i, ch in enumerate(cmd):
+        if in_q:
+            if ch == in_q and (i == 0 or cmd[i - 1] != "\\"):
+                in_q = ""
+            buf.append(ch)
+        elif ch in ('"', "'"):
+            in_q = ch
+            buf.append(ch)
+        elif ch == ";":
+            parts.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf).strip())
+    return [p for p in parts if p and not re.match(r"^if\s*\(\s*`?\$LASTEXITCODE\b", p, re.I)]
+
+
 def _normalize_verify_cmd(cmd: str, root: Path) -> str:
     """Normalize leading python/pytest/venv paths for the host OS while preserving arguments."""
     if not cmd.strip():
         return cmd
+    sub_cmds = _split_compound_commands(cmd)
+    if len(sub_cmds) > 1:
+        return " && ".join(_normalize_verify_cmd(sc, root) for sc in sub_cmds)
     stripped = cmd.lstrip()
     quote = stripped[0] if stripped[0] in ('"', "'") else ""
     if quote:
@@ -59,6 +96,7 @@ def _normalize_verify_cmd(cmd: str, root: Path) -> str:
     else:
         parts = stripped.split(None, 1)
         first_token, rest = parts[0], (" " + parts[1] if len(parts) > 1 else "")
+    rest = _resolve_missing_skill_script(rest, root)
     if first_token in ("python", "python3"):
         venv_py = _resolve_venv_python(root)
         return f"{venv_py}{rest}" if venv_py else cmd

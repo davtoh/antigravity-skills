@@ -790,6 +790,19 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(master_retros[0]["steps"], 18)
         self.assertEqual(master_retros[0]["learn_candidates"], ["Child lesson"])
 
+        # 6. _normalize_verify_cmd resolves missing workspace skills/ paths to sibling skills dir & --grade PASS is rubric-capped
+        norm_diag = _normalize_verify_cmd("python skills/system-diagnostics/scripts/diagnose.py tests", self.root)
+        self.assertIn("system-diagnostics", norm_diag)
+        self.assertNotIn(" skills/system-diagnostics/", norm_diag)
+        pass_plan = self.root / ".TODO" / "pass_grade.md"
+        pass_plan.write_text("# Pass\n## Milestone 1: A\n- [ ] Do\n", encoding="utf-8")
+        self._run_cli(["init", ".TODO/pass_grade.md"])
+        self._run_cli(["advance", "pass_grade", "--milestone", "1"])
+        c_p, _ = self._run_cli(["retrospective", "pass_grade", "--milestone", "1", "--grade", "PASS", "--steps", "120", "--retries", "3"])
+        self.assertEqual(c_p, 0)
+        p_retros = load_json(get_frontier_dir(self.root) / "plans" / "pass_grade" / "retrospectives.json")
+        self.assertEqual(p_retros[0]["token_efficiency_grade"], "C")
+
 
 if __name__ == "__main__":
     unittest.main()

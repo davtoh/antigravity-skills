@@ -8,7 +8,6 @@ and stylesheet custom properties from raw text without external dependencies.
 
 import argparse
 import ast
-import json
 import os
 import re
 import textwrap
@@ -19,7 +18,15 @@ from typing import Any
 try:
     from defect_catalog import IGNORED_WORKSPACE_DIRS
 except ImportError:
-    from .defect_catalog import IGNORED_WORKSPACE_DIRS
+    try:
+        from .defect_catalog import IGNORED_WORKSPACE_DIRS  # type: ignore[no-redef]
+    except ImportError:
+        IGNORED_WORKSPACE_DIRS: frozenset[str] = frozenset({  # type: ignore[no-redef]
+            ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
+            "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+            "dist", "build", "_build", "out", "target", ".idea", ".vscode",
+            "scratch", "coverage", "htmlcov", "migrations", ".refactor", ".diagnostics",
+        })
 
 @dataclass
 class HtmlSurface:
@@ -112,7 +119,12 @@ def scan_html_surface(text: str) -> HtmlSurface:
 
 _JS_GET_ELEM_RE = re.compile(r'\b(?:document\.)?getElementById\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_QUERY_SEL_RE = re.compile(r'\bquerySelector(?:All)?\s*\(\s*["\']#([a-zA-Z0-9_\-]+)["\']\s*\)')
-_JS_GLOBAL_EXPORT_RE = re.compile(r'\b(?:window|globalThis)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)\s*=(?!=)')
+_JS_HELPER_ID_RE = re.compile(r'\b(?:el|bindOnce)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']')
+_JS_DYNAMIC_GET_RE = re.compile(r'\b(?:document\.getElementById|el|bindOnce)\s*\(\s*[a-zA-Z_$][a-zA-Z0-9_$]*')
+_JS_TABLE_CONTROL_ID_RE = re.compile(r'["\']((?:btn|drawer-btn|modal|tab)-[a-zA-Z0-9_\-]+|[a-zA-Z0-9_\-]+-btn)["\']')
+_JS_GLOBAL_EXPORT_RE = re.compile(
+    r'\b(?:(?:window|globalThis|self)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)|root\.([A-Z][a-zA-Z0-9_]*))\s*=(?!=)'
+)
 _JS_GLOBAL_READ_RE = re.compile(r'\b(?:window|globalThis)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)')
 _JS_EVENT_LISTENER_RE = re.compile(r'\baddEventListener\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']')
 _JS_ES_EXPORT_RE = re.compile(r'^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([a-zA-Z0-9_]+)', re.MULTILINE)
@@ -129,8 +141,10 @@ _JS_BUILTIN_WINDOW_PROPS = frozenset({
 
 def scan_js_surface(text: str) -> JsSurface:
     """Extract DOM queries, window exports/reads, and event listener attachments."""
-    queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text))
-    raw_exports = set(_JS_GLOBAL_EXPORT_RE.findall(text))
+    ev_strs = set(re.findall(r'\b(?:addEventListener|removeEventListener|CustomEvent)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']', text))
+    table_ids = (set(_JS_TABLE_CONTROL_ID_RE.findall(text)) - ev_strs) if _JS_DYNAMIC_GET_RE.search(text) else set()
+    queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text)) | set(_JS_HELPER_ID_RE.findall(text)) | table_ids
+    raw_exports = {g0 or g1 for g0, g1 in _JS_GLOBAL_EXPORT_RE.findall(text) if (g0 or g1)}
     toplevel_fns = set(_JS_TOPLEVEL_FN_RE.findall(text))
     exports = {exp for exp in (raw_exports | toplevel_fns) if exp.split(".")[0] not in _JS_BUILTIN_WINDOW_PROPS}
     reads = set(_JS_GLOBAL_READ_RE.findall(text))
@@ -307,41 +321,18 @@ def walk_source_files(root: Path, include_tests: bool = True) -> dict[str, list[
 
 def cmd_surface(args: argparse.Namespace) -> int:
     """Scan directory surface for HTML element IDs, JS globals, and Python routes."""
-    target_path = Path(args.path).resolve() if args.path else Path.cwd()
-    files = walk_source_files(target_path, include_tests=True)
-    all_ids, all_selects, all_globals, all_routes, important_count = set(), set(), set(), [], 0
-
-    def _read(p: Path) -> str:
-        return p.read_text(encoding="utf-8", errors="replace")
-
-    for hp in files["html"]:
-        surf = scan_html_surface(_read(hp))
-        all_ids.update(surf.ids); all_selects.update(surf.selects)
-    for jp in files["js"]:
-        all_globals.update(scan_js_surface(_read(jp)).global_exports)
-    for pp in files["py"]:
-        all_routes.extend(scan_python_surface(_read(pp)).routes)
-    for cp in files["css"]:
-        important_count += scan_css_surface(_read(cp)).important_count
-
-    data = {
-        "workspace": str(target_path), "total_html_files": len(files["html"]),
-        "total_ids": len(all_ids), "ids": sorted(all_ids),
-        "interactive_selects": sorted(all_selects), "global_window_exports": sorted(all_globals),
-        "backend_routes": all_routes, "css_important_count": important_count,
-    }
-    if args.json:
-        print(json.dumps(data, indent=2))
-        return 0
-    print(f"=== Surface Inventory ({target_path}) ===")
-    print(f"HTML Files: {len(files['html'])} | Unique IDs: {len(all_ids)} | Selects: {len(all_selects)}")
-    print(f"JS Files:   {len(files['js'])} | window.* Globals: {len(all_globals)}")
-    print(f"Python Files: {len(files['py'])} | API Routes: {len(all_routes)}")
-    print(f"CSS Files:  {len(files['css'])} | !important Count: {important_count}")
-    if args.show_ids and all_ids:
-        print("\n--- Element IDs ---\n" + "\n".join(f"  #{i}" for i in sorted(all_ids)))
-    if args.show_globals and all_globals:
-        print("\n--- window.* Exports ---\n" + "\n".join(f"  {g}" for g in sorted(all_globals)))
-    if args.show_routes and all_routes:
-        print("\n--- Backend Routes ---\n" + "\n".join(f"  {r.get('method', 'GET')} {r.get('path', '')}" for r in all_routes))
-    return 0
+    try:
+        from surface_contracts import run_surface_cli
+        from surface_verifier import verify_surface_contracts
+    except ImportError:
+        from .surface_contracts import run_surface_cli  # type: ignore[no-redef]
+        from .surface_verifier import verify_surface_contracts  # type: ignore[no-redef]
+    return run_surface_cli(
+        args,
+        walk_source_files,
+        scan_html_surface,
+        scan_js_surface,
+        scan_python_surface,
+        scan_css_surface,
+        verify_surface_contracts,
+    )

@@ -38,9 +38,9 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         return has_ci, f"Co-invocation protocol: {has_ci}"
 
     # 2. Specific diagnostic flags and parameters
-    if "--sync-check" in exp_lower or "md5" in exp_lower:
-        has_sync = bool(re.search(r"--sync-check|md5", text, re.I))
-        return has_sync, f"Container sync check: {has_sync}"
+    if "--sync-check" in exp_lower or "md5" in exp_lower or "code drift" in exp_lower:
+        has_sync = bool(re.search(r"--sync-check|md5", text, re.I)) and bool(re.search(r"reproduce first|empirical", text, re.I))
+        return has_sync, f"Container sync check / drift diagnosis: {has_sync}"
 
     if "surface" in exp_lower or "--show-ids" in exp_lower:
         has_surf = bool(re.search(r"surface|--show-ids", text, re.I))
@@ -58,9 +58,25 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         has_trace = bool(re.search(r"--lines|traceback|exception", text, re.I))
         return has_trace, f"Traceback scan: {has_trace}"
 
+    if "skips exploratory ux interviews" in exp_lower:
+        ok = bool(re.search(r"skip ux interviews", text, re.I)) and bool(re.search(r"red", text, re.I))
+        return ok, f"Skip UX interviews on quarantined defect: {ok}"
+
+    if "suggested_fix" in exp_lower:
+        ok = bool(re.search(r"suggested_fix", text)) and bool(re.search(r"surgical", text, re.I))
+        return ok, f"Surgical fix guided by suggested_fix: {ok}"
+
+    if "followup_cids" in exp_lower and "before transcript-audit" in exp_lower:
+        ok = bool(re.search(r"followup_cids", text)) and bool(re.search(r"never run `transcript-audit`.*before.*`debug-retro`", text, re.I))
+        return ok, f"Exact order debug-retro --plan before transcript-audit: {ok}"
+
     if "probe" in exp_lower or "scaffold" in exp_lower:
-        has_probe = bool(re.search(r"probe (?:run|list|new|save)|domain probe", text, re.I))
-        return has_probe, f"Dynamic domain probe: {has_probe}"
+        has_probe = bool(re.search(r"probe (?:run|list|new|save)|domain probe|scaffold-defect", text, re.I))
+        return has_probe, f"Dynamic domain probe / scaffold: {has_probe}"
+
+    if "run_diagnose.py tests" in exp_lower and "180s" in exp_lower:
+        ok = bool(re.search(r"run_diagnose\.py\s+tests\s+tests\.test_mod1", text)) and bool(re.search(r"180s\s+--timeout", text))
+        return ok, f"Targeted module runs with 180s --timeout: {ok}"
 
     if "tests" in exp_lower or "unit test" in exp_lower:
         has_test = bool(re.search(r"tests|unit test|regressions", text, re.I))
@@ -110,8 +126,8 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         )
         return has_io, f"Introspective Options hint: {has_io}"
 
-    if "dual output" in exp_lower or "markdown artifact" in exp_lower or "inline" in exp_lower:
-        has_dual = bool(re.search(r"dual output|inline markdown|artifact", text, re.I))
+    if "dual output" in exp_lower or "markdown artifact" in exp_lower or "inline" in exp_lower or "artifact creation overhead" in exp_lower:
+        has_dual = bool(re.search(r"dual output|inline markdown|no artifact overhead", text, re.I))
         return has_dual, f"Dual output rules: {has_dual}"
 
     if "4-step workflow" in exp_lower or "5-step" in exp_lower or "workflow" in exp_lower:
@@ -126,8 +142,20 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         has_pf = bool(re.search(r"pre-flight.*gate|ask_question", text, re.I))
         return has_pf, f"Pre-Flight gate / ask_question: {has_pf}"
 
+    if ".frontier/plans/<slug>/" in exp_lower or "mid-plan escalation" in exp_lower:
+        ok = bool(re.search(r"\.frontier/plans/<slug>/", text)) and bool(re.search(r"--plan <slug>", text))
+        return ok, f"Mid-Plan Escalation Bridge: {ok}"
+
+    if "single clock-domain parity" in exp_lower or "now=100.0" in exp_lower:
+        ok = bool(re.search(r"single clock-domain parity", text, re.I)) and bool(re.search(r"now=100\.0", text))
+        return ok, f"Single clock-domain parity without synthetic stubs: {ok}"
+
+    if "pending user-verification gate" in exp_lower or "changelog add" in exp_lower:
+        ok = bool(re.search(r"pending user-verification gate", text, re.I)) and bool(re.search(r"diagnose\.py changelog add", text))
+        return ok, f"Pending User-Verification Gate before changelog add: {ok}"
+
     if "reproduce first" in exp_lower or "empirical proof" in exp_lower or "run_diagnose.py" in exp_lower:
-        has_rep = bool(re.search(r"reproduce first|empirical|run_diagnose\.py", text, re.I))
+        has_rep = bool(re.search(r"reproduce first|empirical", text, re.I)) and bool(re.search(r"run_diagnose\.py", text, re.I))
         return has_rep, f"Reproduce first / empirical: {has_rep}"
 
     if "defensive" in exp_lower or "min-width: 0" in exp_lower or "overflow containment" in exp_lower:
@@ -143,7 +171,7 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         return has_a9, f"Axiom 9 reporting: {has_a9}"
 
     if "mismatch" in exp_lower or "event listener" in exp_lower:
-        has_mis = bool(re.search(r"event listener|selector|query", text, re.I))
+        has_mis = bool(re.search(r"event listener", text, re.I)) and bool(re.search(r"selector", text, re.I))
         return has_mis, f"Selector / ID mismatch: {has_mis}"
 
     if "modularity" in exp_lower or "surgical" in exp_lower:
@@ -155,8 +183,12 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         return ok, f"debug-retro >= 20 steps threshold: {ok}"
 
     if "debug_retro.md" in exp_lower and "learn_queue.md" in exp_lower:
-        ok = bool(re.search(r"DEBUG_RETRO\.md", text)) and bool(re.search(r"LEARN_QUEUE\.md", text))
-        return ok, f"DEBUG_RETRO.md folded into LEARN_QUEUE.md: {ok}"
+        ok = (
+            bool(re.search(r"DEBUG_RETRO\.md", text))
+            and bool(re.search(r"LEARNING_SCAFFOLD\.md", text))
+            and bool(re.search(r"LEARN_QUEUE\.md", text))
+        )
+        return ok, f"DEBUG_RETRO.md folded into LEARNING_SCAFFOLD.md & LEARN_QUEUE.md: {ok}"
 
     if "test_*_e2e*.py" in exp_lower or "probe save" in exp_lower:
         ok = bool(re.search(r"test_\*_e2e\*\.py", text)) and bool(re.search(r"probe save", text, re.I))
@@ -165,14 +197,6 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
     if "test-path" in exp_lower and "read_fail" in exp_lower:
         ok = bool(re.search(r"Test-Path\s+\.frontier/DEBUG_RETRO\.md", text)) and bool(re.search(r"read_fail", text))
         return ok, f"Check Test-Path before read_file on DEBUG_RETRO.md: {ok}"
-
-    if "run_diagnose.py tests" in exp_lower and "180s" in exp_lower:
-        ok = bool(re.search(r"run_diagnose\.py\s+tests\s+tests\.test_mod1", text)) and bool(re.search(r"180s\s+--timeout", text))
-        return ok, f"Targeted module runs with 180s --timeout: {ok}"
-
-    if "followup_cids" in exp_lower and "before transcript-audit" in exp_lower:
-        ok = bool(re.search(r"followup_cids", text)) and bool(re.search(r"never run `transcript-audit`.*before.*`debug-retro`", text, re.I))
-        return ok, f"Exact order debug-retro --plan before transcript-audit: {ok}"
 
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
@@ -238,6 +262,23 @@ class TestAppDebuggerEvals(unittest.TestCase):
             failures.append(f"Eval 99: 'missing check' failed ({reason})")
         self.assertEqual(len(failures), 1)
         self.assertIn("Eval 99", failures[0])
+
+    def test_zero_unmapped_generic_fallback_expectations(self):
+        """Assert 100% of expectations in evals.json hit explicit discriminating rules rather than generic keyword ratio."""
+        generic_hits = []
+        for e in self.evals:
+            for exp in e.get("expectations", []):
+                _, reason = evaluate_expectation(self.skill_text, exp)
+                if reason.startswith("Generic keywords:"):
+                    generic_hits.append(f"Eval {e['id']}: '{exp}' ({reason})")
+        self.assertEqual(generic_hits, [], "Unmapped expectations falling back to generic keywords:\n" + "\n".join(generic_hits))
+
+    def test_reference_links_resolve(self):
+        """Verify all relative reference links in SKILL.md resolve to existing files."""
+        refs = re.findall(r"\(\./(references/[^)#\s]+)", self.skill_text)
+        self.assertGreaterEqual(len(refs), 2)
+        for rel in refs:
+            self.assertTrue((SKILL_DIR / rel).is_file(), f"Broken reference link in SKILL.md: {rel}")
 
     def test_line_count_modularity_budget(self):
         """Assert SKILL.md is under the 350-line target (500 hard ceiling)."""

@@ -17,8 +17,8 @@ import sys
 # Ensure UTF-8 output on Windows consoles
 if hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        getattr(sys.stdout, "reconfigure")(encoding="utf-8", errors="replace")
+        getattr(sys.stderr, "reconfigure")(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -35,11 +35,11 @@ from plan_state import (
     link_child_plan, load_json, record_milestone_advance, resolve_plan_path,
 )
 from plan_telemetry import (
-    _extract_leading_env,
-    _normalize_verify_cmd,
-    _parse_test_counts,
-    _parse_tri,
-    _resolve_venv_python,
+    _extract_leading_env,  # noqa: F401
+    _normalize_verify_cmd,  # noqa: F401
+    _parse_test_counts,  # noqa: F401
+    _parse_tri,  # noqa: F401
+    _resolve_venv_python,  # noqa: F401
     cmd_lookup,
     cmd_retrospective,
     cmd_verify,
@@ -221,7 +221,7 @@ def _auto_sync_parent(root: Path, ps: dict[str, Any], sha: str | None, now_iso: 
     if any(m.get("index") == p_idx and m.get("status") == "completed" for m in parent_ps.get("milestones", [])):
         return None
     patch_milestone_checkboxes(parent_p, int(p_idx))
-    parent_ps = record_milestone_advance(get_frontier_dir(root), parent_ps, int(p_idx), sha, now_iso)
+    parent_ps = record_milestone_advance(get_frontier_dir(root), parent_ps, int(p_idx), sha or "", now_iso)
     from plan_telemetry import rollup_child_retrospective
     rollup_child_retrospective(root, parent_ps, int(p_idx), refresh=True)
     parent_completed = parent_ps.get("status") == "completed"
@@ -304,7 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
-    p_ver.add_argument("--command", "--cmd", dest="command", help="Explicit verifier command")
+    p_ver.add_argument("--command", "--cmd", "--test-cmd", dest="command", help="Explicit verifier command")
     p_ver.add_argument("--timeout", type=float, default=180.0, help="Max seconds before aborting hung verifier (default: 180; 0 disables)")
     register_digest_parser(sub, plan_parent)
     register_reconcile_parser(sub, root_parent)

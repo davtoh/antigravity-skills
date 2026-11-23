@@ -6,70 +6,50 @@ description: >-
 
 # System Diagnostics: Centralized Tool Engine & Unified CLI
 
-The **System Diagnostics** skill provides a zero-overhead, project-agnostic diagnostic engine. It consolidates browser layout inspection, container runtime monitoring, AST codebase surface analysis, and test execution into a single, unified command-line interface (`diagnose.py`).
+**System Diagnostics** consolidates browser layout inspection, container runtime monitoring, AST surface analysis, polyglot defect scanning, transcript telemetry, and virtualenv test execution into a single zero-dependency CLI (`diagnose.py`).
+For exhaustive per-subcommand flag permutations and internal script topology, read [`references/cli-reference.md`](./references/cli-reference.md).
 
 ---
 
 ## Core Capabilities
 
 1. **Browser UI & Layout Inspection (`diagnose.py ui`)**:
-   - Inspects DOM element bounding boxes (`DOMRect`), computed styles, and scroll dimensions via the Chrome DevTools Protocol (CDP).
-   - Detects layout overflows, clipped content, and horizontal viewport blowouts with zero Node/npm dependencies (pure-Python RFC 6455 WebSocket transport).
-   - Connects to the user's active visible Chrome tab via `DevToolsActivePort` or runs an auto-cleaned temporary headless browser instance.
+   - Inspects DOM bounding boxes (`DOMRect`), computed styles, and scroll dimensions via zero-Node/npm pure-Python RFC 6455 WebSocket CDP.
+   - Detects layout overflows and horizontal viewport blowouts; attaches to the user's active visible Chrome tab via `DevToolsActivePort` (`--live`, with `--no-fallback-headless` enforced unless `--allow-headless-fallback`) or runs an isolated temporary headless browser (`--headless`).
+   - Supports `--eval-file <path>` (avoids Windows PowerShell quote-stripping; `--capture-runtime` defaults ON for `--eval`/`--eval-file`, opt out via `--no-capture-runtime`), `--click`, `--screenshot`, `--navigate`, `--window-size`, `--wait`, and `--strict`.
 2. **Docker Runtime & Sync Audit (`diagnose.py container`)**:
-   - Snapshots container CPU, Memory, Network I/O, and PIDs (`docker stats --no-stream`).
-   - Audits active container processes (`docker top`) to detect runaway CPU loops.
-   - Verifies host-vs-container MD5 file synchronization (`--sync-check`) to catch stale mounted files.
-   - Scans recent container logs for unhandled Tracebacks and exceptions.
+   - Snapshots container CPU, Memory, Network I/O, and PIDs (`docker stats --no-stream`) and active processes (`docker top`).
+   - Verifies host-vs-container MD5 file synchronization (`--sync-check`) to catch stale mounted files, scans recent container logs for unhandled Tracebacks/exceptions (`--lines`), and auto-probes active containers when `--container` is omitted.
 3. **AST Interactive Surface Scanner (`diagnose.py surface`)**:
-   - Statically extracts all HTML element IDs, interactive `<select>` dropdowns, and modals.
-   - Discovers `window.*` global exports and DOM queries in JavaScript/TypeScript files.
-   - Extracts backend Python HTTP routes (`@app.get`, `@app.post`, etc.).
-   - Detects CSS custom properties and counts `!important` occurrences to guard specificity.
+   - Statically extracts HTML element IDs, interactive `<select>` dropdowns, modals, JavaScript/TypeScript `window.*` global exports and DOM queries, backend Python HTTP routes (`@app.get`, `@app.post`), and CSS custom properties / `!important` specificity counts without running servers.
+   - Cross-verifies JS `fetch()` routes, `window.*` read/write symmetry, and HTML IDs via `--verify` and `--strict` (plus `--json` and `--include-tests`).
 4. **Automated Test Runner (`diagnose.py tests`)**:
-   - Auto-discovers local virtual environment interpreters (`.venv`, `venv`, `env`).
-   - Runs unit and integration test suites without requiring manual shell path activations.
+   - Auto-discovers local virtual environment interpreters (`.venv`, `venv`, `env`, falling back cleanly to system Python when missing), runs unit and integration tests without manual shell activation, forwards test arguments cleanly to `unittest` or `pytest`, and enforces a `--timeout` guard (default `180s`, `0` disables, returning exit code `124` on hung suites).
 5. **Unified 3-Tier Diagnostic Audit (`diagnose.py all`)**:
-   - Executes a comprehensive 3-tier audit in one shot: Static Surface/Tests $\to$ Docker Container $\to$ Browser UI Layout.
-   - Summarizes results under Axiom 9 (Honest Verification Reporting: `VERIFIED`, `UNVERIFIED`, or `SKIPPED`).
+   - Executes a 3-tier audit in one shot (Static Surface/Tests $\to$ Docker Container $\to$ Browser UI Layout), auto-probing local ports (`8000`, `3000`, `5000`, `8080`, `5173`) and active containers, summarizing under Axiom 9 Honest Verification Reporting (`VERIFIED`, `UNVERIFIED`, or `SKIPPED`), and supporting `--strict` (exit code `1` on failure).
 6. **Dynamic & Extensible Probes (`diagnose.py probe`)**:
-   - Discovers, runs, scaffolds, and promotes reusable domain probes (e.g., `camera_hardware`, databases, sockets) across global and workspace `.diagnostics/probes/` registries.
-   - Eliminates disposable scratch script sprawl: agents test domain-specific logic and promote working checks into permanent diagnostic tools via `diagnose.py probe save`.
-   - Built-in `camera_hardware.py` probe tests DirectShow, Media Foundation, and V4L2 device indices, validates pixel frame decoding without crashing on `-1.0` register queries, and audits Windows PnP device states.
+   - Discovers (`probe list`), runs (`probe run`), scaffolds (`probe new <name> --domain <domain>`), and promotes verified scratch scripts (`probe save <src> <name>`) across global and workspace `.diagnostics/probes/` registries.
+   - Built-in `camera_hardware` probe validates DirectShow, Media Foundation, and V4L2 device indices, pixel frame decoding, and Windows PnP device locks.
 7. **Static Quality, Defect & Code Smell Audit (`diagnose.py audit`)**:
-   - Executes virtualenv-native static typecheckers (`ruff`, `mypy`, `pyright`, `dart analyze`) on target paths or whole repositories.
-   - Detects dynamic platform import ladder smells (`try...except ImportError` on platform libraries like `win32api`, `fcntl`, `_xlmac`) and recommends static platform guards (`if sys.platform == 'win32':`).
-   - Runs callable smoke tests to verify module importability, signature validity, and catch constructor `TypeErrors` before runtime.
-   - **Strict Token-Budget Guard**: Automatically truncates error output to the top 5 defects per checker/category, preventing context window explosion during AI agent interactions.
-8. **Polyglot Defect Scanner & JIT Scaffolder (`diagnose.py scan` & `diagnose.py scaffold-defect`)**:
-   - Statically scans across Python (AST), JavaScript/TypeScript, CSS/SCSS, and Dart for 12+ classes of latent defects, smells, resource leaks, and vulnerabilities.
-   - Computes deterministic Dual-Key identifiers: sequential `DEFECT-XXX` + AST symbol/arity content fingerprint (`DEF-<RULE>-<6HEX>`), maintaining identity stability across file moves and line shifts.
-   - Persists ground truth in the workspace's Single Source of Truth (SSOT) catalog: machine-readable `<workspace>/.diagnostics/defect_catalog.json` and human-readable `DEFECT_CATALOG.md` (protected by auto-generated `.gitignore`).
-   - Dispatches **Dual-Track Remediation**:
-     - **Track A (Tactical)**: Generates self-contained Red-to-Green tests in `tests/quarantine/test_<id>.py` with optional micro-branching (`--branch`) guarded by git dirty-tree safety checks.
-     - **Track B (Architectural)**: Emits structured Architectural Elevation Briefs for `/frontier-architect` + `/grill-me` when defects reveal structural design flaws.
-9. **Unified Changelog & Auto-Archiving Engine (`diagnose.py changelog`)**:
-   - Manages bounded, zero-read-token changelogs (`CHANGELOG.md`) capped at $\le 150$ lines with entry-boundary safety (min 3 entries kept).
-   - Declaratively sanitizes local paths, `file:///` URIs, `.venv` references, and localhost ports via `SANITIZATION_RULES`.
-   - Auto-migrates legacy `MIGRATION_LOG.md` files, merges distinct entries without data loss, and auto-shards historical entries into `.changelogs/changelog_YYYY_H1.md` / `H2.md` with explicit AI-guard banners.
-   - Implements the Single-Generation Echo Protocol (`--commit-hint`) to emit copy-pasteable `git commit` commands directly from CLI arguments, cutting milestone completion token overhead in half.
+   - Runs virtualenv static typecheckers (`ruff`, `mypy`, `pyright`, `dart analyze`), flags dynamic platform import ladders (`try...except ImportError` on `win32api`/`fcntl`) via `--smells` recommending static platform guards, runs callable smoke tests (`--callable-smoke`) to catch constructor `TypeErrors`, enforces a **Strict Token-Budget Guard** truncating output to the top 5 issues per category, and supports `--max-lines`, `--max-fn-lines`, `--json`, and `--strict`.
+8. **Polyglot Defect Scanner & JIT Scaffolder (`diagnose.py scan`, `scaffold-defect`, `resolve-defect`, `dismiss-defect`)**:
+   - Scans Python, JS/TS, CSS, and Dart across one or more files/directories (`--path <paths...>`) with deterministic Dual-Key IDs (`DEFECT-XXX` + `DEF-<RULE>-<6HEX>`) that survive file moves and line shifts.
+   - Persists findings in the Single Source of Truth (SSOT) catalog (`.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`), supporting `--deep`/`--all` (extended rules: CSS `!important`, unbounded containers, blocking loops), `--prune` (purging `resolved`/`dismissed` or vanished items), and `--strict`.
+   - Dispatches **Dual-Track Remediation**: `scaffold-defect --id <ID> [--path <DIR>] [--branch]` (Track A tactical Red-to-Green test in `tests/quarantine/test_<id>.py` for `/app-debugger` with git dirty-tree safety guard) or `--elevate` (Track B Architectural Elevation Brief for `/frontier-architect` + `/grill-me`). `resolve-defect --id <id> --note` and `dismiss-defect --id <id> --reason` accept comma-separated defect IDs, fingerprints, or rule IDs.
+9. **Unified Changelog, Transcript Telemetry, Debug Retro & Skill Packager**:
+   - `changelog {add,migrate,show,status}`: Bounded `CHANGELOG.md` ($\le 150$ lines) with path/URI sanitization, auto-migration of legacy `MIGRATION_LOG.md`, `.changelogs/` sharding, `show --recent 3`, and default Single-Generation Echo commit snippets (`--no-commit-hint` to opt out).
+   - `transcript-audit`: Audits `<appDataDir>/brain` logs (`--latest <N>`, `--cids <IDs...>`, `--brain-dir` / `AGY_BRAIN_DIR`, `--workspace`, `--json`) reporting steps, failures, `- FAIL`, `- REPEAT`, `- CORRECTION`, `- REDIRECT` workflow/model switches, `schedule-while-subagent` flags, parallel same-file edits, subagent duplicate reads, rubric grade caps (`suggested_grade_cap` matching the `plan_digest` rubric: `>= 2` failures $\to$ `B`, `> 3` failures $\to$ `C`), and `has_debug_retro` tracking to flag unescalated thrashing when failures accumulate.
+   - `debug-retro`: Records post-debug retrospectives (`DEBUG_RETRO.md`, `LEARNING_SCAFFOLD.md`, `--- Turn-End Echo ---`) with `--plan`, `--learn`, and `--skill-learn` flags.
+   - `diagnose.py arch-map` (`--path <paths...>`, `--json`, `--full`, `--include-tests`, `--out`), `diagnose.py traces` (`--scaffold fastapi|flask|generic`, `--clear`, `resolve` to inspect `.diagnostics/` runtime crash and trace catalogs), `diagnose.py run <command>` (zero-code runner with automatic runtime tracing bootstrapped), and `diagnose.py package-skill <skill_or_all> --out dist/` (temp-stages skills, materializes thin SSOT shims into standalone scripts, strips `tests/` and `evals/`, and runs `package_skill.py` validation).
 
 ---
 
-## Pre-Run Verification One-Liners
-
-Before executing diagnostic commands on a project, verify the diagnostics test suite:
+## Pre-Run Verification & Scenario Combinations Matrix
 
 ```bash
-# Run the comprehensive diagnostic test suite (105 unit & integration tests, < 3.5s)
+# Run the comprehensive diagnostic test suite (233+ unit & integration tests)
 python -m unittest discover -s skills/system-diagnostics/tests -p "test_*.py"
 ```
-
----
-
-## Scenario Combinations Matrix
-
-Per `executable_documentation.md`, use this matrix to match your objective with the exact copy-pasteable command:
 
 | Real-World Scenario / Objective | Mode / Inputs | Key Parameters | Exact Runnable Command |
 | :--- | :--- | :--- | :--- |
@@ -82,8 +62,9 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Verify Docker Container Sync** | Docker service | Compares host vs container MD5s | `python skills/system-diagnostics/scripts/diagnose.py container --sync-check app.py static/app.js` |
 | **Scan Recent Container Tracebacks** | Docker service | Scans recent log lines for panic | `python skills/system-diagnostics/scripts/diagnose.py container --lines 100` |
 | **Scan Surface for Broken IDs/Routes** | Source repository | Static AST scan without server | `python skills/system-diagnostics/scripts/diagnose.py surface --show-ids --show-routes` |
+| **Verify Cross-Contract Surface Parity** | HTML/JS/Python repo | Fetch vs routes, `window.*`, IDs | `python skills/system-diagnostics/scripts/diagnose.py surface --verify --strict` |
 | **Export Full Surface Inventory JSON** | Source repository | JSON contract baseline | `python skills/system-diagnostics/scripts/diagnose.py surface --json` |
-| **Run Test Suite with Virtualenv** | Test suite | Auto-detects `.venv` interpreter | `python skills/system-diagnostics/scripts/diagnose.py tests` |
+| **Run Test Suite with Virtualenv** | Test suite | Auto-detects `.venv` & `180s --timeout` | `python skills/system-diagnostics/scripts/diagnose.py tests` |
 | **List Registered Probes** | Probe registry | Discovers global & workspace probes | `python skills/system-diagnostics/scripts/diagnose.py probe list` |
 | **Probe Camera Hardware & Locks** | Physical/virtual video | Probes backends, decoding & locks | `python skills/system-diagnostics/scripts/diagnose.py probe run camera_hardware` |
 | **Scaffold New Domain Probe** | Missing domain | Generates protocol boilerplate | `python skills/system-diagnostics/scripts/diagnose.py probe new db_pool --domain database` |
@@ -109,183 +90,12 @@ Per `executable_documentation.md`, use this matrix to match your objective with 
 | **Read Recent 3 Milestones (On Demand)** | Bounded context lookup | `--recent 3` | `python skills/system-diagnostics/scripts/diagnose.py changelog show --recent 3` |
 | **Evaluate Multi-Statement JS in Page** | Live or headless CDP | `--eval-file <js_path>` | `python skills/system-diagnostics/scripts/diagnose.py ui --live --eval-file scratch/check_dom.js` |
 | **Package Standalone `.skill` Bundle** | Distribution / `/skill-creator` | Resolves SSOT shims & strips `tests/` | `python skills/system-diagnostics/scripts/diagnose.py package-skill all --out dist/` |
-
----
-
-## CLI Reference & Flags
-
-### Subcommand: `ui`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
-```
-- `--url <URL>`: Target URL. If omitted, auto-probes local dev ports (`8000`, `3000`, `5000`, `8080`, `5173`).
-- `--live`: Attaches to user's active visible Chrome tab.
-- `--headless`: Runs in isolated, auto-cleaned temporary headless Chrome (default).
-- `--audit-layout`: Scans DOM for bounding box overflows, horizontal scrolling, and `<video>`/`<img>`/`<canvas>` layout issues.
-- `--selectors <CSS>`: Comma-separated CSS selectors to measure (e.g. `'#video-player,.control-bar'`).
-- `--screenshot <PATH>`: Saves a JPEG viewport screenshot.
-- `--navigate`: Forces a page refresh before measuring.
-- `--eval <JS>`: Evaluates arbitrary JavaScript expression in page context.
-- `--eval-file <PATH>`: Reads UTF-8 JavaScript from a file (or `-` for stdin) and evaluates in page context (avoids Windows PowerShell quote-stripping).
-- `--click <SELECTOR>`: Clicks an element before measuring.
-- `--window-size <WxH>`: Headless viewport dimensions (default: `1440x900`).
-- `--port <PORT>`: Debugging port override.
-- `--no-fallback-headless`: Fails immediately if live Chrome is unreachable instead of falling back to headless (automatically enforced with `--live` unless `--allow-headless-fallback` is set).
-- `--allow-headless-fallback`: Permits silent fallback to headless Chrome if `--live` fails.
-- `--capture-runtime` / `--no-capture-runtime`: Captures console errors, uncaught JS exceptions, HTTP $\ge 400$ / WebSocket errors, and `localStorage` state (default ON when `--eval` or `--eval-file` is set; pass `--no-capture-runtime` to opt out).
-
-### Subcommand: `container`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py container [OPTIONS]
-```
-- `--container <NAME>`: Target container name. If omitted, auto-detects from active `docker ps`.
-- `--workdir <PATH>`: Container working directory prefix (default: `/app`).
-- `--sync-check <FILES...>`: Relative host files to compare against `<workdir>/<file>` MD5 checksums.
-- `--lines <N>`: Recent log lines to scan for unhandled exceptions (default: `150`).
-
-### Subcommand: `surface`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py surface [OPTIONS]
-```
-- `--path <DIR>`: Workspace directory to scan (default: current directory).
-- `--show-ids`: Prints all discovered HTML element IDs and interactive controls.
-- `--show-globals`: Prints all discovered `window.*` global exports in JavaScript/TypeScript.
-- `--show-routes`: Prints all discovered backend Python routes.
-- `--json`: Outputs structured JSON for automated contracts.
-
-### Subcommand: `tests`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py tests [--timeout 180] [ARGS...]
-```
-- `--path <DIR>`: Workspace root to scan for `.venv` (default: current directory).
-- `--timeout <SEC>`: Max seconds before aborting a hung suite (default: `180`; `0` disables; exits with `124`).
-- `[ARGS...]`: Arguments forwarded to `python -m unittest` (default: `discover -s tests -p "test_*.py"`).
-
-### Subcommand: `all`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py all [OPTIONS]
-```
-- `--path <DIR>`: Workspace directory (default: current directory).
-- `--url <URL>`: Explicit dev server URL.
-- `--container <NAME>`: Explicit Docker container name.
-- `--strict`: Exits with return code 1 if any tier fails.
-
-### Subcommand: `probe`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py probe {list,run,new,save} [OPTIONS]
-```
-- `list [--json]`: Discovers and prints all registered probes across global and workspace registries.
-- `run <NAME_OR_PATH> [ARGS...] [--json]`: Executes a probe in an isolated subprocess with performance timing.
-- `new <NAME> [--domain <DOMAIN>]`: Scaffolds a new probe boilerplate in `.diagnostics/probes/<name>.py`.
-- `save <SOURCE_PATH> <NAME> [--workspace]`: Promotes a verified scratch script into the reusable probe registry.
-
-### Subcommand: `audit`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py audit [OPTIONS]
-```
-- `--path <PATH>`: Target root directory or file to audit (default: current directory).
-- `--typecheck`: Runs virtualenv-detected static type checkers (`ruff`, `mypy`).
-- `--smells`: Scans for dynamic platform import ladders (`try...except ImportError`) and recommends static guards.
-- `--callable-smoke`: Runs AST and signature checks, testing class instantiability to catch initialization `TypeErrors`.
-- `--json`: Outputs structured JSON report.
-- `--strict`: Exits with return code 1 if any defects or smells are detected.
-
-### Subcommand: `scan`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py scan [OPTIONS]
-```
-- `--path <PATHS...>`: One or more files/directories to scan across Python, JS/TS, CSS, and Dart (default: current directory).
-- `--deep` / `--all`: Scans extended rules (CSS `!important` specificity overruns, unbounded container growth, blocking loops).
-- `--prune`: Purges closed (`resolved`/`dismissed`) or vanished defects from the catalog during scan reconciliation.
-- `--json`: Outputs machine-readable catalog JSON to stdout.
-- `--strict`: Exits with return code 1 if any active (`quarantined`/`scaffolded`/`elevated`) defects are detected.
-- *Automatic Stateful Catalog Sync*: Reconciles findings by `fingerprint` in `<workspace>/.diagnostics/defect_catalog.json` and `DEFECT_CATALOG.md`, automatically transitioning fixed defects to `resolved` and preserving `dismissed` items so solved issues are never repeated.
-
-### Subcommand: `transcript-audit`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py transcript-audit [--cids <IDs...>] [--latest <N>] [--min-steps <N>] [--json]
-```
-- `--cids <IDs...>`: Full UUIDs, 8-char prefixes, or comma-separated IDs from `<appDataDir>/brain`.
-- `--latest <N>` / `--min-steps <N>`: Audit the `N` most recent substantive conversations (prefers `>= 6` steps, skipping empty new chats).
-- `--brain-dir <DIR>`: Override brain directory (or set `AGY_BRAIN_DIR`).
-- `--json`: Emit JSON instead of markdown (`- FAIL`, `- REPEAT`, `- CORRECTION`, `- REDIRECT` workflow/model switches, `schedule-while-subagent` flags, parallel same-file edits, subagent duplicate reads, and rubric grade caps).
-
-### Subcommand: `resolve-defect` & `dismiss-defect`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py resolve-defect --id <ID_FP_OR_RULE> [--note "<TEXT>"]
-python skills/system-diagnostics/scripts/diagnose.py dismiss-defect --id <ID_FP_OR_RULE> [--reason "<TEXT>"]
-```
-- `--id <ID_FP_OR_RULE>`: Comma-separated defect IDs (`DEFECT-001`), fingerprints (`DEF-SILENT-3917ae`), or rule ID (`SILENT_BARE_EXCEPT`).
-- `--note` / `--reason`: Audit note persisted in the `Resolved & Dismissed History` table.
-
-### Subcommand: `scaffold-defect`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py scaffold-defect --id <ID_OR_FP> [OPTIONS]
-```
-- `--id <ID_OR_FP>`: Sequential ID (`DEFECT-001`) or content fingerprint (`DEF-MUTABLE-8749e9`).
-- `--branch`: Pre-flight checks git status (ignoring `.diagnostics/` and `.refactor/`). If clean, checks out micro-branch `fix/<defect_id>`. If dirty, prints safety notice and proceeds safely in-place.
-- `--fix`: Forces Track A tactical test generation (`tests/quarantine/test_<id>.py`) even if classified as architectural.
-- `--elevate`: Forces Track B architectural elevation brief generation for `/frontier-architect` + `/grill-me`.
-- `--workspace <PATH>`: Target project directory (defaults to current directory).
-
-### Subcommand: `package-skill`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py package-skill <SKILL_OR_ALL> [--out <DIR>]
-```
-- `<SKILL_OR_ALL>`: Skill name/directory (`frontier-architect`, `refactor-monolith`, `system-diagnostics`, `app-debugger`) or `all`.
-- `--out <DIR>`: Output directory for `.skill` archives (default: `dist/`).
-- *Temp-Stage Standalone Bundling*: Stages the skill in an isolated temporary directory, materializes any thin SSOT shims into full standalone scripts from `system-diagnostics/scripts/`, strips dev-only directories (`tests/`, `evals/`, `.coverage`, `.diagnostics/`), and invokes `/skill-creator`'s `package_skill.py` validator/packager.
-
-### Subcommands: `arch-map`, `traces`, & `run`
-```bash
-python skills/system-diagnostics/scripts/diagnose.py arch-map [--path <PATHS...>] [--include-tests] [--json] [--full] [--out <FILE>]
-python skills/system-diagnostics/scripts/diagnose.py traces [--clear] [--scaffold {fastapi,flask,generic}] [--dest <DIR>]
-python skills/system-diagnostics/scripts/diagnose.py run <COMMAND...>
-```
-- `arch-map`: Generates a compact architecture, modularity, route, and import-coupling map in Markdown or `--json`.
-- `traces`: Inspects and clears `.diagnostics/` runtime crash/trace catalogs, or scaffolds a framework bridge (`--scaffold fastapi|flask|generic`).
-- `run`: Zero-code runner that launches an application command with automatic runtime tracing bootstrapped.
+| **Generate Compact Architecture Map** | Single root or multi-subpath | `--path <paths...> --json --full --include-tests --out` | `python skills/system-diagnostics/scripts/diagnose.py arch-map --path . --json` |
 
 ---
 
 ## Windows Shell & Tooling Resilience
 
-1. **PowerShell Script Policy Bypass**:
-   - When executing Node/NPM CLI tools on Windows, always invoke via `cmd /c npx -y <tool> ...` to bypass `npx.ps1 cannot be loaded because running scripts is disabled on this system`.
-2. **Codebase Grepping**:
-   - Prefer `git grep -n "<pattern>"` over `rg` unless `rg` is explicitly verified in `%PATH%`.
-3. **Line Ending & File Editing Safety**:
-   - When inspecting or patching files on Windows, preserve CRLF/LF line endings and avoid generating throwaway python patching scripts.
-
----
-
-## Architecture & Bundled Scripts
-
-```
-skills/system-diagnostics/
-├── SKILL.md                          # Tool manual and scenario matrix
-├── probes/                           # Global diagnostic probe extensions
-│   └── camera_hardware.py            # Built-in camera hardware & acquisition probe
-├── scripts/
-│   ├── diagnose.py                   # Unified CLI entrypoint with delegated subparsers
-│   ├── static_auditor.py             # Modular static defect, smell & callable auditor
-│   ├── shadow_prober.py              # Polyglot AST/lexer rules, sandbox & scan runner
-│   ├── defect_catalog.py             # SSOT catalog manager, git safety & JIT router
-│   ├── scaffold_templates.py         # Tactical Red/Green tests & architectural briefs
-│   ├── probe_runner.py               # Pluggable extension runner & probe registry
-│   ├── cdp_inspect.py                # CDP layout, DOMrect, and overflow inspector
-│   ├── cdp_transport.py              # Zero-dependency RFC 6455 WebSocket client
-│   ├── audit_layout.js               # Injected DOM bounding box auditor
-│   ├── docker_audit.py               # Docker stats, top, and MD5 sync auditor
-│   ├── surface_scanners.py           # AST surface parser for HTML/JS/Python/CSS
-│   ├── changelog_manager.py          # Unified changelog, sanitization & auto-archiving engine
-│   └── css_inspector.py              # CSS layout, overflow, and specificity checks
-└── tests/
-    ├── test_diagnose.py              # Automated unit tests for CLI & discovery
-    ├── test_changelog_manager.py     # Automated unit tests for changelog & auto-archiving
-    ├── test_static_auditor.py        # Automated unit tests for static & smell audit
-    ├── test_shadow_prober.py         # Automated unit tests for AST rules & sandbox
-    ├── test_defect_catalog.py        # Automated unit tests for catalog & git safety
-    ├── test_e2e_latent_defects.py    # E2E integration tests for Dual-Key & dual-track
-    └── test_probe_runner.py          # Automated unit tests for dynamic probe extensions
-```
+1. **PowerShell Script Policy Bypass**: Invoke Node/NPM CLI tools via `cmd /c npx -y <tool> ...` to bypass `npx.ps1` execution policy blocks.
+2. **Codebase Grepping**: Prefer `git grep -n "<pattern>"` over `rg` unless `rg` is verified on `PATH`.
+3. **Line Ending & File Editing Safety**: Preserve `CRLF/LF` line endings on Windows and avoid throwaway python patching scripts.

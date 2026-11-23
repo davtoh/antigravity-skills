@@ -29,12 +29,16 @@ SSOT_BUNDLE_MAP: dict[str, tuple[str, ...]] = {
     "refactor-monolith": (
         "css_inspector.py",
         "surface_scanners.py",
+        "surface_contracts.py",
+        "surface_verifier.py",
     ),
 }
 
 DEV_EXCLUDE_NAMES: frozenset[str] = frozenset({
     "tests", "evals", "__pycache__", "node_modules",
     ".diagnostics", ".frontier", ".refactor", ".coverage", ".DS_Store",
+    ".mypy_cache", ".ruff_cache", ".pytest_cache", ".TODO",
+    "dist", "build", "scratch", ".git", ".venv", "venv", "env",
 })
 
 

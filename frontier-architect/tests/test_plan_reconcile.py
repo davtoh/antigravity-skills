@@ -1,6 +1,5 @@
 """Tests for plan_reconcile, DEBUG_RETRO digestion, and telemetry floor enforcement."""
 
-import argparse
 import json
 import sys
 import tempfile
@@ -14,7 +13,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 import plan_digest as pd  # noqa: E402
 import plan_engine  # noqa: E402
 import plan_reconcile as pr  # noqa: E402
-import plan_scaffold as ps  # noqa: E402
 
 
 class TestPlanReconcileAndScaffold(unittest.TestCase):
@@ -145,6 +143,59 @@ class TestPlanReconcileAndScaffold(unittest.TestCase):
         retros = json.loads((self.root / ".frontier" / "plans" / "hyp" / "retrospectives.json").read_text(encoding="utf-8"))
         self.assertEqual(retros[0]["hypotheses_tested"], 3)
         self.assertEqual(retros[0]["tool_reliability_scores"]["tool_reliability"], 4)
+
+    def test_per_plan_digest_filters_unrelated_debug_retro_cids(self) -> None:
+        (self.root / ".frontier").mkdir(parents=True, exist_ok=True)
+        (self.root / ".frontier" / "DEBUG_RETRO.md").write_bytes((
+            "# Debug Retrospectives\n\n"
+            "## [2026-11-20] [UNCONFIRMED] Unrelated stream bug\n"
+            "- **Telemetry**: cid=bbbb2222 steps=50 fails=1 cap=A cdp_fallbacks=0\n"
+            "- **Project `/learn`**: Unrelated lesson\n\n"
+            "## [2026-11-20] [UNCONFIRMED] Related plan bug\n"
+            "- **Telemetry**: cid=aaaa1111 steps=30 fails=0 cap=A cdp_fallbacks=0\n"
+            "- **Project `/learn`**: Related lesson\n"
+        ).encode("utf-8"))
+        (self.root / ".TODO" / "scoped.md").write_bytes("# Scoped\n\n## Milestone 1: A\n- [x] ok\n".encode("utf-8"))
+        plan_engine.main(["init", ".TODO/scoped.md"], root=self.root)
+        plan_engine.main([
+            "retrospective", "scoped", "--milestone", "1", "--grade", "A", "--retries", "0", "--steps", "30",
+            "--tri", "5,5,5,5", "--cid", "aaaa1111-0000-0000-0000-000000000000",
+        ], root=self.root)
+        d = pd.build_digest(self.root, "scoped")
+        self.assertIn("Debug retro (unconfirmed): Related plan bug", d["escalations"])
+        self.assertFalse(any("Unrelated stream bug" in e for e in d["escalations"]))
+        self.assertIn("Related lesson", d["learn_candidates"])
+        self.assertNotIn("Unrelated lesson", d["learn_candidates"])
+        wd = pd.build_workspace_digest(self.root)
+        self.assertIn("Debug retro (unconfirmed): Unrelated stream bug", wd["escalations"])
+
+    def test_compound_verify_cmd_hypotheses_string_and_test_cmd_alias(self) -> None:
+        from plan_verify import _normalize_verify_cmd
+        venv_rel = ".venv\\Scripts\\python.exe" if sys.platform == "win32" else ".venv/bin/python"
+        venv_py = self.root / venv_rel.replace("\\", "/")
+        venv_py.parent.mkdir(parents=True, exist_ok=True)
+        venv_py.write_text("", encoding="utf-8")
+        raw = "python -m unittest discover -s tests; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python skills/system-diagnostics/scripts/diagnose.py surface --verify"
+        norm = _normalize_verify_cmd(raw, self.root)
+        self.assertIn(" && ", norm)
+        self.assertNotIn("LASTEXITCODE", norm)
+        self.assertTrue(norm.startswith(venv_rel))
+
+        (self.root / ".TODO" / "cli_ux.md").write_bytes("# UX\n\n## Milestone 1: A\n- [x] ok\n".encode("utf-8"))
+        plan_engine.main(["init", ".TODO/cli_ux.md"], root=self.root)
+        rc = plan_engine.main([
+            "retrospective", "cli_ux", "--milestone", "1", "--grade", "A",
+            "--hypotheses", "H1: Split bar; H2: Sync channel",
+        ], root=self.root)
+        self.assertEqual(rc, 0)
+        retros = json.loads((self.root / ".frontier" / "plans" / "cli_ux" / "retrospectives.json").read_text(encoding="utf-8"))
+        self.assertEqual(retros[0]["hypotheses_tested"], 2)
+        from unittest.mock import MagicMock, patch
+        import io
+        mock_p = MagicMock(stdout=io.StringIO("Ran 1 test\n\nOK\n"))
+        mock_p.wait.return_value = 0
+        with patch("subprocess.Popen", return_value=mock_p):
+            self.assertEqual(plan_engine.main(["verify", "cli_ux", "--test-cmd", "pytest tests/a.py"], root=self.root), 0)
 
 
 if __name__ == "__main__":

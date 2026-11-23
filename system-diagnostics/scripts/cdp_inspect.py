@@ -14,7 +14,7 @@ Generic Capabilities:
   --selectors "#app,.card"     Inspect specific CSS selectors (bounding boxes, styles, media state)
   --click "#submit-btn"        Click an element before auditing/evaluating
   --eval "document.title"      Evaluate arbitrary JS expression and print JSON result
-  --eval-file                  Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page  
+  --eval-file                  Path to UTF-8 JS file (or '-' for stdin) to evaluate in target page
   --screenshot out.jpg         Capture JPEG screenshot of the viewport
 """
 
@@ -40,8 +40,8 @@ try:
         urls_match,
     )
 except ImportError:
-    from scripts.cdp_transport import CDPSession, connect_ws
-    from scripts.cdp_runtime import (
+    from scripts.cdp_transport import CDPSession, connect_ws  # type: ignore[no-redef]
+    from scripts.cdp_runtime import (  # type: ignore[no-redef]
         collect_runtime_report,
         enable_runtime_capture,
         find_devtools_active_port,
@@ -49,12 +49,12 @@ except ImportError:
     )
 
 # Ensure UTF-8 output across Windows, macOS, and Linux terminals
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            getattr(_stream, "reconfigure")(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 def find_chrome_executable() -> str:
     """Locate Chrome, Chromium, or Edge binary across Windows, macOS, Linux, and WSL."""
@@ -91,10 +91,10 @@ def find_chrome_executable() -> str:
 
     return shutil.which("chrome") or shutil.which("google-chrome") or "google-chrome"
 
-def build_generic_audit_js(custom_selectors: list[str]) -> str:
+def build_generic_audit_js(custom_selectors: list[str], stability_ms: float = 0) -> str:
     js_path = Path(__file__).parent / "audit_layout.js"
     base_js = js_path.read_text(encoding="utf-8")
-    return f"window.__FRONTIER_SELECTORS__ = {json.dumps(custom_selectors)};\n{base_js}"
+    return f"window.__FRONTIER_SELECTORS__ = {json.dumps(custom_selectors)};\nwindow.__FRONTIER_STABILITY_MS__ = {float(stability_ms)};\n{base_js}"
 
 async def evaluate(cdp: CDPSession, session_id: str | None, expression: str):
     """Evaluate JS and surface page-side exceptions instead of silently printing null."""
@@ -124,7 +124,7 @@ async def _capture_screenshot(cdp: CDPSession, session_id: str | None, path_str:
         out_path = Path(path_str)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(base64.b64decode(data))
-        print(f"[CDP] Saved screenshot to {out_path.resolve()}")
+        print(f"[CDP] Saved screenshot to {out_path.resolve()}", file=sys.stderr)
 
 async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> int:
     await cdp.send("Page.enable", session_id=session_id)
@@ -142,10 +142,10 @@ async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> i
         await _click_selector(cdp, session_id, args.click)
     custom_sels = [s.strip() for s in args.selectors.split(",") if s.strip()] if args.selectors else []
     if args.audit_layout or custom_sels:
-        result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels))
+        result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels, getattr(args, "stability_ms", 0)))
         print(json.dumps(result, indent=2, ensure_ascii=False))
         if getattr(args, "strict", False) and isinstance(result, dict):
-            if result.get("layoutOverflowWarnings") or result.get("viewport", {}).get("hasHorizontalWindowScroll", False):
+            if result.get("layoutOverflowWarnings") or result.get("layoutJitterWarnings") or result.get("viewport", {}).get("hasHorizontalWindowScroll", False):
                 exit_code = 1
     if args.eval:
         eval_result = await evaluate(cdp, session_id, args.eval)
@@ -322,6 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
     parser.add_argument("--navigate", action="store_true", help="Force (re)navigation to target URL, e.g. a hard reload after a fix")
     parser.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection")
+    parser.add_argument("--stability-ms", type=float, default=0, help="Sample DOMRect layout jitter over N ms during --audit-layout")
     parser.add_argument("--connect-timeout", type=float, default=15.0, help="Live CDP handshake timeout (seconds)")
     parser.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     parser.add_argument("--headless", action="store_true", help="Use isolated auto-cleaned headless browser")

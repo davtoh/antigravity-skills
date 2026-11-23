@@ -16,7 +16,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_rollup import sync_pending_commit_shas
+from plan_rollup import sync_and_rollup_plan
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
 
 _GRADE_ORDER = "ABCDF"
@@ -35,8 +35,9 @@ def _grade_cap(steps: int | None, retries: int | None) -> str:
 
 def _worse(grade: str, cap: str) -> bool:
     """True when ``grade`` is better than the rubric ``cap`` (i.e. inflated)."""
-    base = (grade or "A").strip().upper()[:1]
-    return base in _GRADE_ORDER and _GRADE_ORDER.index(base) < _GRADE_ORDER.index(cap)
+    raw = (grade or "A").strip().upper()[:1]
+    base = raw if raw in _GRADE_ORDER else "A"
+    return _GRADE_ORDER.index(base) < _GRADE_ORDER.index(cap)
 
 
 def check_retro_integrity(entries: list[dict[str, Any]]) -> list[str]:
@@ -106,8 +107,7 @@ def _dedupe_cids(cids: list[str], brain: Path | None = None) -> list[str]:
     """Resolve and deduplicate CIDs case-insensitively, dropping >=6-char prefixes of longer CIDs."""
     res = [_resolve_one_cid(brain, str(c).strip()) if brain else str(c).strip() for c in cids if c and str(c).strip()]
     kept = [c for c in res if not any(len(c) >= 6 and o.lower() != c.lower() and o.lower().startswith(c.lower()) for o in res)]
-    seen: set[str] = set()
-    return [c for c in kept if not (c.lower() in seen or seen.add(c.lower()))]
+    return list({c.lower(): c for c in reversed(kept)}.values())[::-1]
 
 
 def _transcript_rows(cids: list[str] | None, brain_dir: str | None) -> list[dict[str, Any]] | None:
@@ -209,14 +209,14 @@ def _dedupe_retro_rows(rows: list[Any]) -> tuple[list[Any], int]:
 
 def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | None = None, brain_dir: str | None = None) -> int:
     """Match retrospective entries missing telemetry to transcripts and persist updates."""
-    loaded = _load_auditor(brain_dir)
-    if not loaded:
+    if not (loaded := _load_auditor(brain_dir)):
         return 0
     ta, brain = loaded
     rel = Path(".system_generated") / "logs" / "transcript.jsonl"
     idx_rows: list[dict[str, Any]] | None = None
     slugs = [ps["slug"]] + [c.get("slug") for c in (ps.get("child_plans") or {}).values() if c.get("slug")]
-    cache, updated, pos = {}, 0, 0
+    cache: dict[str, Any] = {}
+    updated, pos = 0, 0
     for slug in slugs:
         rpath = get_frontier_dir(root) / "plans" / slug / "retrospectives.json"
         if not isinstance(rows := load_json(rpath, []), list):
@@ -265,9 +265,9 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     if not plan_p:
         return None
     _ws, ps = bootstrap_plan(root, plan_p)
-    if backfill:
-        sync_pending_commit_shas(root, ps)
     backfilled = backfill_retrospectives(root, ps, cids, brain_dir) if backfill else 0
+    if backfill:
+        sync_and_rollup_plan(root, ps)
     entries = _load_entries(root, ps)
     learns, escalations = _unresolved(entries)
     skill_learns, tool_gaps = _unresolved_skill_items(entries)
@@ -285,7 +285,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
             ps["followup_cids"] = active_fcids = merged_fcids
             save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
     promote_transcript_findings(rows, skill_learns, escalations)
-    merge_debug_retro_items(root, learns, skill_learns, escalations)
+    merge_debug_retro_items(root, learns, skill_learns, escalations, cids=_dedupe_cids([*entry_cids, *active_fcids]))
     learns, skill_learns = triage_plan_candidates(root, learns, skill_learns)
     return {
         "slug": ps["slug"], "title": ps["title"], "status": ps["status"],
@@ -299,7 +299,7 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
         "next_step": "Run `diagnose.py scan` on touched packages, or invoke `/learn` to promote project/skill candidates.",
     }
 
-from plan_scaffold import (
+from plan_scaffold import (  # noqa: E402, F401
     _build_workspace_digest_core, _write_scaffold_file, format_digest, format_workspace_digest,
     merge_debug_retro_items, promote_transcript_findings, record_followup_cid,
     refresh_stale_retro_entry, triage_plan_candidates, write_learning_scaffold,
@@ -315,10 +315,10 @@ def cmd_digest(root: Path, args: argparse.Namespace) -> int:
     """CLI handler for ``plan_engine.py digest``."""
     backfill, write_scaf = getattr(args, "backfill", False), getattr(args, "write_scaffold", False)
     if getattr(args, "all", False):
-        digest = build_workspace_digest(root, getattr(args, "brain_dir", None), backfill)
-        rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_workspace_digest(digest)
+        w_digest = build_workspace_digest(root, getattr(args, "brain_dir", None), backfill)
+        rendered = json.dumps(w_digest, indent=2) if getattr(args, "json", False) else format_workspace_digest(w_digest)
         if write_scaf:
-            rel = write_workspace_scaffold(root, digest)
+            rel = write_workspace_scaffold(root, w_digest)
             if not getattr(args, "json", False):
                 rendered += f"\n\n[plan_engine] Wrote workspace queue: {rel}"
         print(rendered)
