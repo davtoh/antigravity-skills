@@ -63,7 +63,7 @@ def cmd_discover(root: Path, _args: argparse.Namespace) -> int:
 
 def _check_plan_portability(text: str) -> str | None:
     """Warn if a plan embeds machine-local paths or file:/// URIs."""
-    if re.search(r"(file:///|[A-Za-z]:[/\\]Users[/\\]|\.venv[/\\]Scripts)", text):
+    if re.search(r"(file:///[A-Za-z0-9_%/]|[A-Za-z]:[/\\]Users[/\\]|\.venv[/\\]Scripts)", text):
         return "[plan_engine] PORTABILITY WARNING: Machine-local paths/URIs detected; prefer POSIX repo-relative paths and portable commands."
     return None
 

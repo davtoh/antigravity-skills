@@ -60,7 +60,7 @@ Present **3 tiers** with plain-language analogies *(detail: [`references/sota-pa
 
 ### Phase 4: The SPIKE De-risking Protocol
 
-Before scaffolding unproven Tier 2/3 assumptions, isolate the **Single Riskiest Assumption**, prototype in `.frontier/scratch/<slug>/` (Antigravity: `<appDataDir>/brain/<conversation-id>/scratch/`; [`references/spike-protocol.md`](./references/spike-protocol.md)), measure, then pivot or advance.
+Before scaffolding unproven Tier 2/3 assumptions, isolate the **Single Riskiest Assumption**, prototype in `.frontier/scratch/<slug>/` (Antigravity: `<appDataDir>/brain/<conversation-id>/scratch/`; [`references/spike-protocol.md`](./references/spike-protocol.md)), measure, then pivot or advance. Any SPIKE named in a plan or proposal needs a **SPIKE Spec** (assumption, metric, pass/fail thresholds, decision rule; spike-protocol.md §5).
 
 ### Phase 5: Plan-First Gate, Modularity Budgets & Persistent Memory (`AGENTS.md`)
 
