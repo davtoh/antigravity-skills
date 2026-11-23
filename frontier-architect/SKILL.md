@@ -1,7 +1,7 @@
 ---
 name: frontier-architect
 description: >-
-  Use for designing, planning or architecting features and systems at state-of-the-art quality, and for plan-first, zero-regression execution of multi-step work. Make sure to use it when the user asks for architectural alternatives, system design, product ideation, SPIKE prototypes, a persistent milestone plan ("continue the plan", /frontier-architect continue), or reproduce-first debugging of multi-symptom UI/Docker/runtime regressions with live verification. Adapts depth: lean for simple fixes, Socratic exploration and 3-tier proposals for new designs, sliced verified loops for execution. Works with Claude Sonnet/Opus/Ultra and Gemini.
+  Architecture, design and plan-first engineering. Make sure to use this skill whenever the user wants to design or architect a feature or system, compare architecture options (CRDT vs op-log, REST vs GraphQL), brainstorm novel ideas, prototype a risky idea as a SPIKE, write a multi-milestone plan to execute across sessions, continue a plan (/frontier-architect continue, plan_engine status/next), or reproduce and fix a multi-symptom UI/Docker/runtime regression, even if they never say "architecture". Not for small single-file edits, code review, or splitting large files. Works with Claude Sonnet/Opus/Ultra and Gemini.
 compatibility: >-
   Python 3.10+ standard library. Under Claude Code read references/claude-adapter.md first. Delegates shared diagnostics (cdp_inspect.py, docker_audit.py) to system-diagnostics/scripts/ SSOT in monorepo; run diagnose.py package-skill for standalone .skill distribution.
 ---
