@@ -37,7 +37,8 @@ def normalize_file_eol(path: Path, target_eol: str = "\n") -> tuple[bool, str]:
         text = raw.decode("utf-8", errors="replace")
         current_eol = "\r\n" if "\r\n" in text else "\n"
         if current_eol == target_eol:
-            return False, f"Already using {('CRLF' if target_eol == '\r\n' else 'LF')}: {path.name}"
+            label = "CRLF" if target_eol == "\r\n" else "LF"
+            return False, f"Already using {label}: {path.name}"
 
         normalized = text.replace("\r\n", "\n").replace("\r", "\n")
         if target_eol == "\r\n":

@@ -1,0 +1,22 @@
+[
+  {"query": "we're adding offline sync to our React Native notes app and I'm torn between CRDTs, last-write-wins and an op-log. Can you lay out 3 architecture options with trade-offs and de-risk the riskiest one before we commit?", "should_trigger": true},
+  {"query": "/frontier-architect continue offline_sync_master_roadmap", "should_trigger": true},
+  {"query": "ok the upload page is a mess: progress bar overflows on mobile, the cancel button stays disabled after retry, and the docker container sits at 300% cpu. i need to reproduce all three against the live app first, then fix", "should_trigger": true},
+  {"query": "I have a 9-milestone migration from REST to GraphQL across billing, auth and search. Write a plan I can execute one milestone at a time without losing context between sessions.", "should_trigger": true},
+  {"query": "brainstorm something genuinely novel for our onboarding flow, not just another checklist. prototype the wildest idea in a spike so we know if it's feasible", "should_trigger": true},
+  {"query": "design the event pipeline for our telemetry service. Give me a pragmatic baseline, a SOTA version and a moonshot, and ask me whatever you need first", "should_trigger": true},
+  {"query": "plan_engine says milestone 3 is in_progress, run next and keep going with the verified loop, no need to re-read the whole plan", "should_trigger": true},
+  {"query": "how do we structure a plan-first workflow with atomic slices and closed-loop verification for the checkout rewrite? We use Sonnet for execution and Opus for review.", "should_trigger": true},
+  {"query": "fix the typo in the README where 'recieve' is misspelled", "should_trigger": false},
+  {"query": "backend/jobs/worker.py is 1,800 lines with six queue handlers. Split it into modules without breaking imports", "should_trigger": false},
+  {"query": "TypeError: Cannot read properties of undefined (reading 'map') at Gallery.jsx:42, it throws only when the list is empty. Why?", "should_trigger": false},
+  {"query": "write a SQL query that returns the top 10 customers by revenue per region for last quarter", "should_trigger": false},
+  {"query": "review my PR for the invoice export feature and tell me if it's safe to merge", "should_trigger": false},
+  {"query": "add a loading spinner to the submit button in LoginForm.tsx", "should_trigger": false},
+  {"query": "explain what a CRDT is in two paragraphs, I'm just curious", "should_trigger": false},
+  {"query": "write a CDK stack that creates an S3 bucket with versioning and a lifecycle rule", "should_trigger": false},
+  {"query": "rename the variable userId to accountId across utils.py", "should_trigger": false},
+  {"query": "what's the difference between docker compose up and docker compose run?", "should_trigger": false},
+  {"query": "turn this meeting transcript into action items", "should_trigger": false},
+  {"query": "bump lodash to 4.17.21 and make sure the tests still pass", "should_trigger": false}
+]

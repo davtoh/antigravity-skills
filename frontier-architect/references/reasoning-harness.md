@@ -1,20 +1,20 @@
-# The Flash-to-Opus Cognitive Harness & Context Architecture
+# The Reasoning Harness & Context Architecture (Model-Neutral)
 
-This reference details how to orchestrate high-speed models (such as Gemini Flash) to achieve or surpass heavyweight reasoning quality (such as Claude Opus or Gemini Pro) while maintaining superior speed, token efficiency, and empirical reliability.
+This reference details how to get heavyweight reasoning quality from any model tier (Claude Sonnet, Opus, Ultra; or fast models such as Gemini Flash) by externalizing working memory, isolating research in subagents, and verifying small slices empirically. Tool names follow Antigravity vocabulary; map them with [`claude-adapter.md`](./claude-adapter.md).
 
 ---
 
 ## Table of Contents
-1. [Why Fast Models Underperform Without a Harness](#1-why-fast-models-underperform-without-a-harness)
-2. [The 5 Mechanisms of the Flash-to-Opus Harness](#2-the-5-mechanisms-of-the-flash-to-opus-harness)
+1. [Why Models Underperform Without a Harness](#1-why-models-underperform-without-a-harness)
+2. [The 5 Mechanisms of the Harness](#2-the-5-mechanisms-of-the-harness)
 3. [Context Hygiene & Subagent Map-Reduce](#3-context-hygiene--subagent-map-reduce)
 4. [Closed-Loop Verification Matrix](#4-closed-loop-verification-matrix)
-5. [Tier Escalation: When to Stay on Flash vs. Scale Up](#5-tier-escalation-when-to-stay-on-flash-vs-scale-up)
+5. [Tier Escalation: Which Model Tier Does What](#5-tier-escalation-which-model-tier-does-what)
 6. [AGENTS.md Blueprint for Persistent Project Memory](#6-agentsmd-blueprint-for-persistent-project-memory)
 
 ---
 
-## 1. Why Fast Models Underperform Without a Harness
+## 1. Why Models Underperform Without a Harness
 
 Heavyweight models allocate massive internal compute per token to hold implicit multi-file dependency graphs in working memory. High-speed models (like Gemini Flash running at ~250–300+ tokens/sec) optimize for low-latency emission. Without structural guardrails, a fast model may:
 - Jump straight into writing code before mapping edge cases or state invariants ("premature implementation").
@@ -25,7 +25,7 @@ Heavyweight models allocate massive internal compute per token to hold implicit 
 
 ---
 
-## 2. The 5 Mechanisms of the Flash-to-Opus Harness
+## 2. The 5 Mechanisms of the Harness
 
 ### A. Externalized Pre-Computation (Think-on-Paper First)
 Before modifying any production file on a non-trivial task, write an explicit **Architectural Pre-Flight Block** (either in the plan artifact or concisely in chat):
@@ -49,7 +49,7 @@ Never build an entire module in one giant pass. Decompose execution into ordered
 ### C. Test-and-Compiler-in-the-Loop (Empirical Grounding)
 Never code blind. Treat the local toolchain (`tsc`, `pytest`, `cargo check`, `dart analyze`, `vitest`) as an external reasoning oracle.
 - Write a 50-line slice → run the check in 1 second → self-correct immediately if needed.
-- Three rapid verified loops on Flash are far more reliable than one unverified single-shot pass on any model.
+- Three rapid verified loops on a mid-tier model are far more reliable than one unverified single-shot pass on any model.
 
 ### D. Subagent Map-Reduce (Protecting Primary Context)
 Every raw file read or 500-line stack trace injected into the main thread permanently degrades attention over the rest of the conversation.
@@ -96,19 +96,19 @@ Always match the change type to the right verification mechanism:
 | **Flutter / Mobile UI** | `analyze_files` MCP + Widget test | `widget_inspector`, `get_runtime_errors`, `hot_reload` |
 
 > [!IMPORTANT]
-> **Asynchronous Heavy Suites**: When an integration test suite, Docker build, or E2E run takes more than 5–10 seconds, launch it as a background task (`WaitMsBeforeAsync: 500` or daemon) so you and the user never block workspace momentum.
+> **Asynchronous Heavy Suites**: When an integration test suite, Docker build, or E2E run takes more than 5–10 seconds, launch it as a background task (`WaitMsBeforeAsync: 500` or daemon; Claude: `Bash` with `run_in_background`) so you and the user never block workspace momentum.
 
 ---
 
-## 5. Tier Escalation: When to Stay on Flash vs. Scale Up
+## 5. Tier Escalation: Which Model Tier Does What
 
-| Task Profile | Recommended Tier | Rationale |
-| :--- | :--- | :--- |
-| **Codebase discovery, doc search, file mapping** | **Flash** (via `research` subagent) | High throughput (~300 tok/s); summarizes large repos rapidly. |
-| **Iterative vertical slices (UI, CRUD, state, tests)** | **Flash + Cognitive Harness** | Fast edit-test-fix loops outperform slow monolithic generation. |
-| **Technical SPIKEs & rapid prototyping** | **Flash** | Quickly tests hypotheses and measures real runtime behavior. |
-| **3-Tier SOTA Architecture & Cross-System Synthesis** | **Flash (High Thinking) or Pro / Heavy Model** | Benefits from deeper deliberation when weighing subtle distributed trade-offs. |
-| **Subtle multi-threaded race conditions or deep cryptographic/compiler bugs** | **Pro / Heavy Reasoning Tier + `/boost`** | When empirical tests fail after 2–3 structured hypotheses, advise scaling up the model tier or invoking `/boost`. |
+| Tier | Claude | Antigravity | Role |
+| :--- | :--- | :--- | :--- |
+| **Executor** | **Sonnet** | Flash + harness | Runs the sliced, verified loop: `plan_engine.py status` → `next` → edit → `verify` → `advance`. Zero plan re-read keeps context small. Also discovery via `Explore` agents, SPIKEs, CRUD/UI slices. |
+| **Planner / Reviewer** | **Opus** | Pro / heavy | 3-tier SOTA proposition, `/plan`, Socratic interview, per-milestone review gate, hard bugs (races, compilers, crypto) after 2 failed structured hypotheses. |
+| **Strategist** | **Ultra** (or Opus with extended thinking) | Heavy + `/boost` | Long-horizon **master roadmaps** (`>= 4` milestones): decomposes into child plans, fans out parallel subagents per milestone, owns the review gate (see [`plan-contracts.md`](./plan-contracts.md) "Master roadmap mode"). |
+
+**Escalation rule:** a Sonnet executor that fails the same symptom twice (Anti-Thrash Stop-Loss) stops, reverts speculative edits and hands a Symptom-to-Root-Cause Matrix to an Opus reviewer rather than retrying. De-escalate once the plan is approved: execution of an approved plan never needs the larger tier.
 
 ---
 

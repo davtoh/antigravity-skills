@@ -53,10 +53,10 @@ Authoritative Plan: [`.TODO/latent_defect_and_smell_protocol_plan.md`](.TODO/lat
 
 Always run the full test suites before committing changes:
 ```bash
-# System Diagnostics Suite (74 tests)
+# System Diagnostics Suite
 python -m unittest discover -s system-diagnostics/tests -p "test_*.py"
 
-# Refactor Monolith Suite (135 tests)
+# Refactor Monolith Suite
 python -m unittest discover -s refactor-monolith/tests -p "test_*.py"
 ```
 
@@ -75,3 +75,6 @@ Plan: .TODO/<plan_file>.md#<section>
 Milestone Status: <Slice X of Y / Status>
 Verification: <exact command run>
 ```
+
+# Frontier Architect Suite (also run before committing skill edits)
+python -m unittest discover -s frontier-architect/tests -p "test_*.py"

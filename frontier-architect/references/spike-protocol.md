@@ -41,7 +41,7 @@ Ask: *"If this one thing fails or is too slow/expensive/complex, does the entire
 
 ## 4. SPIKE Execution Rules
 
-1. **Location**: Place SPIKE code in `<appDataDir>\brain\<conversation-id>/scratch/` or an isolated test file (e.g. `spike_test.py` or `spike_test.ts`).
+1. **Location**: Place SPIKE code in `.frontier/scratch/<slug>/` (Antigravity: `<appDataDir>/brain/<conversation-id>/scratch/`) or an isolated test file (e.g. `spike_test.py` or `spike_test.ts`).
 2. **Hardcoded Test Fixtures**: Do not connect real production databases. Use mock data, hardcoded JSON, or synthetic payloads.
 3. **Instrumentation**: Print timestamps or log memory usage explicitly to gather empirical data.
 4. **Summary Format**:

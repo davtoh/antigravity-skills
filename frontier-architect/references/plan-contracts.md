@@ -6,7 +6,7 @@ Consult this reference when **authoring a new plan (Phase 5)** or **closing a pl
 
 ## 1. Dual-Write, Master Roadmap & Runtime Wiring (Phase 5)
 
-- **Dual-Write Registration**: Write identical content to (1) `<appDataDir>/brain/<conversation-id>/<slug>.md` (`ArtifactMetadata`, `RequestFeedback: true`) and (2) `<workspace>/.TODO/<slug>.md` (or `.plans/<slug>.md`, no `ArtifactMetadata`), then run `python "<skill_dir>/scripts/plan_engine.py" init .TODO/<slug>.md`.
+- **Dual-Write Registration** *(Claude Code: write only `.TODO/<slug>.md`, present via `ExitPlanMode`; see [`claude-adapter.md`](./claude-adapter.md))*: Write identical content to (1) `<appDataDir>/brain/<conversation-id>/<slug>.md` (`ArtifactMetadata`, `RequestFeedback: true`) and (2) `<workspace>/.TODO/<slug>.md` (or `.plans/<slug>.md`, no `ArtifactMetadata`), then run `python "<skill_dir>/scripts/plan_engine.py" init .TODO/<slug>.md`.
 - **Master Plans of Plans Threshold**: Create a Master Roadmap (`<slug>_master_roadmap.md`) + Step 1 child plan (`--parent <master_slug> --milestone 1`) whenever a roadmap has `>= 4` milestones, spans `>= 3` subsystems/directories with `>= 10` tasks, or requires cross-layer refactoring (`plan_engine.py init` emits `SCOPE RECOMMENDATION (MASTER PLAN)`). Distill subagent findings into `docs/architecture/`. Consolidate child plans into **2–3 cohesive milestones** (`~40–70 steps` each) instead of fracturing 1–2 file edits across 4+ tiny conversations.
 - **Runtime Wiring & Frozen-Monolith Signal Adapters**: Pair every new coordinator, mapper, or service with explicit live runtime constructor/pool/lifecycle wiring (`PipelineEngine`, `CameraPool`, app startup) in the same step. When freezing an oversized `WARN`/`HARD` file (e.g., `gallery.py`), schedule a small extracted signal/helper adapter so upstream producers populate downstream attributes instead of leaving duck-typed `getattr(..., 0.0)` stubs.
 - **Vertical Slice Parity**: Pair every milestone's implementation edits with a targeted unit test.
@@ -50,3 +50,15 @@ Consult this reference when **authoring a new plan (Phase 5)** or **closing a pl
   2. Before dismissing a failing test as "pre-existing", run `git log -n 3 -- <failing_file>` to confirm it wasn't pushed over budget by an earlier milestone; never tick a Master Step `[x]` while a `test_step*_budgets.py` test fails on a touched file.
   3. On 100% completion: run the full regression suite (verifying cross-step URL/contract parity in earlier `test_step1_*` tests and event isolation like `get_shutdown_event()`), verify zero `file:///` links/secrets and 350/500L compliance, run `diagnose.py changelog add`, provide `git diff main...plan/<slug>`, summarize `LEARNING_SCAFFOLD.md` + Introspective Options, and advise **New Conversation (+)** or `/compact` (or `/frontier-architect continue <parent_slug>`).
   4. When `/learn` runs on `LEARNING_SCAFFOLD.md`, process both `Unresolved /learn candidates` and `Skill & Tooling /learn candidates`, emitting `learning_proposal.md` (`RequestFeedback: true`) before editing any rule or skill.
+
+---
+
+## 4. Master Roadmap Mode (Opus / Ultra tier)
+
+Use for roadmaps with `>= 4` milestones. It layers on the existing `--parent <master_slug> --milestone <N>` mechanism; `plan_engine.py` stays the single source of truth for status, so the Strategist never re-reads plan files.
+
+1. **Decompose (Strategist):** write `<slug>_master_roadmap.md`, then one child plan per milestone group (Step 1 first, `init --parent <master_slug> --milestone 1`). Each child is self-contained (files, contracts, verifier).
+2. **Fan out (parallel):** only for children whose file sets do not overlap, launch one subagent per child (`Agent`, `general-purpose`, `isolation: "worktree"` when they touch the same repo). Each subagent runs the Sonnet loop: `status` → `next` → edit → `verify` → `advance`, and returns only a verdict: milestone, verification output tail, `Suggested Commit`, risks. Children that share files run sequentially.
+3. **Review gate (per milestone, mandatory):** before the master milestone is ticked, a reviewer (Opus; a fresh agent, not the author) receives the child's diff and verification evidence, not the author's conclusion. Pass → `plan_engine.py advance <master_slug> --milestone <N>`. Fail → return findings to the child, count one attempt toward Anti-Thrash Stop-Loss.
+4. **Context discipline:** the Strategist consumes only `status`/`next` output and subagent verdicts, never raw diffs, until the review gate asks for one.
+5. **Unattended:** with no interactive user, the review gate still runs; destructive or outward-facing steps are proposals, not actions.

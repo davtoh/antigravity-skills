@@ -26,3 +26,4 @@ skill-creator/eval-data/
 !/refactor-monolith/
 !/system-diagnostics/
 !/app-debugger/
+.coverage
