@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: design-offline-sync
+expected_outcome: |
+  Gives three distinct tiers (pragmatic baseline, frontier SOTA recommended, novel moonshot), states assumptions instead of waiting for answers, and proposes a SPIKE for the single riskiest assumption.

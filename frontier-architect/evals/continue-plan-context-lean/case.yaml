@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: continue-plan-context-lean
+expected_outcome: |
+  Uses plan_engine.py status/next rather than reading the whole plan, resolves script paths from the skill folder, and does not rely on Gemini-only tool names.
+context:
+  scaffold_script: place-files.sh
