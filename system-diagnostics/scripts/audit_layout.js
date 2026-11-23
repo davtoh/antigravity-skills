@@ -201,6 +201,24 @@
     }
   }
 
+  const brokenImageWarnings = [];
+  for (const img of document.querySelectorAll('img')) {
+    if (brokenImageWarnings.length >= 15) break;
+    const ir = img.getBoundingClientRect();
+    const ics = window.getComputedStyle(img);
+    if (ir.width === 0 || ir.height === 0 || ics.display === 'none' || ics.visibility === 'hidden') continue;
+    const rawSrc = img.getAttribute('src') || img.currentSrc || '';
+    if (!rawSrc || img.naturalWidth === 0) {
+      brokenImageWarnings.push({
+        selector: formatSelector(img),
+        src: sanitizeSrc(rawSrc),
+        naturalWidth: img.naturalWidth,
+        complete: img.complete,
+        warning: !rawSrc ? 'Visible <img> is missing src attribute' : 'Visible <img> failed to load (naturalWidth === 0)',
+      });
+    }
+  }
+
   const report = {
     title: document.title,
     url: window.location.href,
@@ -220,6 +238,7 @@
     layoutOverflowWarnings,
     flushControlWarnings,
     duplicateControlWarnings,
+    brokenImageWarnings,
     layoutJitterWarnings: []
   };
 

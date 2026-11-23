@@ -286,14 +286,10 @@ def promote_transcript_findings(
             _append_unique(skill_learns, f"Transcript audit: repeated file reads (>=3x): {', '.join(reps[:4])}")
         if (rf := int((r.get("failures") or {}).get("read_fail", 0))) >= 2:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {rf} read_fail path-guess errors (use git grep/surface first)")
-        if (ca := int(r.get("changelog_adds", 0))) >= 2:
-            _append_unique(skill_learns, f"Transcript audit: {cid8} ran {ca} changelog add calls in one session")
         if (fb := int(r.get("cdp_live_fallbacks", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {fb} CDP --live->headless fallback(s)")
         if (lf := int(r.get("cdp_live_failures", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
-        if (pm := int(r.get("plan_mode_calls", 0))) >= 1:
-            _append_unique(skill_learns, f"Transcript audit: {cid8} called enter/exit_plan_mode ({pm}x)")
         cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
         cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0) - cli_errs
         if cmd_fails >= 4 and not r.get("has_debug_retro"):

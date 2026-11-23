@@ -266,6 +266,41 @@ def _check_lock_order_inversion(parsed_files: list[tuple[str, ast.AST]]) -> list
     return findings
 
 
+def _check_repo_rollback(parsed_files: list[tuple[str, ast.AST]]) -> list[dict[str, Any]]:
+    """Flag *_repo.py methods with execute() + commit() lacking rollback() in except."""
+    findings: list[dict[str, Any]] = []
+    for rel, tree in parsed_files:
+        if not rel.endswith("_repo.py"):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [
+                sub.func.attr for sub in ast.walk(node)
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+            ]
+            if "execute" not in calls or "commit" not in calls:
+                continue
+            has_rollback = any(
+                isinstance(sub, ast.ExceptHandler)
+                and any(
+                    isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "rollback"
+                    for c in ast.walk(sub)
+                )
+                for sub in ast.walk(node)
+            )
+            if not has_rollback:
+                findings.append({
+                    "rule_id": "REPO_MISSING_ROLLBACK", "category": "BAD_LOGIC",
+                    "severity": "HIGH", "track": "architectural", "file": rel, "line": node.lineno,
+                    "symbol": node.name,
+                    "message": f"Repository write '{node.name}()' calls execute() + commit() without rollback() in except.",
+                    "suggested_fix": "Wrap write in try/except Exception: self._conn.rollback(); raise.",
+                    "fp": f"rollback:{rel}:{node.name}",
+                })
+    return findings
+
+
 def scan_cross_module_defects(parsed_files: list[tuple[str, ast.AST]]) -> list[dict[str, Any]]:
     """Run all cross-module Python AST checks over parsed (rel_path, AST) tuples."""
     if not parsed_files:
@@ -275,4 +310,5 @@ def scan_cross_module_defects(parsed_files: list[tuple[str, ast.AST]]) -> list[d
         _check_missing_attrs(parsed_files, classes, dynamic)
         + _check_clock_taint(parsed_files)
         + _check_lock_order_inversion(parsed_files)
+        + _check_repo_rollback(parsed_files)
     )

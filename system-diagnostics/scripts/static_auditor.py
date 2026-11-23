@@ -226,7 +226,12 @@ def audit_modularity_budgets(
             issues.append({"type": "file_budget_overrun", "file": str(p), "line": 1, "message": f"File has {lines} lines (budget < {max_lines})."})
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and getattr(node, "end_lineno", None):
-                span = (node.end_lineno or node.lineno) - node.lineno + 1
+                seg = ast.get_source_segment(code, node)
+                if seg is not None:
+                    # Exclude blank and comment-only lines so helpful comments never penalize budgets
+                    span = sum(1 for ln in seg.splitlines() if ln.strip() and not ln.lstrip().startswith("#"))
+                else:
+                    span = (node.end_lineno or node.lineno) - node.lineno + 1
                 if span > max_fn_lines:
                     issues.append({"type": "function_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Function '{node.name}' is {span} lines (budget <= {max_fn_lines})."})
             elif isinstance(node, ast.ClassDef):

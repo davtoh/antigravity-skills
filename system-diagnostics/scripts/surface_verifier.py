@@ -188,26 +188,18 @@ def _find_dead_window_reads(js_reads: list[dict[str, str]], js_writes: set[str])
     return dead
 
 
-_BUILTIN_WINDOW_PROPS = frozenset({
-    "location", "document", "navigator", "history", "console", "localStorage",
-    "sessionStorage", "screen", "performance", "visualViewport", "crypto",
-    "indexedDB", "customElements", "innerWidth", "innerHeight", "outerWidth",
-    "outerHeight", "scrollX", "scrollY", "pageXOffset", "pageYOffset",
-    "addEventListener", "removeEventListener", "dispatchEvent", "setTimeout",
-    "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame",
-    "cancelAnimationFrame", "fetch", "alert", "confirm", "prompt", "open",
-    "close", "focus", "blur", "getComputedStyle", "matchMedia", "devicePixelRatio",
-    "onload", "onbeforeunload", "onhashchange", "onresize", "WebSocket", "URL",
-    "Blob", "File", "FormData", "Headers", "Request", "Response", "Event",
-    "CustomEvent", "MutationObserver", "ResizeObserver", "IntersectionObserver",
-    "AbortController", "TextDecoder", "TextEncoder", "Image", "Audio", "Option",
-    "HTMLElement", "parent", "top", "self", "frames", "name", "closed", "opener",
-    "atob", "btoa", "encodeURIComponent", "decodeURIComponent", "parseInt",
-    "parseFloat", "isNaN", "isFinite", "structuredClone", "queueMicrotask",
-    "reportError", "getSelection", "print", "stop", "scrollTo", "scrollBy",
-    "postMessage", "URLSearchParams", "Intl", "Math", "JSON", "Object", "Array",
-    "Number", "String", "Boolean", "Date", "RegExp", "Promise", "Map", "Set",
-})
+_BUILTIN_WINDOW_PROPS = frozenset(
+    "location document navigator history console localStorage sessionStorage screen performance visualViewport "
+    "crypto indexedDB customElements innerWidth innerHeight outerWidth outerHeight scrollX scrollY pageXOffset "
+    "pageYOffset addEventListener removeEventListener dispatchEvent setTimeout clearTimeout setInterval "
+    "clearInterval requestAnimationFrame cancelAnimationFrame fetch alert confirm prompt open close focus blur "
+    "getComputedStyle matchMedia devicePixelRatio onload onbeforeunload onhashchange onresize WebSocket URL Blob "
+    "File FormData Headers Request Response Event CustomEvent MutationObserver ResizeObserver IntersectionObserver "
+    "AbortController TextDecoder TextEncoder Image Audio Option HTMLElement parent top self frames name closed "
+    "opener atob btoa encodeURIComponent decodeURIComponent parseInt parseFloat isNaN isFinite structuredClone "
+    "queueMicrotask reportError getSelection print stop scrollTo scrollBy postMessage URLSearchParams Intl Math "
+    "JSON Object Array Number String Boolean Date RegExp Promise Map Set".split()
+)
 
 
 def _scan_html_contracts(target_path: Path, html_files: list[Path], scan_html_fn: Any) -> tuple[set[str], list[dict[str, str]], list[dict[str, Any]], list[dict[str, str]]]:
@@ -260,6 +252,64 @@ def _collect_js_contracts(
     }
 
 
+_HTML_SCRIPT_SRC_RE = re.compile(r"""<script\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"]""", re.IGNORECASE)
+_JS_WIN_ASSIGN_RE = re.compile(r"""\bwindow\.([a-zA-Z0-9_]+)\s*=""")
+_JS_WIN_READ_RE = re.compile(r"""\b(?:const|let|var)\s+[a-zA-Z0-9_]+\s*=\s*window\.([a-zA-Z0-9_]+)\s*[;\n]""")
+_JS_QUERY_URL_RE = re.compile(r"""['"`](/[^'"`\s?]+)\?([a-zA-Z0-9_&=]+)""" )
+_PY_ROUTE_DEF_RE = re.compile(
+    r"""@router\.(?:get|post|put|delete|patch)\(\s*['"]([^'"]+)['"][^)]*\)\s*(?:async\s+)?def\s+[a-zA-Z0-9_]+\s*\(([^)]*)\)""",
+    re.DOTALL,
+)
+
+
+def _check_script_wrap_order(
+    html_files: list[Path], js_texts: list[tuple[str, str]], target_path: Path
+) -> list[dict[str, str]]:
+    """Verify JS files wrapping `window.<fn>` load after the JS file that defines it."""
+    definers: dict[str, str] = {}
+    wrappers: list[tuple[str, str]] = []
+    for rel, cleaned in js_texts:
+        name = Path(rel).name
+        assigned, read_before = set(_JS_WIN_ASSIGN_RE.findall(cleaned)), set(_JS_WIN_READ_RE.findall(cleaned))
+        for fn in assigned - read_before:
+            definers.setdefault(fn, name)
+        wrappers.extend((fn, name) for fn in assigned & read_before)
+    warnings: list[dict[str, str]] = []
+    for hp in html_files:
+        order = [Path(s.split("?", 1)[0]).name for s in _HTML_SCRIPT_SRC_RE.findall(hp.read_text(encoding="utf-8", errors="replace"))]
+        pos, hrel = {n: i for i, n in enumerate(order)}, _rel_path(hp, target_path)
+        for fn, wrap_js in wrappers:
+            def_js = definers.get(fn)
+            if def_js and def_js in pos and wrap_js in pos and pos[wrap_js] < pos[def_js]:
+                warnings.append({"symbol": fn, "wrapper": wrap_js, "definer": def_js, "file": hrel})
+    return warnings
+
+
+def _check_query_param_parity(py_items: list[tuple[str, str]], js_texts: list[tuple[str, str]]) -> list[dict[str, str]]:
+    """Warn when JS query-string params do not match any parameter on the backend route handler."""
+    route_params: list[tuple[re.Pattern[str], set[str], bool]] = []
+    for _, py_text in py_items:
+        prefix = extract_router_prefix(py_text)
+        for raw_p, raw_args in _PY_ROUTE_DEF_RE.findall(py_text):
+            full = (prefix + raw_p) if prefix and not raw_p.startswith(prefix) else raw_p
+            names = {a.strip().split(":")[0].split("=")[0].lstrip("*") for a in raw_args.split(",") if a.strip()}
+            route_params.append((_compile_route_regex(full), names, "**" in raw_args))
+    warnings: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for rel, cleaned in js_texts:
+        for path, qs in _JS_QUERY_URL_RE.findall(cleaned):
+            norm = path.rstrip("/") or "/"
+            matched = [(n, kw) for pat, n, kw in route_params if pat.match(norm)]
+            if not matched or any(kw for _, kw in matched):
+                continue
+            accepted = set().union(*(n for n, _ in matched))
+            for qp in (kv.split("=", 1)[0] for kv in qs.split("&") if kv):
+                if qp not in accepted and qp != "t" and (norm, qp, rel) not in seen:
+                    seen.add((norm, qp, rel))
+                    warnings.append({"path": norm, "param": qp, "file": rel})
+    return warnings
+
+
 def verify_surface_contracts(
     target_path: Path,
     files: dict[str, list[Path]],
@@ -281,15 +331,19 @@ def verify_surface_contracts(
         html_buttons, js["queried"], js["dyn_ids"], js_has_tab_delegation=js["has_tab_delegation"]
     )
     resp_mismatches = check_response_key_contracts(py_items, js["texts"], scan_py_fn, extract_router_prefix)
-    total = len(unmatched) + len(dead_reads) + len(missing_ids) + len(missing_handlers) + len(dead_btns) + len(dupe_labels) + len(resp_mismatches)
+    script_warns = _check_script_wrap_order(files["html"], js["texts"], target_path)
+    qp_warns = _check_query_param_parity(py_items, js["texts"])
+    total = len(unmatched) + len(dead_reads) + len(missing_ids) + len(missing_handlers) + len(dead_btns) + len(dupe_labels) + len(resp_mismatches) + len(script_warns)
     return {
         "unmatched_fetches": unmatched, "dead_window_reads": dead_reads, "missing_html_ids": missing_ids,
         "missing_inline_handlers": missing_handlers, "dead_buttons": dead_btns,
         "duplicate_button_labels": dupe_labels, "response_key_mismatches": resp_mismatches,
+        "script_order_warnings": script_warns, "query_param_warnings": qp_warns,
         "summary": {
             "unmatched_fetches": len(unmatched), "dead_window_reads": len(dead_reads),
             "missing_html_ids": len(missing_ids), "missing_inline_handlers": len(missing_handlers),
             "dead_buttons": len(dead_btns), "duplicate_button_labels": len(dupe_labels),
-            "response_key_mismatches": len(resp_mismatches), "total_mismatches": total,
+            "response_key_mismatches": len(resp_mismatches), "script_order_warnings": len(script_warns),
+            "query_param_warnings": len(qp_warns), "total_mismatches": total,
         },
     }

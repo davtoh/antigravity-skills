@@ -183,7 +183,8 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
     elif not is_cdp_noise and "[CDP] Live connection failed" in content:
         acc["cdp_live_failures"] += 1
     fail = classify_result(content, status, call_cmd)
-    if "changelog add" in call_cmd and ("[changelog add] Added entry" in content or (kind != "SYSTEM_MESSAGE" and not fail)) and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", call_cmd):
+    is_bg_running = kind == "GENERIC" and status == "RUNNING"
+    if "changelog add" in call_cmd and not is_bg_running and ("[changelog add] Added entry" in content or (kind != "SYSTEM_MESSAGE" and not fail)) and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", call_cmd):
         acc["changelog_adds"] += 1
     if fail == "audit_catch":
         acc["audit_catches"] += 1

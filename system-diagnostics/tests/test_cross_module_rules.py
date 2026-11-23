@@ -60,7 +60,30 @@ class TestCrossModuleAndDiagnosticsUpgrades(unittest.TestCase):
         self.assertIn("layoutJitterWarnings", js)
         self.assertIn("flushControlWarnings", js)
         self.assertIn("duplicateControlWarnings", js)
+        self.assertIn("brokenImageWarnings", js)
         self.assertIn("__FRONTIER_STABILITY_MS__", js)
+
+    def test_repo_missing_rollback_ast_rule(self):
+        bad_repo = (
+            "class BadRepo:\n"
+            "    def write(self, val):\n"
+            "        self._conn.execute('INSERT INTO t VALUES (?)', (val,))\n"
+            "        self._conn.commit()\n"
+        )
+        good_repo = (
+            "class GoodRepo:\n"
+            "    def write(self, val):\n"
+            "        try:\n"
+            "            self._conn.execute('INSERT INTO t VALUES (?)', (val,))\n"
+            "            self._conn.commit()\n"
+            "        except Exception:\n"
+            "            self._conn.rollback()\n"
+            "            raise\n"
+        )
+        bad_rules = {d["rule_id"] for d in scan_cross_module_defects([("foo_repo.py", ast.parse(bad_repo))])}
+        good_rules = {d["rule_id"] for d in scan_cross_module_defects([("bar_repo.py", ast.parse(good_repo))])}
+        self.assertIn("REPO_MISSING_ROLLBACK", bad_rules)
+        self.assertNotIn("REPO_MISSING_ROLLBACK", good_rules)
 
     def test_trace_recorder_skips_unittest_by_default_and_resolves_id(self):
         with patch.dict(os.environ, {}, clear=False):

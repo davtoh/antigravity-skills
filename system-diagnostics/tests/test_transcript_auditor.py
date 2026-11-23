@@ -360,6 +360,16 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["audit_catches"], 1)
         self.assertEqual(row["changelog_adds"], 1)
 
+    def test_background_changelog_add_not_double_counted(self) -> None:
+        _write(self.brain, "bg-changelog-1", [
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --title Done"})),
+            {"type": "GENERIC", "content": "Background command started. TaskId: task-99\n", "status": "RUNNING"},
+            {"type": "SYSTEM_MESSAGE", "content": "sender=task-99\nCommand exited with code 0.\n[changelog add] Added entry to CHANGELOG.md\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "bg-changelog-1")
+        self.assertEqual(row["changelog_adds"], 1)
+        self.assertEqual(row["total_failures"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

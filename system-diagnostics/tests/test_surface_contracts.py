@@ -145,3 +145,26 @@ class TestSurfaceContracts(unittest.TestCase):
         notes: list[str] = []
         tc.append_row_notes({"cid": "8c26213a", "failures": {"cmd_fail": 4}, "total_failures": 4, "tooling_cli_fails": 1, "failure_samples": ["s1 pytest: FAIL"], "parallel_same_file_edits": [], "subagents": []}, "8c26213a", notes)
         self.assertFalse(any("unescalated thrash" in n for n in notes))
+
+    def test_script_wrap_order_and_query_param_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text(
+                '<script src="/static/nav_tabs_manager.js"></script><script src="/static/app.js"></script>',
+                encoding="utf-8",
+            )
+            (root / "app.js").write_text("window.switchTab = function(t) { return t; };", encoding="utf-8")
+            (root / "nav_tabs_manager.js").write_text(
+                "const orig = window.switchTab; window.switchTab = (t) => orig(t);\n"
+                "fetch('/analytics/heatmap?camera_id=cam_1&bogus_param=2');\n",
+                encoding="utf-8",
+            )
+            (root / "api.py").write_text(
+                'from fastapi import APIRouter\nrouter = APIRouter()\n'
+                '@router.get("/analytics/heatmap")\ndef hm(camera_id: str = ""): return {}\n',
+                encoding="utf-8",
+            )
+            files = walk_source_files(root)
+            res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
+            self.assertEqual([w["symbol"] for w in res["script_order_warnings"]], ["switchTab"])
+            self.assertEqual([(w["path"], w["param"]) for w in res["query_param_warnings"]], [("/analytics/heatmap", "bogus_param")])
