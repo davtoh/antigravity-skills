@@ -363,10 +363,17 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("No historical decisions", out)
 
-    @patch("subprocess.run")
-    def test_cli_verify(self, mock_subproc):
+    @staticmethod
+    def _make_popen_mock(returncode: int, stdout_text: str) -> MagicMock:
+        proc = MagicMock()
+        proc.stdout = io.StringIO(stdout_text)
+        proc.wait.return_value = returncode
+        return proc
+
+    @patch("subprocess.Popen")
+    def test_cli_verify(self, mock_popen):
         self._run_cli(["init", "sample_plan"])
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="Ran 8 tests in 0.05s\n\nOK\n", stderr="")
+        mock_popen.return_value = self._make_popen_mock(0, "Ran 8 tests in 0.05s\n\nOK\n")
 
         code, out = self._run_cli(["verify", "sample_plan"])
         self.assertEqual(code, 0)
@@ -377,7 +384,7 @@ class TestPlanEngineCLI(unittest.TestCase):
         self.assertEqual(ws["verification_baseline"]["failed_tests"], 0)
 
         # Test failure parsing
-        mock_subproc.return_value = MagicMock(returncode=1, stdout="FAILED (failures=2, errors=1)\n", stderr="")
+        mock_popen.return_value = self._make_popen_mock(1, "FAILED (failures=2, errors=1)\n")
         code, _ = self._run_cli(["verify", "sample_plan"])
         self.assertEqual(code, 1)
         ws = load_json(get_frontier_dir(self.root) / "state.json")
@@ -386,45 +393,47 @@ class TestPlanEngineCLI(unittest.TestCase):
         # Test --cmd alias and baseline fallback on a plan without explicit verifiers
         no_ver_plan = self.root / ".TODO" / "no_ver_plan.md"
         no_ver_plan.write_text("# Bare Plan\n### Milestone 1: Do\n- [ ] Task\n", encoding="utf-8")
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="Ran 3 tests\n\nOK\n", stderr="")
+        mock_popen.return_value = self._make_popen_mock(0, "Ran 3 tests\n\nOK\n")
         code, out = self._run_cli(["verify", "no_ver_plan", "--cmd", "pytest tests/custom.py"])
         self.assertEqual(code, 0)
         self.assertIn("Running verifier: pytest tests/custom.py", out)
         # Subsequent verify without --cmd should reuse stored baseline command
+        mock_popen.return_value = self._make_popen_mock(0, "Ran 3 tests\n\nOK\n")
         code, out = self._run_cli(["verify", "no_ver_plan"])
         self.assertEqual(code, 0)
         self.assertIn("Running verifier: pytest tests/custom.py", out)
 
-    @patch("subprocess.run")
-    def test_cli_verify_pytest_counts_and_windows_norm(self, mock_subproc):
+    @patch("subprocess.Popen")
+    def test_cli_verify_pytest_counts_and_windows_norm(self, mock_popen):
         self._run_cli(["init", "sample_plan"])
-        mock_subproc.return_value = MagicMock(
-            returncode=1, stdout="=== 12 passed, 2 failed, 1 error in 0.42s ===\n", stderr=""
+        mock_popen.return_value = self._make_popen_mock(
+            1, "=== 12 passed, 2 failed, 1 error in 0.42s ===\n"
         )
         code, _ = self._run_cli(["verify", "sample_plan", "--command", ".venv/Scripts/python.exe -m pytest tests/unit"])
         self.assertEqual(code, 1)
         ws = load_json(get_frontier_dir(self.root) / "state.json")
         self.assertEqual(ws["verification_baseline"]["passed_tests"], 12)
         self.assertEqual(ws["verification_baseline"]["failed_tests"], 3)
-        called_cmd = mock_subproc.call_args[0][0]
+        called_cmd = mock_popen.call_args[0][0]
         if os.name == "nt":
             self.assertTrue(called_cmd.startswith(r".venv\Scripts\python.exe -m pytest tests/unit"))
 
-    @patch("subprocess.run")
-    def test_cli_verify_resolves_bare_python_and_leading_env(self, mock_subproc):
+    @patch("subprocess.Popen")
+    def test_cli_verify_resolves_bare_python_and_leading_env(self, mock_popen):
         self._run_cli(["init", "sample_plan"])
         venv_py = self.root / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
         venv_py.parent.mkdir(parents=True, exist_ok=True)
         venv_py.write_text("", encoding="utf-8")
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="Ran 2 tests\n\nOK\n", stderr="")
+        mock_popen.return_value = self._make_popen_mock(0, "Ran 2 tests\n\nOK\n")
 
         code, _ = self._run_cli(["verify", "sample_plan", "--command", "MPLBACKEND=Agg python -m unittest tests/t.py"])
         self.assertEqual(code, 0)
-        called_cmd = mock_subproc.call_args[0][0]
-        called_env = mock_subproc.call_args[1]["env"]
+        called_cmd = mock_popen.call_args[0][0]
+        called_env = mock_popen.call_args[1]["env"]
         expected_prefix = r".venv\Scripts\python.exe" if os.name == "nt" else ".venv/bin/python"
         self.assertTrue(called_cmd.startswith(f"{expected_prefix} -m unittest tests/t.py"))
         self.assertEqual(called_env["MPLBACKEND"], "Agg")
+        self.assertEqual(called_env["PYTHONUNBUFFERED"], "1")
 
     def test_cross_platform_path_handling(self):
         rel_posix = self.plan_path.relative_to(self.root).as_posix()
@@ -472,7 +481,7 @@ class TestPlanEngineCLI(unittest.TestCase):
         self._run_cli(["advance", "sample_plan", "--milestone", "1"])
         code, adv_out = self._run_cli(["advance", "sample_plan", "--milestone", "2"])
         self.assertEqual(code, 0)
-        self.assertIn("Master Sync (Auto): Marked parent 'master_roadmap' Milestone 1 complete", adv_out)
+        self.assertIn("Master Sync (Auto): Parent 'master_roadmap' Milestone 1 completed -> Master Roadmap is 100% COMPLETE!", adv_out)
 
         parent_state = load_json(get_frontier_dir(self.root) / "plans" / "master_roadmap" / "state.json")
         self.assertEqual(parent_state["child_plans"]["1"]["status"], "completed")

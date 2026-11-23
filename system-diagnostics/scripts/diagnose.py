@@ -31,6 +31,7 @@ import runtime_runner
 import skill_packager
 import arch_mapper
 import transcript_auditor
+import debug_retro
 import diagnose_cli
 
 # Configure UTF-8 stdout/stderr across all platforms
@@ -132,11 +133,17 @@ def cmd_tests(args: argparse.Namespace) -> int:
     start_dir = "tests" if (target_path / "tests").is_dir() else "."
     test_args = args.args if args.args else ["discover", "-s", start_dir, "-p", "test_*.py"]
     cmd = [py_bin, "-m", "unittest", *test_args]
+    raw_timeout = getattr(args, "timeout", 180.0)
+    timeout = raw_timeout if (raw_timeout is not None and raw_timeout > 0) else None
 
     print(f"=== Diagnose Tests: Test Suite Runner (Interpreter: {py_bin}) ===")
     print(f"Command: {' '.join(cmd)}\n")
-    res = subprocess.run(cmd, cwd=str(target_path))
-    return res.returncode
+    try:
+        res = subprocess.run(cmd, cwd=str(target_path), timeout=timeout)
+        return res.returncode
+    except subprocess.TimeoutExpired:
+        print(f"[TIMEOUT] Test runner exceeded {timeout}s — check for un-signaled events or blocking I/O.", file=sys.stderr)
+        return 124
 
 def cmd_audit(args: argparse.Namespace) -> int:
     """Execute static quality, defect, and code smell audit."""
@@ -246,7 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose_cli.register_core_parsers(sub)
     for mod in (
         probe_runner, static_auditor, shadow_prober, changelog_manager,
-        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor,
+        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor, debug_retro,
     ):
         reg = getattr(mod, "register_parsers", None) or getattr(mod, "register_parser")
         reg(sub)
@@ -277,6 +284,7 @@ def main() -> int:
         "package-skill": skill_packager.cmd_package_skill,
         "arch-map": arch_mapper.cmd_arch_map,
         "transcript-audit": transcript_auditor.cmd_transcript_audit,
+        "debug-retro": debug_retro.cmd_debug_retro,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

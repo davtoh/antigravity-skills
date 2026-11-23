@@ -24,8 +24,9 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" status [<
 # Emit ONLY the active milestone's checklist items and verifiers (Zero-Token Slicer)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<plan_or_slug>] --root .
 
-# Run verification command (auto-normalizes leading .venv/bin/python on Windows & parses unittest/pytest counts)
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" --root .
+# Run verification command (auto-normalizes leading .venv/bin/python on Windows, streams live, aborts at --timeout 180s [0 disables] with exit 124)
+# If exit 124 shows active test progress in partial output, re-run slow suites with --timeout 600 (or --timeout 0); otherwise debug deadlocks / blocking I/O.
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" [--timeout 180] --root .
 
 # Advance completed milestone (patches [ ] -> [x] in-place, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--no-sync-parent] --root .
@@ -45,11 +46,15 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path 
 # Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .
 
-# End-of-plan digest: retro integrity, dual-axis /learn candidates, optional transcript backfill & LEARNING_SCAFFOLD.md
+# End-of-plan digest: retro integrity, dual-axis /learn candidates, optional transcript backfill & LEARNING_SCAFFOLD.md (use --all for workspace LEARN_QUEUE.md)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest <plan_or_slug> --cids <conv_id...> --backfill --write-scaffold --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" digest --all --backfill --write-scaffold --root .
 
 # Deterministic transcript audit (steps, failures, repeated reads, corrections, parallel edits); --cids accepts 8-char prefixes or comma-separated IDs
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" transcript-audit --cids <conv_id...> [--json] [--brain-dir <dir>]
+
+# Reconcile stale in_progress states, duplicate milestones, and uncheckboxed bullets
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" reconcile --root . [--apply]
 
 # Lookup historical plans, commit SHAs, and retrospective lessons
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" lookup "<keyword_or_sha>" --root .
@@ -61,13 +66,13 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" lookup "<
 
 ```bash
 # Attach to active visible Chrome tab (--live) and audit DOM bounding boxes & overflow
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --audit-layout --selectors "#app,.card"
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --capture-runtime --audit-layout --selectors "#app,.card"
 
-# Evaluate multi-statement JS in page context via --eval-file (avoids PowerShell quote stripping)
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --eval-file scratch/probe_dom.js
+# Evaluate multi-statement JS in page context via --eval-file (captures console/JS exceptions by default; pass --no-capture-runtime to opt out)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --live --capture-runtime --eval-file scratch/probe_dom.js
 
 # Isolated headless inspection with screenshot capture
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --headless --audit-layout --screenshot scratch/ui.jpg
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url http://localhost:8000 --headless --capture-runtime --audit-layout --screenshot scratch/ui.jpg
 ```
 
 ---

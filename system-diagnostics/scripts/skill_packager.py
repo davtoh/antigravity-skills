@@ -21,6 +21,7 @@ SKILLS_ROOT = SCRIPTS_DIR.parent.parent
 SSOT_BUNDLE_MAP: dict[str, tuple[str, ...]] = {
     "frontier-architect": (
         "cdp_inspect.py",
+        "cdp_runtime.py",
         "cdp_transport.py",
         "audit_layout.js",
         "docker_audit.py",

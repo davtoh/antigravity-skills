@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -95,6 +96,57 @@ def _parse_test_counts(output: str) -> tuple[int, int]:
     return passed, failed
 
 
+def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
+    """Terminate a timed-out verifier process and its children cross-platform."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+    try:
+        proc.kill()
+        proc.wait(timeout=2.0)
+    except Exception:
+        pass
+
+
+def _stream_verifier_process(
+    exec_cmd: str, root: Path, run_env: dict[str, str], timeout: float | None
+) -> tuple[int, str]:
+    """Stream verifier stdout/stderr live while capturing output and enforcing timeout."""
+    chunks: list[str] = []
+    proc = subprocess.Popen(
+        exec_cmd, shell=True, cwd=root, env=run_env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+
+    def _drain() -> None:
+        if proc.stdout is None:
+            return
+        try:
+            for line in proc.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                chunks.append(line)
+        finally:
+            proc.stdout.close()
+
+    reader = threading.Thread(target=_drain, daemon=True)
+    reader.start()
+    try:
+        rc = proc.wait(timeout=timeout)
+        reader.join(timeout=2.0)
+        return rc, "".join(chunks)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(proc)
+        reader.join(timeout=2.0)
+        msg = (
+            f"\n[TIMEOUT] Verifier exceeded {timeout}s — if partial output shows active test progress, "
+            "re-run with --timeout 600 (or --timeout 0); otherwise check for un-signaled events or blocking I/O.\n"
+        )
+        sys.stdout.write(msg)
+        sys.stdout.flush()
+        return 124, "".join(chunks) + msg
+
+
 def cmd_verify(root: Path, args: argparse.Namespace) -> int:
     """Run verification command and update baseline ledger."""
     cmd = args.command
@@ -110,17 +162,19 @@ def cmd_verify(root: Path, args: argparse.Namespace) -> int:
         return 1
     extra_env, stripped_cmd = _extract_leading_env(cmd)
     exec_cmd = _normalize_verify_cmd(stripped_cmd, root)
-    run_env = {**os.environ, **extra_env} if extra_env else None
-    print(f"[plan_engine] Running verifier: {exec_cmd}")
-    proc = subprocess.run(exec_cmd, shell=True, cwd=root, env=run_env, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    output = (proc.stdout or "") + (proc.stderr or "")
-    print(output)
+    run_env = dict(os.environ)
+    run_env.setdefault("PYTHONUNBUFFERED", "1")
+    run_env.update(extra_env)
+    raw_timeout = getattr(args, "timeout", 180.0)
+    timeout = raw_timeout if (raw_timeout is not None and raw_timeout > 0) else None
+    print(f"[plan_engine] Running verifier: {exec_cmd}", flush=True)
+    rc, output = _stream_verifier_process(exec_cmd, root, run_env, timeout)
     passed, failed = _parse_test_counts(output)
     fdir = get_frontier_dir(root)
     ws = load_json(fdir / "state.json", {})
     ws["verification_baseline"] = {
-        "command": cmd, "last_exit_code": proc.returncode,
+        "command": cmd, "last_exit_code": rc,
         "passed_tests": passed, "failed_tests": failed, "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     save_json(fdir / "state.json", ws)
-    return proc.returncode
+    return rc

@@ -18,7 +18,10 @@ def register_ui_parser(sub: Any) -> None:
     mode.add_argument("--live", action="store_true", help="Inspect visible live Chrome tab")
     mode.add_argument("--headless", action="store_true", default=None, help="Run headless Chrome (default unless --live)")
     p.add_argument("--no-fallback-headless", dest="fallback_headless", action="store_false", help="Fail if live browser unreachable")
+    p.add_argument("--allow-headless-fallback", action="store_true", help="Permit fallback to isolated headless Chrome when --live fails")
     p.set_defaults(fallback_headless=True)
+    p.add_argument("--capture-runtime", dest="capture_runtime", action="store_true", default=None, help="Capture console errors, uncaught exceptions, HTTP>=400, and localStorage (default ON with --eval/--eval-file)")
+    p.add_argument("--no-capture-runtime", dest="capture_runtime", action="store_false", help="Disable runtime exception capture when running --eval/--eval-file")
     p.add_argument("--audit-layout", action="store_true", help="Audit bounding box overflow")
     p.add_argument("--selectors", default=None, help="Comma-separated CSS selectors to measure")
     p.add_argument("--screenshot", default=None, help="Path to save JPEG screenshot")
@@ -28,6 +31,7 @@ def register_ui_parser(sub: Any) -> None:
     p.add_argument("--click", default=None, help="CSS selector to click before auditing")
     p.add_argument("--window-size", default="1440x900", help="Viewport size WxH (default: 1440x900)")
     p.add_argument("--wait", type=float, default=1.5, help="Seconds to wait before inspection (default: 1.5)")
+    p.add_argument("--connect-timeout", type=float, default=None, help="Live CDP WebSocket handshake timeout (seconds)")
     p.add_argument("--port", type=int, default=None, help="Debugging port override")
     p.add_argument("--strict", action="store_true", help="Exit code 1 if layout audit contains warnings or horizontal window scroll")
     p.add_argument("--list-tabs", action="store_true", help="List active Chrome tabs")
@@ -50,6 +54,7 @@ def register_core_parsers(sub: Any) -> None:
 
     p_test = sub.add_parser("tests", help="Run automated tests using discovered virtualenv")
     p_test.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_test.add_argument("--timeout", type=float, default=180.0, help="Max seconds before aborting hung suite (default: 180; 0 disables)")
     p_test.add_argument("args", nargs="*", default=[], help="Arguments passed to test runner")
 
     p_all = sub.add_parser("all", help="Unified 3-Tier Diagnostic Audit in 1 command")
@@ -68,9 +73,15 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     for attr, flag in (
         ("list_tabs", "--list-tabs"), ("audit_layout", "--audit-layout"),
         ("navigate", "--navigate"), ("strict", "--strict"),
+        ("allow_headless_fallback", "--allow-headless-fallback"),
     ):
         if getattr(args, attr, False):
             cmd.append(flag)
+    cap_rt = getattr(args, "capture_runtime", None)
+    if cap_rt is True or (cap_rt is None and (getattr(args, "eval", None) or getattr(args, "eval_file", None))):
+        cmd.append("--capture-runtime")
+    elif cap_rt is False:
+        cmd.append("--no-capture-runtime")
     for attr, flag in (
         ("selectors", "--selectors"), ("screenshot", "--screenshot"),
         ("eval", "--eval"), ("eval_file", "--eval-file"),
@@ -78,10 +89,13 @@ def build_ui_command(scripts_dir: Path, target_url: str | None, args: argparse.N
     ):
         if val := getattr(args, attr, None):
             cmd.extend([flag, str(val)])
-    for attr, flag in (("wait", "--wait"), ("port", "--port")):
+    for attr, flag in (("wait", "--wait"), ("connect_timeout", "--connect-timeout"), ("port", "--port")):
         if (val := getattr(args, attr, None)) is not None:
             cmd.extend([flag, str(val)])
-    if getattr(args, "fallback_headless", True) is False:
+    no_fallback = (getattr(args, "fallback_headless", True) is False) or (
+        getattr(args, "live", False) and not getattr(args, "allow_headless_fallback", False)
+    )
+    if no_fallback:
         cmd.append("--no-fallback-headless")
     if not getattr(args, "live", False):
         cmd.append("--headless")

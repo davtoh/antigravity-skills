@@ -134,6 +134,40 @@
         "Applies surgical fix guided by defect's suggested_fix and verifies Green resolution",
         "Yields structural defects to /frontier-architect and /grill-me when classified as track: architectural"
       ]
+    },
+    {
+      "id": 11,
+      "prompt": "We finished a 22-step cross-platform Mac RCA with 1 retry and wrote a reusable CDP verification script in scratch/ to prove the fix. How should we close out the debugging session and handle the scratch script?",
+      "expected_output": "Records debug-retro (triggered at >= 20 steps, >= 1 retry, or Mac/cross-platform RCA) so plan_engine.py digest folds DEBUG_RETRO.md into LEARNING_SCAFFOLD.md and LEARN_QUEUE.md, runs diagnose.py transcript-audit --latest 1, appends Continuous Learning & Introspective Options, and promotes the reusable CDP script into a Chrome-gated tests/test_*_e2e*.py test or registered probe (run_diagnose.py probe save).",
+      "files": [],
+      "expectations": [
+        "Records debug-retro for >= 20 steps, >= 1 retry, or Mac/cross-platform RCA",
+        "Documents that plan_engine.py digest folds DEBUG_RETRO.md into LEARNING_SCAFFOLD.md and LEARN_QUEUE.md",
+        "Promotes reusable CDP/runtime verification scripts into Chrome-gated tests/test_*_e2e*.py or run_diagnose.py probe save instead of leaving them orphaned in scratch/",
+        "Appends Continuous Learning & Introspective Options and runs diagnose.py transcript-audit --latest 1"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "We were escalated here from /frontier-architect Phase 6.5 after 2 failed test attempts on a cache TTL bug where unit tests passed with injected now=100.0 stubs but production fails due to time.monotonic() vs time.time() mismatch. How should app-debugger bridge the plan and verify the fix?",
+      "expected_output": "Follows Mid-Plan Escalation Bridge by reading .frontier/plans/<slug>/ contracts and passing --plan <slug> to run_diagnose.py debug-retro so verified root causes flow into LEARNING_SCAFFOLD.md, and runs an unmocked real-clock boundary check verifying single clock-domain parity (time.monotonic() vs time.time()) without hiding behind synthetic now=100.0 stubs.",
+      "files": [],
+      "expectations": [
+        "Reads .frontier/plans/<slug>/ contracts and passes --plan <slug> to run_diagnose.py debug-retro when escalated from /frontier-architect Phase 6.5",
+        "Runs an unmocked real-clock boundary check verifying single clock-domain parity (time.monotonic() vs time.time()) instead of relying solely on synthetic now=100.0 stubs",
+        "Applies Pending User-Verification Gate on retry >= 1 before running diagnose.py changelog add"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Start a new /app-debugger session in a workspace that might not have DEBUG_RETRO.md yet, run two targeted test modules safely against hangs, and close out a 25-step session tied to plan 'cache-fix' in the exact required order.",
+      "expected_output": "Checks Test-Path .frontier/DEBUG_RETRO.md; Test-Path .diagnostics/DEBUG_RETRO.md before calling read_file to avoid read_fail turns, runs targeted modules via run_diagnose.py tests tests.test_mod1 tests.test_mod2 with the 180s --timeout guard, and executes (1) debug-retro --plan cache-fix (auto-persisting --cid into followup_cids and backfilling LEARNING_SCAFFOLD.md) before (2) diagnose.py transcript-audit --latest 1.",
+      "files": [],
+      "expectations": [
+        "Checks existence with Test-Path before calling read_file on DEBUG_RETRO.md to avoid read_fail turns",
+        "Runs targeted module tests through run_diagnose.py tests tests.test_mod1 tests.test_mod2 to enforce the 180s --timeout guard",
+        "Executes debug-retro --plan <slug> before transcript-audit --latest 1 at turn closeout so followup_cids and LEARNING_SCAFFOLD.md are backfilled first"
+      ]
     }
   ]
 }

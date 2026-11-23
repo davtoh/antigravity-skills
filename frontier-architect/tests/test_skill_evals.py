@@ -78,6 +78,20 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("non-mocked", "unconfigured/empty/fallback"), (r"non-mocked branch gate", r"diagnose\.py scan --path \."), "Non-Mocked Branch Gate & scan"),
     (("git diff main...plan/",), (r"git diff main\.\.\.plan/<slug>", r"changelog add"), "Final sign-off diff & changelog"),
     (("/learn", "continuous learning"), (r"/learn|continuous learning",), "Continuous learning feed to /learn"),
+    (("2-3 cohesive milestones", "40-70 steps"), (r"2[–-]3 cohesive milestones", r"40[–-]70 steps"), "Consolidated child plan sizing"),
+    (("--no-sync-parent", "auto-advances linked parent"), (r"auto-advance any completed child plan", r"--no-sync-parent"), "Auto-sync parent milestone"),
+    ((">60-step", "duplicate-read churn"), (r">60`-step", r"transcript-audit --latest 1"), ">60-step transcript-audit check"),
+    (("single-agent hydrogen", "split mode"), (r"already-approved `\.TODO/` plans directly in single-agent `Hydrogen`", r"Plan/Execution split mode"), "Single-agent Hydrogen execution"),
+    (("advance <master_slug>", "before next <master_slug>"), (r"plan_engine\.py advance <master_slug> --milestone <N>", r"next <master_slug>"), "Master advance before next"),
+    (("near-limit files", "before editing"), (r"diagnose\.py audit --path <target_files>", r"near-limit files/classes"), "Pre-edit audit on near-limit files"),
+    (("test_*_e2e*.py", "cdp e2e probes"), (r"tests/test_\*_e2e\*\.py", r"ephemeral `port=0`"), "Promote CDP E2E probe to permanent test"),
+    (("before dispatching any plan_engine.py",), (r"cli-cheatsheet\.md.*before.*dispatching any `plan_engine\.py`",), "Zero-Plan-Re-Read Gate cli-cheatsheet before commands"),
+    (("calls exit_plan_mode once",), (r"exit_plan_mode.*once.*never re-enter Plan Mode", r"Step 1 `\.TODO/` plan-file creation \+ `init` ONLY"), "IDE Plan Mode single exit_plan_mode handoff"),
+    (("pending:<base_sha>",), (r"pending:<base_sha>", r"plan_engine\.py advance"), "Pending base SHA tracking on advance"),
+    (("escalates to /app-debugger", "debug-retro --plan"), (r"diagnose\.py debug-retro --plan <slug>", r"--escalate \"<root_cause>\""), "Anti-thrash escalation to debug-retro"),
+    (("single clock-domain parity",), (r"single clock-domain parity", r"time\.monotonic\(\).*time\.time\(\)"), "Single clock-domain parity check"),
+    (("diagnose.py tests <modules...>", "180s --timeout"), (r"diagnose\.py\s+tests\s+<modules\.\.\.>", r"180s\s+`?--timeout`?"), "Targeted unittest routed via diagnose.py tests"),
+    (("followup_cids", "transcript-audit --latest 1 last"), (r"followup_cids", r"transcript-audit --latest 1`?\s+last"), "debug-retro auto-records followup_cids and transcript-audit runs last"),
 ]
 
 
@@ -193,6 +207,28 @@ class TestSkillEvals(unittest.TestCase):
         base_rate = sum(1 for exp in all_exps if evaluate_expectation_against_text(baseline_text, exp)[0]) / len(all_exps)
         self.assertGreater(curr_rate, base_rate)
         self.assertGreaterEqual(curr_rate, 0.95)
+
+    def test_skill_reference_links_and_tool_effectivity_invariants(self):
+        """Pre-refactor invariant: all reference links resolve and core CLI/gate anchors remain in SKILL.md."""
+        refs = re.findall(r"\(\./(references/[^)#\s]+)", self.skill_text)
+        self.assertGreaterEqual(len(refs), 5)
+        for rel in refs:
+            self.assertTrue((SKILL_DIR / rel).is_file(), f"Broken reference link in SKILL.md: {rel}")
+
+        required_anchors = [
+            "## Core Operational Axioms",
+            "### Phase 0:", "### Phase 1A:", "### Phase 1B:",
+            "### Phase 2:", "### Phase 3:", "### Phase 4:", "### Phase 5:", "### Phase 6:",
+            "plan_engine.py", "discover", "init", "status", "next", "verify", "advance",
+            "retrospective", "digest", "lookup", "--no-sync-parent", "--cid", "--backfill --write-scaffold",
+            "diagnose.py", "arch-map", "surface", "audit", "scan", "changelog add", "transcript-audit",
+            "docker_audit.py", "cdp_inspect.py",
+            "MASTER STEP PRE-PLAN GATE", "Smart Commit Hint Gate", "Second-Check Verification Gate",
+            "In-Flight Tool Elevation Protocol", "Zero-Dangling-Question Invariant",
+            "Anti-Thrash Stop-Loss", "Non-Mocked Branch Gate",
+        ]
+        missing = [a for a in required_anchors if a not in self.skill_text]
+        self.assertEqual(missing, [], f"Missing critical tool/gate anchors in SKILL.md: {missing}")
 
 
 if __name__ == "__main__":

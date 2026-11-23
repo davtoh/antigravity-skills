@@ -300,8 +300,7 @@ def walk_source_files(root: Path, include_tests: bool = True) -> dict[str, list[
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in IGNORED_WORKSPACE_DIRS and not d.startswith(".") and (include_tests or d not in ("tests", "test", "__tests__")))
         for fn in sorted(filenames):
-            bucket = ext_map.get(fn.rsplit(".", 1)[-1].lower() if "." in fn else "")
-            if bucket:
+            if not fn.endswith((".min.js", ".min.css")) and (bucket := ext_map.get(fn.rsplit(".", 1)[-1].lower() if "." in fn else "")):
                 files[bucket].append(Path(dirpath) / fn)
     return files
 
