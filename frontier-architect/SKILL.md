@@ -22,7 +22,7 @@ Combines **divergent SOTA innovation** with **disciplined execution** via the mo
 6. **Closed-Loop Empirical Verification**: Pair every slice with tests, typecheck/lint, background suites (`WaitMsBeforeAsync` / Claude: `Bash` `run_in_background`) or browser inspection.
 7. **Capability Expansion & Demystification**: Suggest high-leverage MCPs/APIs/SDKs (`search_marketplace` / `ToolSearch`) and explain trade-offs with concrete analogies.
 8. **Non-Destructive & Reversible**: Ask explicit consent before hard-to-undo actions (`git reset --hard`, `git checkout --`, `git clean`, force-push, deleting unowned files, dropping DBs, `docker system prune`).
-9. **Honest Verification Reporting (Axiom 9)**: Only claim `"verified"` when you ran the check and saw it pass; end with an evidence-based handoff separating `Verified`, `Not verified` (`UNVERIFIED`), and known risks.
+9. **Honest Verification Reporting (Axiom 9)**: Only claim `"verified"` when you ran the check and saw it pass; end every code handoff or design/architecture answer with an evidence-based split of `Verified`, `Not verified` (`UNVERIFIED` / assumed), and known risks.
 10. **Respect Explicit User Overrides (Axiom 10)**: On `"just do it"` / `"skip the plan"` / `"no questions"`, skip planning ceremony for reversible work, state working assumptions in 1–2 lines, and keep Axioms 8–9 intact.
 
 ---
@@ -52,7 +52,7 @@ For **Bucket D**, never write ad-hoc CDP/Docker scripts; prefer `diagnose.py` or
 ### Phase 2: Capability, Tooling & Model Tier Scan
 
 *(Detail: [`references/diagnostics-and-tiers.md`](./references/diagnostics-and-tiers.md#2-phase-2-capability-expansion-and-model-tier-strategy).)*
-Check for MCPs/SDKs replacing custom boilerplate. **Model tiers** ([`reasoning-harness.md` §5](./references/reasoning-harness.md#5-tier-escalation-which-model-tier-does-what)): **Sonnet** executes the sliced, verified loop; **Opus** plans and reviews; **Ultra** owns long-horizon master roadmaps. Execute an already-approved plan at the Executor tier (Antigravity quota overflow: `useG1Credits`).
+Check for MCPs/SDKs replacing custom boilerplate. **Model tiers** ([`reasoning-harness.md` §5](./references/reasoning-harness.md#5-tier-escalation-which-model-tier-does-what)): **Executor** (e.g., Sonnet / fast tier) executes the sliced, verified loop; **Planner/Reviewer** (e.g., Opus / Pro) plans and reviews; **Strategist** (e.g., Ultra / heavy) owns long-horizon master roadmaps. Execute an already-approved plan at the Executor tier (Antigravity quota overflow: `useG1Credits`).
 
 ### Phase 3: The 3-Tier SOTA Proposition Engine
 
@@ -66,13 +66,13 @@ Before scaffolding unproven Tier 2/3 assumptions, isolate the **Single Riskiest 
 
 *(Full contracts & templates: [`references/plan-contracts.md`](./references/plan-contracts.md); detail: `phase-protocols.md`.)*
 - Plan as `- [ ] **<file_path>**: <action>` checkboxes, **1-Phase-Per-Turn** (later phases *Deferred to Next Turn / Milestone*); write `.TODO/<slug>.md` and register with `plan_engine.py init .TODO/<slug>.md`.
-- `>= 4` milestones or `>= 3` subsystems → **Master Roadmap** (`--parent <master_slug> --milestone 1`; **Master Roadmap Mode** with parallel subagents and review gate in `plan-contracts.md` §4). **MASTER STEP PRE-PLAN GATE** and **Master-Step Runtime Wiring Mandate** apply.
+- `>= 4` milestones or `>= 3` subsystems → **Master Roadmap** (`--parent <master_slug> --milestone 1`; **only Milestone 1 active**, mark `M2..N` *Deferred to Next Turn / Milestone*—never generate all child plans upfront; each milestone names its own OS-agnostic verifier; **Master Roadmap Mode** in `plan-contracts.md` §4 enforces a mandatory **Review Gate** where a fresh reviewer separate from the author checks diff + verify output before advancing). **MASTER STEP PRE-PLAN GATE** and **Master-Step Runtime Wiring Mandate** apply.
 - Budgets via `diagnose.py audit --path <targets>`: **350 lines** soft / **500** hard, `<= 10–12` methods/class, `<= 40` lines/function. **Export-Ready Portable Plan Contract**: POSIX repo-relative paths, no `file:///`, OS-agnostic test commands, **Scenario Combinations Matrix**. Use `diagnose.py changelog add`, never `MIGRATION_LOG.md`. Ask before creating any new UI component.
 
 ### Phase 6: Plan Execution, Continuation Engine & Closed-Loop Verification
 
 *(Harness: [`reasoning-harness.md`](./references/reasoning-harness.md); CLI: [`cli-cheatsheet.md`](./references/cli-cheatsheet.md); sign-off: [`plan-contracts.md`](./references/plan-contracts.md); full text: `phase-protocols.md`.)*
-Loop per milestone: `plan_engine.py status`/`next` → **Pre-Flight Critic Gate** → sliced edits (never guess paths; one `Edit` per file at a time; **In-Flight Tool Elevation Protocol**: fix shared tool bugs in `system-diagnostics/scripts/` + tests) → `diagnose.py audit` (**Zero Audit Evasion**) → `plan_engine.py verify` → **Second-Check Verification Gate** → `advance` → `diagnose.py scan` → `retrospective` (**Smart Commit Hint Gate**; echo `Suggested Commit`, never commit without consent). **Anti-Thrash Stop-Loss**: after 2 failed attempts, revert and escalate (`/app-debugger`, or the Opus reviewer). Final sign-off adds the **Non-Mocked Branch Gate**, `digest --backfill --write-scaffold`, full regression, and `### Continuous Learning & Introspective Options` once at verified completion.
+Loop per milestone: `plan_engine.py status`/`next` → **Pre-Flight Critic Gate** → sliced edits (never guess paths; one `edit_file` / `Edit` per file at a time; **In-Flight Tool Elevation Protocol**: fix shared tool bugs in `system-diagnostics/scripts/` + tests) → `diagnose.py audit` (**Zero Audit Evasion**) → `plan_engine.py verify` → **Second-Check Verification Gate** → `advance` → `diagnose.py scan` → `retrospective` (**Smart Commit Hint Gate**; echo `Suggested Commit`, never commit without consent). **Anti-Thrash Stop-Loss**: after 2 failed attempts, revert and escalate (`/app-debugger`, or the Planner/Reviewer tier, e.g., Opus). Final sign-off adds the **Non-Mocked Branch Gate**, `digest --backfill --write-scaffold`, full regression, and `### Continuous Learning & Introspective Options` once at verified completion.
 
 ---
 

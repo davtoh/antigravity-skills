@@ -41,7 +41,37 @@ try:
 except ImportError:
     from skills.frontier_architect.tests.test_skill_evals import evaluate_expectation_against_text
 
+def _load_skill_corpus(skill_root: Path) -> str:
+    """Load SKILL.md together with its progressive-disclosure references."""
+    refs = sorted((skill_root / "references").glob("*.md"))
+    return "\n".join([(skill_root / "SKILL.md").read_text(encoding="utf-8")] + [r.read_text(encoding="utf-8") for r in refs])
+
+
+def _write_benchmark_artifacts(iteration: int, evals_count: int, total_checks: int, curr_rate: float, base_rate: float, delta: float) -> None:
+    """Write benchmark.json to the workspace iteration directory."""
+    iter_dir = WORKSPACE_DIR / f"iteration-{iteration}"
+    iter_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_data = {
+        "skill_name": "frontier-architect",
+        "evals_count": evals_count,
+        "total_checks": total_checks,
+        "run_summary": {
+            "with_skill": {"pass_rate": {"mean": round(curr_rate / 100.0, 4)}},
+            "without_skill": {"pass_rate": {"mean": round(base_rate / 100.0, 4)}},
+            "delta": {"pass_rate": f"+{round(delta / 100.0, 2):.2f}"},
+        },
+    }
+    bench_json = iter_dir / "benchmark.json"
+    bench_json.write_text(json.dumps(benchmark_data, indent=2), encoding="utf-8")
+    try:
+        rel_path = bench_json.relative_to(CONFIG_DIR)
+    except ValueError:
+        rel_path = bench_json
+    print(f"Artifact generated: {rel_path}")
+
+
 def run_benchmark(generate_artifacts: bool = False, iteration: int = 2):
+    """Run static eval expectations against current skill and optional snapshot."""
     if not EVALS_FILE.exists() or not SKILL_MD.exists():
         print(f"Error: Required files not found in {SKILL_DIR}")
         sys.exit(1)
@@ -49,65 +79,28 @@ def run_benchmark(generate_artifacts: bool = False, iteration: int = 2):
     with open(EVALS_FILE, "r", encoding="utf-8") as f:
         evals = json.load(f).get("evals", [])
 
-    current_text = SKILL_MD.read_text(encoding="utf-8")
-    baseline_text = SNAPSHOT_MD.read_text(encoding="utf-8") if SNAPSHOT_MD.exists() else None
+    current_text = _load_skill_corpus(SKILL_DIR)
+    baseline_text = _load_skill_corpus(SNAPSHOT_MD.parent) if SNAPSHOT_MD.exists() else None
 
     total_checks = sum(len(e.get("expectations", [])) for e in evals)
-    curr_passed = sum(
-        1 for e in evals for exp in e.get("expectations", [])
-        if evaluate_expectation_against_text(current_text, exp)[0]
-    )
-
-    base_passed = 0
-    if baseline_text:
-        base_passed = sum(
-            1 for e in evals for exp in e.get("expectations", [])
-            if evaluate_expectation_against_text(baseline_text, exp)[0]
-        )
+    curr_passed = sum(1 for e in evals for exp in e.get("expectations", []) if evaluate_expectation_against_text(current_text, exp)[0])
+    base_passed = sum(1 for e in evals for exp in e.get("expectations", []) if evaluate_expectation_against_text(baseline_text, exp)[0]) if baseline_text else 0
 
     curr_rate = (curr_passed / total_checks) * 100 if total_checks else 0.0
     base_rate = (base_passed / total_checks) * 100 if total_checks else 0.0
     delta = curr_rate - base_rate
 
-    print("\n" + "=" * 68)
-    print("  FRONTIER ARCHITECT: BENCHMARK & REGRESSION EVALUATION")
-    print("=" * 68)
-    print(f"Total Scenarios Evaluated: {len(evals)}")
-    print(f"Total Assertions/Checks:   {total_checks}\n")
+    print("\n" + "=" * 68 + "\n  FRONTIER ARCHITECT: BENCHMARK & REGRESSION EVALUATION\n" + "=" * 68)
+    print(f"Total Scenarios Evaluated: {len(evals)}\nTotal Assertions/Checks:   {total_checks}\n")
     print(f"  Current Skill Pass Rate:   {curr_rate:5.1f}% ({curr_passed}/{total_checks})")
     if baseline_text:
-        print(f"  Baseline Snapshot Rate:    {base_rate:5.1f}% ({base_passed}/{total_checks})")
-        print(f"  Improvement Delta:         +{delta:5.1f}%")
+        print(f"  Baseline Snapshot Rate:    {base_rate:5.1f}% ({base_passed}/{total_checks})\n  Improvement Delta:         +{delta:5.1f}%")
     print("=" * 68)
-    if SKILL_CREATOR_DIR.exists():
-        print("  Tip: For full multi-agent generative benchmarks, invoke /skill-creator.")
-    else:
-        print("  Tip: For full multi-agent generative benchmarks, install /skill-creator:")
-        print("       https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator/skills/skill-creator")
-    print("=" * 68 + "\n")
+    tip = "invoke /skill-creator." if SKILL_CREATOR_DIR.exists() else "install /skill-creator:\n       https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator/skills/skill-creator"
+    print(f"  Tip: For full multi-agent generative benchmarks, {tip}\n" + "=" * 68 + "\n")
 
     if generate_artifacts and WORKSPACE_DIR.exists():
-        iter_dir = WORKSPACE_DIR / f"iteration-{iteration}"
-        iter_dir.mkdir(parents=True, exist_ok=True)
-
-        benchmark_data = {
-            "skill_name": "frontier-architect",
-            "evals_count": len(evals),
-            "total_checks": total_checks,
-            "run_summary": {
-                "with_skill": {"pass_rate": {"mean": round(curr_rate / 100.0, 4)}},
-                "without_skill": {"pass_rate": {"mean": round(base_rate / 100.0, 4)}},
-                "delta": {"pass_rate": f"+{round(delta / 100.0, 2):.2f}"},
-            },
-        }
-
-        bench_json = iter_dir / "benchmark.json"
-        bench_json.write_text(json.dumps(benchmark_data, indent=2), encoding="utf-8")
-        try:
-            rel_path = bench_json.relative_to(CONFIG_DIR)
-        except ValueError:
-            rel_path = bench_json
-        print(f"Artifact generated: {rel_path}")
+        _write_benchmark_artifacts(iteration, len(evals), total_checks, curr_rate, base_rate, delta)
 
 def main():
     parser = argparse.ArgumentParser(
