@@ -1,5 +1,7 @@
 # Diagnostics, Browser Protocols & Model Tier Strategy
 
+> *Antigravity vocabulary below; Claude Code users translate it with [`claude-adapter.md`](./claude-adapter.md).*
+
 Consult this reference during **Phase 1B (Reproduce-First Bug & Regression Diagnostics)** and **Phase 2 (Capability & Model Tier Scan)**.
 
 ---

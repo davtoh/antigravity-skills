@@ -12,6 +12,8 @@ This skill was authored in Antigravity (Gemini) vocabulary. When running under C
 | `view_file` / `read_file` | `Read` (use `offset`/`limit`; locate with `Grep` first) |
 | `edit_file` | `Edit` (never parallel edits to one file) |
 | `research` subagent, `Model: 'flash'` | `Agent` with `subagent_type: Explore` (cheap, read-only fan-out); set `model: "haiku"` or `"sonnet"` when the task is pure search |
+| `invoke_subagent` / `manage_subagents list` (spawn, then wait for the `SYSTEM_MESSAGE` result) | `Agent` (background); you are notified on completion, so never poll or start manual reads on an early wakeup |
+| `useG1Credits` (Antigravity quota overflow) | No equivalent; ignore under Claude |
 | Planning subagent | `Agent` with `subagent_type: Plan` |
 | `enter_plan_mode` / `exit_plan_mode` | `EnterPlanMode` / `ExitPlanMode`. Still **never** call them on a `continue` of an existing plan |
 | Plan artifact with `RequestFeedback: true` | Write `.TODO/<slug>.md` (the durable copy) and present it with `ExitPlanMode` or a short chat summary; skip the second `<appDataDir>/brain/...` copy |

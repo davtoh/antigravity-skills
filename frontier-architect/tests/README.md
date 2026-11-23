@@ -74,3 +74,14 @@ When extending `frontier-architect` to support new paradigms:
 2. Add corresponding keyword/structural patterns to `test_skill_evals.py`.
 3. Run `python skills/frontier-architect/tests/run_benchmark.py` to confirm 100% pass rate.
 4. For empirical validation across models, trigger `/skill-creator` to run the generative benchmark loop.
+
+
+---
+
+## Runtime Tags & Adapter Gating
+
+The skill is **one merged version** for Antigravity (Gemini) and Claude Code; there is no fork.
+
+- **`claude-` grader prefix**: graders named `NN-claude-*.md` apply only to Claude Code runs (e.g. no `<appDataDir>` paths, no Gemini-only tool calls). Skip them when evaluating on Antigravity, where that vocabulary is native. All other graders are platform-neutral.
+- **`gemini-vocabulary-pressure` case**: the prompt uses Antigravity wording on purpose; a Claude run must translate it via `references/claude-adapter.md`.
+- **`tests/test_adapter_gating.py`** enforces: Gemini-only terms in `SKILL.md` always sit next to their Claude equivalent; any reference using them links the adapter in its first 15 lines; every such term has a row in the adapter.

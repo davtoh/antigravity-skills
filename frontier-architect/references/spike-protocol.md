@@ -1,5 +1,7 @@
 # Technical SPIKE Protocol: De-risking Novel Architectures
 
+> *Antigravity vocabulary below; Claude Code users translate it with [`claude-adapter.md`](./claude-adapter.md).*
+
 A **SPIKE** is an isolated, time-boxed technical investigation designed to answer a specific question or test an unproven hypothesis before committing to a full implementation.
 
 ---
