@@ -122,7 +122,6 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
         elif name == "run_command":
             cmd_line = str(args.get("CommandLine", "")).strip()
             acc["last_cmd"] = cmd_line
-            if "changelog add" in cmd_line and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", cmd_line): acc["changelog_adds"] += 1
             if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
@@ -165,7 +164,7 @@ def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[st
         for sender in _SENDER_RE.findall(content):
             if m := _TASK_ID_RE.search(sender):
                 return acc["bg_tasks"].pop(m.group(1), (f"bg:{m.group(1)}", ""))
-        return (acc["last_target"], acc["last_cmd"])
+        return ("", "")
     name, target, cmd = acc["pending_calls"].pop(0) if acc["pending_calls"] else ("", acc["last_target"], acc["last_cmd"])
     if name == "run_command" and (m := _TASK_ID_RE.search(content[:400])):
         acc["bg_tasks"][m.group(1)] = (target, cmd)
@@ -187,6 +186,8 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
     elif not is_cdp_noise and "[CDP] Live connection failed" in content:
         acc["cdp_live_failures"] += 1
     fail = classify_result(content, status, call_cmd)
+    if "changelog add" in call_cmd and ("[changelog add] Added entry" in content or (kind != "SYSTEM_MESSAGE" and not fail)) and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", call_cmd):
+        acc["changelog_adds"] += 1
     if fail == "audit_catch":
         acc["audit_catches"] += 1
     elif fail:

@@ -22,8 +22,11 @@ def check_mixed_clock_domains(
     """Flag mixed time.time() and time.monotonic() usage in the same scope or timing module."""
     if not (time_calls and monotonic_calls):
         return
-    by_scope_t = {s: ln for ln, s in time_calls}
     by_scope_m = {s: ln for ln, s in monotonic_calls}
+    time_calls = [(ln, s) for ln, s in time_calls if s in by_scope_m or not any(k in s.lower() for k in ("wall", "epoch"))]
+    if not time_calls:
+        return
+    by_scope_t = {s: ln for ln, s in time_calls}
     shared = sorted(set(by_scope_t) & set(by_scope_m))
     if shared:
         for sc in shared:
@@ -46,11 +49,14 @@ def check_mixed_clock_domains(
         )
 
 
+_EXTERNAL_DYNAMIC_BASES = frozenset({"BaseModel", "Structure", "Union", "list", "dict", "set", "SimpleNamespace"})
+
+
 def _extract_class_info(cls_node: ast.ClassDef) -> tuple[set[str], list[str], bool]:
     """Collect declared methods, properties, self.* attrs, class attrs, and bases."""
     members: set[str] = set()
-    bases = [b.id for b in cls_node.bases if isinstance(b, ast.Name)]
-    is_dynamic = False
+    bases = [b.id if isinstance(b, ast.Name) else b.attr for b in cls_node.bases if isinstance(b, (ast.Name, ast.Attribute))]
+    is_dynamic = any(b in _EXTERNAL_DYNAMIC_BASES for b in bases)
     for stmt in cls_node.body:
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
             members.add(stmt.name)
@@ -73,6 +79,18 @@ def _extract_class_info(cls_node: ast.ClassDef) -> tuple[set[str], list[str], bo
     return members, bases, is_dynamic
 
 
+def _collect_external_store_attrs(parsed_files: list[tuple[str, ast.AST]], raw: dict[str, set[str]]) -> None:
+    """Register dynamically assigned instance attributes (e.g. track.reid_score = 1.0)."""
+    for _, tree in parsed_files:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                env = _bind_local_types(node, raw)
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Attribute) and isinstance(sub.ctx, ast.Store) and isinstance(sub.value, ast.Name):
+                        if cname := env.get(sub.value.id):
+                            raw.setdefault(cname, set()).add(sub.attr)
+
+
 def _collect_class_registry(parsed_files: list[tuple[str, ast.AST]]) -> tuple[dict[str, set[str]], set[str]]:
     """Build inherited class member map and dynamic-attribute class set across all files."""
     raw: dict[str, set[str]] = {}
@@ -83,9 +101,11 @@ def _collect_class_registry(parsed_files: list[tuple[str, ast.AST]]) -> tuple[di
             if isinstance(node, ast.ClassDef):
                 mems, bases, is_dyn = _extract_class_info(node)
                 raw.setdefault(node.name, set()).update(mems)
-                bases_map[node.name] = bases
+                cur = bases_map.setdefault(node.name, [])
+                cur.extend(b for b in bases if b not in cur)
                 if is_dyn:
                     dynamic.add(node.name)
+    _collect_external_store_attrs(parsed_files, raw)
     resolved: dict[str, set[str]] = {}
     for name in raw:
         acc = set(raw[name])
@@ -96,11 +116,15 @@ def _collect_class_registry(parsed_files: list[tuple[str, ast.AST]]) -> tuple[di
             if b in seen:
                 continue
             seen.add(b)
-            if b in dynamic:
+            if b in dynamic or (b not in raw and b in _EXTERNAL_DYNAMIC_BASES):
                 dynamic.add(name)
             acc.update(raw.get(b, set()))
             stack.extend(bases_map.get(b, []))
         resolved[name] = acc
+    for name, bases in bases_map.items():
+        for b in bases:
+            if b in resolved:
+                resolved[b].update(resolved[name])
     return resolved, dynamic
 
 
@@ -136,7 +160,7 @@ def _check_missing_attrs(parsed_files: list[tuple[str, ast.AST]], classes: dict[
                 continue
             env = _bind_local_types(node, classes)
             for sub in ast.walk(node):
-                if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
+                if isinstance(sub, ast.Attribute) and isinstance(sub.ctx, ast.Load) and isinstance(sub.value, ast.Name):
                     cname = env.get(sub.value.id) or (sub.value.id if sub.value.id in classes else None)
                     if cname and cname not in dynamic and sub.attr not in classes[cname] and not sub.attr.startswith("__"):
                         findings.append({

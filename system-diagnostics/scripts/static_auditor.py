@@ -188,7 +188,7 @@ def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
     has_run, exit_code = False, 0
     for mod, args, fn, lbl in (
         ("ruff", ["check", "--no-cache", "--select", "E,F,W", "--ignore", "E501,E701,E402", "--output-format", "concise", t_str], lambda ln: bool(ln.strip()) and not ln.startswith("Found "), "lint issue"),
-        ("mypy", ["--no-incremental", "--cache-dir", os.devnull, "--no-error-summary", "--ignore-missing-imports", t_str], lambda ln: "error:" in ln, "type error"),
+        ("mypy", ["--no-incremental", "--cache-dir", os.devnull, "--no-error-summary", "--ignore-missing-imports", "--follow-imports=silent", t_str], lambda ln: "error:" in ln, "type error"),
     ):
         ran, rc, m_logs = _run_linter(py_bin, mod, args, cwd, fn, lbl)
         if ran:

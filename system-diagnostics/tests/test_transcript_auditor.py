@@ -344,6 +344,22 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["total_failures"], 0)
         self.assertEqual(row["audit_catches"], 2)
 
+    def test_cli_usage_errors_are_cmd_fail_and_failed_changelog_add_not_counted(self) -> None:
+        _write(self.brain, "cli-err-1", [
+            _planner(("run_command", {"CommandLine": "python diagnose.py audit --path a.py --no-tests"})),
+            {"type": "GENERIC", "content": "Command exited with code 2.\nusage: diagnose.py\ndiagnose.py: error: unrecognized arguments: --no-tests\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py scan --path . ; plan_engine.py retrospective --hypotheses '1:text'"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nplan_engine.py retrospective: error: argument --hypotheses: invalid int value: '1:text'\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --category Fixed"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\ndiagnose.py changelog add: error: the following arguments are required: --title\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python diagnose.py changelog add --title Done ; python diagnose.py scan --strict"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n[changelog add] Added entry to CHANGELOG.md\n[scan] DEFECTS_FOUND\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "cli-err-1")
+        self.assertEqual(row["failures"], {"cmd_fail": 3})
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["changelog_adds"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

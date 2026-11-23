@@ -16,7 +16,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_rollup import sync_pending_commit_shas
+from plan_rollup import sync_and_rollup_plan
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, resolve_plan_path, save_json
 
 _GRADE_ORDER = "ABCDF"
@@ -35,8 +35,9 @@ def _grade_cap(steps: int | None, retries: int | None) -> str:
 
 def _worse(grade: str, cap: str) -> bool:
     """True when ``grade`` is better than the rubric ``cap`` (i.e. inflated)."""
-    base = (grade or "A").strip().upper()[:1]
-    return base in _GRADE_ORDER and _GRADE_ORDER.index(base) < _GRADE_ORDER.index(cap)
+    raw = (grade or "A").strip().upper()[:1]
+    base = raw if raw in _GRADE_ORDER else "A"
+    return _GRADE_ORDER.index(base) < _GRADE_ORDER.index(cap)
 
 
 def check_retro_integrity(entries: list[dict[str, Any]]) -> list[str]:
@@ -264,9 +265,9 @@ def build_digest(root: Path, plan: str | None, cids: list[str] | None = None, br
     if not plan_p:
         return None
     _ws, ps = bootstrap_plan(root, plan_p)
-    if backfill:
-        sync_pending_commit_shas(root, ps)
     backfilled = backfill_retrospectives(root, ps, cids, brain_dir) if backfill else 0
+    if backfill:
+        sync_and_rollup_plan(root, ps)
     entries = _load_entries(root, ps)
     learns, escalations = _unresolved(entries)
     skill_learns, tool_gaps = _unresolved_skill_items(entries)

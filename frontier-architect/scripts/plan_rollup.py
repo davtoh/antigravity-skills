@@ -52,7 +52,8 @@ def _build_rollup_entry(child_retros: list[dict[str, Any]], milestone_idx: int, 
     """Aggregate child retrospective metrics and lessons into one master entry."""
     grades = [str(r.get("token_efficiency_grade") or "A").upper() for r in child_retros]
     worst_grade = max(grades, key=lambda g: {"A": 1, "B": 2, "C": 3, "D": 4, "F": 5}.get(g, 0))
-    _collect = lambda k: list(dict.fromkeys(str(x) for r in child_retros for x in (r.get(k) or []) if str(x).strip()))
+    def _collect(k: str) -> list[str]:
+        return list(dict.fromkeys(str(x) for r in child_retros for x in (r.get(k) or []) if str(x).strip()))
     return {
         "milestone_index": milestone_idx, "timestamp": datetime.now(timezone.utc).isoformat(),
         "token_efficiency_grade": worst_grade,
@@ -141,3 +142,15 @@ def sync_pending_commit_shas(root: Path, ps: dict[str, Any]) -> bool:
     if changed:
         save_json(get_frontier_dir(root) / "plans" / ps["slug"] / "state.json", ps)
     return changed
+
+
+def sync_and_rollup_plan(root: Path, ps: dict[str, Any]) -> None:
+    """Sync pending SHAs on plan and child plans, then refresh parent rollups."""
+    sync_pending_commit_shas(root, ps)
+    for k, c_info in (ps.get("child_plans") or {}).items():
+        if not isinstance(c_info, dict) or not c_info.get("slug"):
+            continue
+        if child_p := resolve_plan_path(root, str(c_info["slug"])):
+            _, child_ps = bootstrap_plan(root, child_p)
+            sync_pending_commit_shas(root, child_ps)
+        rollup_child_retrospective(root, ps, int(k), refresh=True)

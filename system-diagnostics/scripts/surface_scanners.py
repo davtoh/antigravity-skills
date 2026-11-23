@@ -119,6 +119,7 @@ def scan_html_surface(text: str) -> HtmlSurface:
 
 _JS_GET_ELEM_RE = re.compile(r'\b(?:document\.)?getElementById\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_QUERY_SEL_RE = re.compile(r'\bquerySelector(?:All)?\s*\(\s*["\']#([a-zA-Z0-9_\-]+)["\']\s*\)')
+_JS_HELPER_ID_RE = re.compile(r'\b(?:el|bindOnce)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']')
 _JS_GLOBAL_EXPORT_RE = re.compile(
     r'\b(?:(?:window|globalThis|self)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)|root\.([A-Z][a-zA-Z0-9_]*))\s*=(?!=)'
 )
@@ -138,7 +139,7 @@ _JS_BUILTIN_WINDOW_PROPS = frozenset({
 
 def scan_js_surface(text: str) -> JsSurface:
     """Extract DOM queries, window exports/reads, and event listener attachments."""
-    queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text))
+    queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text)) | set(_JS_HELPER_ID_RE.findall(text))
     raw_exports = {g0 or g1 for g0, g1 in _JS_GLOBAL_EXPORT_RE.findall(text) if (g0 or g1)}
     toplevel_fns = set(_JS_TOPLEVEL_FN_RE.findall(text))
     exports = {exp for exp in (raw_exports | toplevel_fns) if exp.split(".")[0] not in _JS_BUILTIN_WINDOW_PROPS}

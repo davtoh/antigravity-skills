@@ -40,6 +40,7 @@ except ImportError:
 _JS_LINE_COMMENT_RE = re.compile(r"(?<!:)//[^\n]*")
 _JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _JS_DYN_ID_RE = re.compile(r"""(?:\.id\s*=\s*|\bid\s*=\s*["']|\[id=["'])([a-zA-Z0-9_\-]+)""")
+_JS_TAB_DELEGATE_RE = re.compile(r"""querySelector(?:All)?\s*\([^)]*\.(?:nav-tab|drawer-tab)\b""")
 _PY_PREFIX_RE = re.compile(r"""APIRouter\s*\((?:[^()]|\([^()]*\))*?\bprefix\s*=\s*['"]([^'"]+)['"]""")
 _PY_MOUNT_RE = re.compile(r"""\.mount\s*\(\s*['"]([^'"]+)['"]""")
 
@@ -166,10 +167,13 @@ def _collect_js_contracts(
     all_dyn_ids, writes, es_exp, queried = set(), set(), set(), set()
     obj_members: dict[str, set[str]] = {}
     id_refs, calls, reads, texts = [], list(html_urls), [], []
+    has_tab_delegation = False
     for jp in js_files:
         text, rel = jp.read_text(encoding="utf-8", errors="replace"), _rel_path(jp, target_path)
         cleaned = _strip_js_comments(text)
         texts.append((rel, cleaned))
+        if _JS_TAB_DELEGATE_RE.search(cleaned):
+            has_tab_delegation = True
         surf = scan_js_fn(text)
         all_dyn_ids.update(_JS_DYN_ID_RE.findall(text))
         queried.update(surf.queried_ids)
@@ -182,7 +186,8 @@ def _collect_js_contracts(
         reads.extend({"symbol": r, "file": rel} for r in surf.global_reads if r.split(".")[0] not in _BUILTIN_WINDOW_PROPS and r not in surf.global_exports)
     return {
         "dyn_ids": all_dyn_ids, "writes": writes, "es_exports": es_exp, "queried": queried,
-        "obj_members": obj_members, "id_refs": id_refs, "calls": calls, "reads": reads, "texts": texts,
+        "obj_members": obj_members, "id_refs": id_refs, "calls": calls, "reads": reads,
+        "texts": texts, "has_tab_delegation": has_tab_delegation,
     }
 
 
@@ -201,7 +206,9 @@ def verify_surface_contracts(
     dead_reads = _find_dead_window_reads(js["reads"], js["writes"]) + check_window_method_calls(js["texts"], js["writes"], js["obj_members"])
     missing_ids = [ref for ref in js["id_refs"] if ref["id"] not in (all_html_ids | js["dyn_ids"])]
     missing_handlers = check_inline_handlers(html_handlers, js["writes"], js["es_exports"])
-    dead_btns, dupe_labels = check_dead_buttons_and_dupes(html_buttons, js["queried"], js["dyn_ids"])
+    dead_btns, dupe_labels = check_dead_buttons_and_dupes(
+        html_buttons, js["queried"], js["dyn_ids"], js_has_tab_delegation=js["has_tab_delegation"]
+    )
     resp_mismatches = check_response_key_contracts(py_items, js["texts"], scan_py_fn, extract_router_prefix)
     total = len(unmatched) + len(dead_reads) + len(missing_ids) + len(missing_handlers) + len(dead_btns) + len(dupe_labels) + len(resp_mismatches)
     return {
