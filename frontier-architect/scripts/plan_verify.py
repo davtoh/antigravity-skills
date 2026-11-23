@@ -58,10 +58,34 @@ def _resolve_missing_skill_script(rest: str, root: Path) -> str:
     return re.sub(r'(?<!["\\/])(skills/[a-z0-9_-]+/[^\s"\']+)', _repl, rest)
 
 
+def _split_compound_commands(cmd: str) -> list[str]:
+    """Split ';'-chained commands outside quotes and filter PowerShell $LASTEXITCODE guards."""
+    parts, buf, in_q = [], [], ""
+    for i, ch in enumerate(cmd):
+        if in_q:
+            if ch == in_q and (i == 0 or cmd[i - 1] != "\\"):
+                in_q = ""
+            buf.append(ch)
+        elif ch in ('"', "'"):
+            in_q = ch
+            buf.append(ch)
+        elif ch == ";":
+            parts.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf).strip())
+    return [p for p in parts if p and not re.match(r"^if\s*\(\s*`?\$LASTEXITCODE\b", p, re.I)]
+
+
 def _normalize_verify_cmd(cmd: str, root: Path) -> str:
     """Normalize leading python/pytest/venv paths for the host OS while preserving arguments."""
     if not cmd.strip():
         return cmd
+    sub_cmds = _split_compound_commands(cmd)
+    if len(sub_cmds) > 1:
+        return " && ".join(_normalize_verify_cmd(sc, root) for sc in sub_cmds)
     stripped = cmd.lstrip()
     quote = stripped[0] if stripped[0] in ('"', "'") else ""
     if quote:

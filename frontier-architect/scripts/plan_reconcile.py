@@ -65,15 +65,20 @@ def _analyze_one(root: Path, slug: str, ps: dict[str, Any], plan_p: Path | None,
             issues.append(f"uncheckboxed_bullets:{plain_bullets}")
         elif state_status == "in_progress" and unchecked_cb == 0:
             issues.append("stale_in_progress_zero_unchecked" if parsed["milestones"] else "legacy_no_milestones")
+        if state_status == "in_progress" and parsed["milestones"] and all(
+            m["is_complete"] or any(k in (m.get("title") or "").lower() for k in ("(complete)", "(completed)", "(deferred"))
+            for m in parsed["milestones"]
+        ):
+            issues.append("stale_superseded_in_progress")
     rel = plan_p.relative_to(root).as_posix() if plan_p and plan_p.is_relative_to(root) else (ps.get("plan_path") or "-")
     return {"slug": slug, "status": state_status, "path": rel, "unchecked": unchecked_cb, "issues": issues, "state_path": str(sp) if sp else ""}
 
 
 def apply_reconcile(rows: list[dict[str, Any]]) -> list[str]:
-    """Mark stale_in_progress_zero_unchecked / stale_missing_plan ledgers completed."""
+    """Mark stale_in_progress_zero_unchecked / stale_missing_plan / superseded ledgers completed."""
     updated: list[str] = []
     for r in rows:
-        if not r["state_path"] or not any(i in r["issues"] for i in ("stale_in_progress_zero_unchecked", "stale_missing_plan", "legacy_no_milestones")):
+        if not r["state_path"] or not any(i in r["issues"] for i in ("stale_in_progress_zero_unchecked", "stale_missing_plan", "legacy_no_milestones", "stale_superseded_in_progress")):
             continue
         sp = Path(r["state_path"])
         ps = load_json(sp, {})

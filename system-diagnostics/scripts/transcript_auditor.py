@@ -15,11 +15,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from transcript_checks import (
-    append_row_notes,
-    classify_result,
-    compute_grade_cap,
-    extract_user_correction,
-    failure_snippet,
+    append_row_notes, classify_result, compute_grade_cap,
+    extract_user_correction, failure_snippet, is_cli_usage_error,
 )
 
 _MODEL_RE = re.compile(r"Model Selection` from [^\n]+? to ([^\n]+?)\. No need")
@@ -192,6 +189,8 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
         acc["audit_catches"] += 1
     elif fail:
         acc["failures"][fail] += 1
+        if fail == "cmd_fail" and is_cli_usage_error(content):
+            acc["tooling_cli_fails"] += 1
         if len(acc["failure_samples"]) < 5:
             acc["failure_samples"].append(f"step {idx} {fail} ({call_target or 'tool'}): {failure_snippet(content)}")
 
@@ -206,7 +205,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_unnamed": 0, "pending_cids": set(), "subagent_cids": [], "reads_while_pending": 0,
         "post_dispatch_reads": [], "edited_paths": set(), "parallel_same_file_edits": [],
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
-        "audit_catches": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
+        "audit_catches": 0, "tooling_cli_fails": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
         "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
         "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False,
     }
@@ -238,7 +237,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
     total_failures = sum(acc["failures"].values())
     return {
         "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"], "tool_calls": dict(acc["tools"]),
-        "failures": dict(acc["failures"]), "total_failures": total_failures, "audit_catches": acc["audit_catches"],
+        "failures": dict(acc["failures"]), "total_failures": total_failures, "audit_catches": acc["audit_catches"], "tooling_cli_fails": acc["tooling_cli_fails"],
         "failure_samples": acc["failure_samples"], "user_corrections": acc["user_corrections"],
         "workflow_redirects": acc["workflow_redirects"], "subagents": acc["subagents"],
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],

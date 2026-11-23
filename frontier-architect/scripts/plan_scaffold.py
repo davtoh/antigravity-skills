@@ -294,7 +294,8 @@ def promote_transcript_findings(
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
         if (pm := int(r.get("plan_mode_calls", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} called enter/exit_plan_mode ({pm}x)")
-        cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0)
+        cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
+        cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0) - cli_errs
         if cmd_fails >= 4 and not r.get("has_debug_retro"):
             _append_unique(escalations, f"Unescalated thrash ({cid8}): {r['total_failures']} failures without /app-debugger or debug-retro")
         for corr in r.get("user_corrections") or ():

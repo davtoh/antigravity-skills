@@ -19,9 +19,9 @@ try:
     from defect_catalog import IGNORED_WORKSPACE_DIRS
 except ImportError:
     try:
-        from .defect_catalog import IGNORED_WORKSPACE_DIRS
+        from .defect_catalog import IGNORED_WORKSPACE_DIRS  # type: ignore[no-redef]
     except ImportError:
-        IGNORED_WORKSPACE_DIRS: frozenset[str] = frozenset({
+        IGNORED_WORKSPACE_DIRS: frozenset[str] = frozenset({  # type: ignore[no-redef]
             ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
             "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
             "dist", "build", "_build", "out", "target", ".idea", ".vscode",
@@ -120,6 +120,8 @@ def scan_html_surface(text: str) -> HtmlSurface:
 _JS_GET_ELEM_RE = re.compile(r'\b(?:document\.)?getElementById\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_QUERY_SEL_RE = re.compile(r'\bquerySelector(?:All)?\s*\(\s*["\']#([a-zA-Z0-9_\-]+)["\']\s*\)')
 _JS_HELPER_ID_RE = re.compile(r'\b(?:el|bindOnce)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']')
+_JS_DYNAMIC_GET_RE = re.compile(r'\b(?:document\.getElementById|el|bindOnce)\s*\(\s*[a-zA-Z_$][a-zA-Z0-9_$]*')
+_JS_TABLE_CONTROL_ID_RE = re.compile(r'["\']((?:btn|drawer-btn|modal|tab)-[a-zA-Z0-9_\-]+|[a-zA-Z0-9_\-]+-btn)["\']')
 _JS_GLOBAL_EXPORT_RE = re.compile(
     r'\b(?:(?:window|globalThis|self)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)|root\.([A-Z][a-zA-Z0-9_]*))\s*=(?!=)'
 )
@@ -139,7 +141,9 @@ _JS_BUILTIN_WINDOW_PROPS = frozenset({
 
 def scan_js_surface(text: str) -> JsSurface:
     """Extract DOM queries, window exports/reads, and event listener attachments."""
-    queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text)) | set(_JS_HELPER_ID_RE.findall(text))
+    ev_strs = set(re.findall(r'\b(?:addEventListener|removeEventListener|CustomEvent)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']', text))
+    table_ids = (set(_JS_TABLE_CONTROL_ID_RE.findall(text)) - ev_strs) if _JS_DYNAMIC_GET_RE.search(text) else set()
+    queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text)) | set(_JS_HELPER_ID_RE.findall(text)) | table_ids
     raw_exports = {g0 or g1 for g0, g1 in _JS_GLOBAL_EXPORT_RE.findall(text) if (g0 or g1)}
     toplevel_fns = set(_JS_TOPLEVEL_FN_RE.findall(text))
     exports = {exp for exp in (raw_exports | toplevel_fns) if exp.split(".")[0] not in _JS_BUILTIN_WINDOW_PROPS}
@@ -321,8 +325,8 @@ def cmd_surface(args: argparse.Namespace) -> int:
         from surface_contracts import run_surface_cli
         from surface_verifier import verify_surface_contracts
     except ImportError:
-        from .surface_contracts import run_surface_cli
-        from .surface_verifier import verify_surface_contracts
+        from .surface_contracts import run_surface_cli  # type: ignore[no-redef]
+        from .surface_verifier import verify_surface_contracts  # type: ignore[no-redef]
     return run_surface_cli(
         args,
         walk_source_files,

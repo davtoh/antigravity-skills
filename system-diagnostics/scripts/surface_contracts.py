@@ -23,8 +23,15 @@ _HTML_BUTTON_TAG_RE = re.compile(
 )
 _ATTR_ID_RE = re.compile(r"""\bid\s*=\s*['"]([a-zA-Z0-9_\-]+)['"]""", re.IGNORECASE)
 _ATTR_ON_RE = re.compile(r"""\bon[a-z]+\s*=\s*['"]""", re.IGNORECASE)
-_JS_WIN_OBJ_RE = re.compile(r"""\b(?:window|globalThis|self)\.([A-Z][a-zA-Z0-9_]*)\s*=\s*\{""")
-_JS_WIN_CALL_RE = re.compile(r"""\bwindow\.([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*\(""")
+_ATTR_CLASS_RE = re.compile(r"""\bclass\s*=\s*['"]([^'"]+)['"]""", re.IGNORECASE)
+_ATTR_SUBMIT_RE = re.compile(r"""\btype\s*=\s*['"]submit['"]""", re.IGNORECASE)
+_HTML_FORM_OPEN_RE = re.compile(r"""<form\b([^>]*)>""", re.IGNORECASE)
+_HTML_SCOPE_OPEN_RE = re.compile(r"""<(?:div|nav|aside|dialog|section)\b([^>]*)>""", re.IGNORECASE)
+_SCOPE_CLASSES = frozenset({"modal", "modal-backdrop", "modal-overlay", "drawer", "drawer-nav", "nav-tabs", "tab-content"})
+_FETCH_RESPONSE_PROPS = frozenset({
+    "ok", "status", "statusText", "headers", "url", "type", "redirected",
+    "body", "bodyUsed", "json", "text", "blob", "arrayBuffer", "formData", "clone",
+})
 _BUILTIN_HANDLER_ROOTS = frozenset({
     "this", "window", "document", "history", "location", "console",
     "alert", "confirm", "prompt", "navigator", "event",
@@ -115,18 +122,41 @@ def extract_non_fetch_urls(cleaned_js: str, html_text: str = "") -> list[dict[st
     return urls
 
 
+def _find_enclosing_form_and_scope(prefix_html: str) -> tuple[str, str]:
+    """Find nearest unclosed <form id=...> and modal/drawer/nav container scope."""
+    last_form = prefix_html.rfind("<form")
+    last_close = prefix_html.rfind("</form")
+    form_id = ""
+    if last_form > last_close:
+        fm = _HTML_FORM_OPEN_RE.search(prefix_html, last_form)
+        if fm and (fid := _ATTR_ID_RE.search(fm.group(1))):
+            form_id = fid.group(1)
+    scope = ""
+    for sm in _HTML_SCOPE_OPEN_RE.finditer(prefix_html):
+        attrs = sm.group(1)
+        cls_m = _ATTR_CLASS_RE.search(attrs)
+        cls_tokens = set(cls_m.group(1).split()) if cls_m else set()
+        if cls_tokens & _SCOPE_CLASSES:
+            id_m = _ATTR_ID_RE.search(attrs)
+            scope = id_m.group(1) if id_m else next(iter(sorted(cls_tokens & _SCOPE_CLASSES)))
+    return form_id, scope
+
+
 def extract_html_buttons(html_text: str, rel_file: str) -> list[dict[str, Any]]:
-    """Extract <button> elements with id, inline handler flag, normalized label, and file."""
+    """Extract <button> elements with id, handler/form/tab metadata, label, and scope."""
     buttons: list[dict[str, Any]] = []
-    for attrs, body in _HTML_BUTTON_TAG_RE.findall(html_text):
+    for m in _HTML_BUTTON_TAG_RE.finditer(html_text):
+        attrs, body = m.group(1), m.group(2)
         id_m = _ATTR_ID_RE.search(attrs)
-        label = re.sub(r"<[^>]+>", " ", body)
-        label = re.sub(r"\s+", " ", label).strip()
+        cls_m = _ATTR_CLASS_RE.search(attrs)
+        cls_tokens = set(cls_m.group(1).split()) if cls_m else set()
+        form_id, scope = _find_enclosing_form_and_scope(html_text[:m.start()])
+        label = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)).strip()
         buttons.append({
-            "id": id_m.group(1) if id_m else "",
-            "has_inline": bool(_ATTR_ON_RE.search(attrs)),
-            "label": label,
-            "file": rel_file,
+            "id": id_m.group(1) if id_m else "", "has_inline": bool(_ATTR_ON_RE.search(attrs)),
+            "is_submit": bool(_ATTR_SUBMIT_RE.search(attrs)), "form_id": form_id,
+            "is_delegated_tab": bool(cls_tokens & {"nav-tab", "drawer-tab"}),
+            "scope": scope, "label": label, "file": rel_file,
         })
     return buttons
 
@@ -160,60 +190,28 @@ def check_dead_buttons_and_dupes(
     buttons: list[dict[str, Any]],
     js_queried_ids: set[str],
     js_dyn_ids: set[str],
+    js_has_tab_delegation: bool = False,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     """Return (dead_buttons, duplicate_button_labels) across HTML templates."""
-    dead: list[dict[str, str]] = []
-    dupes: list[dict[str, str]] = []
-    labels_by_file: dict[tuple[str, str], int] = {}
+    dead, dupes = [], []
+    labels_by_scope: dict[tuple[str, str, str], int] = {}
+    all_ids = js_queried_ids | js_dyn_ids
     for btn in buttons:
         bid = btn["id"]
-        if bid and not btn["has_inline"] and bid not in js_queried_ids and bid not in js_dyn_ids:
+        wired = (
+            btn["has_inline"] or bid in all_ids
+            or (btn.get("is_submit") and btn.get("form_id") in all_ids)
+            or (btn.get("is_delegated_tab") and js_has_tab_delegation)
+        )
+        if bid and not wired:
             dead.append({"id": bid, "file": btn["file"]})
         lbl = btn["label"]
         if lbl and len(lbl) > 1:
-            k = (btn["file"], lbl.lower())
-            labels_by_file[k] = labels_by_file.get(k, 0) + 1
-            if labels_by_file[k] == 2:
+            k = (btn["file"], btn.get("scope", ""), lbl.lower())
+            labels_by_scope[k] = labels_by_scope.get(k, 0) + 1
+            if labels_by_scope[k] == 2:
                 dupes.append({"label": lbl, "file": btn["file"]})
     return dead, dupes
-
-
-def extract_window_object_members(cleaned_js: str) -> dict[str, set[str]]:
-    """Extract method/property names defined inside `window.Obj = { ... }` literals."""
-    members: dict[str, set[str]] = {}
-    for m in _JS_WIN_OBJ_RE.finditer(cleaned_js):
-        obj_name = m.group(1)
-        start = m.end()
-        depth, i = 1, start
-        while i < len(cleaned_js) and depth > 0:
-            if cleaned_js[i] == "{":
-                depth += 1
-            elif cleaned_js[i] == "}":
-                depth -= 1
-            i += 1
-        body = cleaned_js[start:max(start, i - 1)]
-        keys = set(re.findall(r"(?:^|[,{\n])\s*(?:async\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*(?::|\()", body))
-        members.setdefault(obj_name, set()).update(keys)
-    return members
-
-
-def check_window_method_calls(
-    js_texts: list[tuple[str, str]],
-    js_exports: set[str],
-    obj_members: dict[str, set[str]],
-) -> list[dict[str, str]]:
-    """Flag `window.<Obj>.<method>()` calls where `<Obj>` is defined in JS without `<method>`."""
-    missing: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for rel, cleaned in js_texts:
-        for obj, meth in _JS_WIN_CALL_RE.findall(cleaned):
-            if obj in obj_members:
-                full = f"{obj}.{meth}"
-                if meth not in obj_members[obj] and full not in js_exports:
-                    if (full, rel) not in seen:
-                        seen.add((full, rel))
-                        missing.append({"symbol": full, "file": rel})
-    return missing
 
 
 def _extract_static_route_keys(py_text: str, scan_py_fn: Any, prefix: str) -> dict[str, set[str]]:
@@ -248,9 +246,11 @@ def check_response_key_contracts(
     if not route_keys:
         return []
     mismatches: list[dict[str, str]] = []
-    pat = re.compile(r"""fetch\s*\(\s*['"](/[^'"\s?]+)['"][\s\S]{0,160}?\b(?:data|res|json|body)\.([a-zA-Z_][a-zA-Z0-9_]*)""")
+    pat = re.compile(r"""fetch\s*\(\s*['"](/[^'"\s?]+)['"][\s\S]{0,160}?\b(data|res|resp|response|json|body)\.([a-zA-Z_][a-zA-Z0-9_]*)""")
     for rel, js_text in js_texts:
-        for path, key in pat.findall(js_text):
+        for path, recv, key in pat.findall(js_text):
+            if recv in ("res", "resp", "response") and key in _FETCH_RESPONSE_PROPS:
+                continue
             norm = path.rstrip("/") or "/"
             if norm in route_keys and key not in route_keys[norm]:
                 mismatches.append({"path": norm, "key": key, "file": rel})
@@ -300,7 +300,8 @@ def run_surface_cli(
     ids, selects, globs, routes, imp_cnt = set(), set(), set(), [], 0
     for hp in files["html"]:
         s = scan_html_fn(hp.read_text(encoding="utf-8", errors="replace"))
-        ids.update(s.ids); selects.update(s.selects)
+        ids.update(s.ids)
+        selects.update(s.selects)
     for jp in files["js"]:
         globs.update(scan_js_fn(jp.read_text(encoding="utf-8", errors="replace")).global_exports)
     for pp in files["py"]:
