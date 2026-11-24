@@ -122,6 +122,11 @@ _JS_QUERY_SEL_RE = re.compile(r'\bquerySelector(?:All)?\s*\(\s*["\']#([a-zA-Z0-9
 _JS_HELPER_ID_RE = re.compile(r'\b(?:el|bindOnce)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']')
 _JS_DYNAMIC_GET_RE = re.compile(r'\b(?:document\.getElementById|el|bindOnce)\s*\(\s*[a-zA-Z_$][a-zA-Z0-9_$]*')
 _JS_TABLE_CONTROL_ID_RE = re.compile(r'["\']((?:btn|drawer-btn|modal|tab)-[a-zA-Z0-9_\-]+|[a-zA-Z0-9_\-]+-btn)["\']')
+_JS_CSS_CLASS_CTX_RE = re.compile(r'(?:className\s*[+=]\s*|classList\.[a-zA-Z]+\s*\(\s*|class\s*=\s*["\'][^"\']*)$')
+_JS_CSS_UTILITY_RE = re.compile(
+    r'^(?:btn-(?:primary|secondary|danger|warning|success|info|ghost|outline|sm|md|lg|xs|icon|ack|active|disabled|ok)|'
+    r'tab-(?:active|inactive|pane|panel)|modal-(?:open|close|backdrop|dialog|header|body|footer))$'
+)
 _JS_GLOBAL_EXPORT_RE = re.compile(
     r'\b(?:(?:window|globalThis|self)\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)?)|root\.([A-Z][a-zA-Z0-9_]*))\s*=(?!=)'
 )
@@ -139,10 +144,26 @@ _JS_BUILTIN_WINDOW_PROPS = frozenset({
     "scrollX", "scrollY", "pageXOffset", "pageYOffset",
 })
 
+def _extract_table_control_ids(text: str, ev_strs: set[str]) -> set[str]:
+    """Extract lookup-table control IDs while skipping CSS class contexts and utility tokens."""
+    if not _JS_DYNAMIC_GET_RE.search(text):
+        return set()
+    ids: set[str] = set()
+    for match in _JS_TABLE_CONTROL_ID_RE.finditer(text):
+        token = match.group(1)
+        if token in ev_strs or _JS_CSS_UTILITY_RE.match(token):
+            continue
+        prefix = text[max(0, match.start() - 60):match.start()]
+        if _JS_CSS_CLASS_CTX_RE.search(prefix):
+            continue
+        ids.add(token)
+    return ids
+
+
 def scan_js_surface(text: str) -> JsSurface:
     """Extract DOM queries, window exports/reads, and event listener attachments."""
     ev_strs = set(re.findall(r'\b(?:addEventListener|removeEventListener|CustomEvent)\s*\(\s*["\']([a-zA-Z0-9_\-]+)["\']', text))
-    table_ids = (set(_JS_TABLE_CONTROL_ID_RE.findall(text)) - ev_strs) if _JS_DYNAMIC_GET_RE.search(text) else set()
+    table_ids = _extract_table_control_ids(text, ev_strs)
     queried = set(_JS_GET_ELEM_RE.findall(text)) | set(_JS_QUERY_SEL_RE.findall(text)) | set(_JS_HELPER_ID_RE.findall(text)) | table_ids
     raw_exports = {g0 or g1 for g0, g1 in _JS_GLOBAL_EXPORT_RE.findall(text) if (g0 or g1)}
     toplevel_fns = set(_JS_TOPLEVEL_FN_RE.findall(text))

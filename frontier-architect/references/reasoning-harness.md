@@ -34,6 +34,7 @@ Before modifying any production file on a non-trivial task, write an explicit **
 - **Portable Plan Hygiene (Strict Precedence)**: While generic chat guidelines allow `file:///` links, committable files and implementation plans **must never contain `file:///` links, absolute drive paths, or OS user paths**. Use clean POSIX repo-relative paths (`src/module/file.py#L10-L20`).
 - **Data & State Flow**: Source of truth → transformation → sink.
 - **Failure Modes**: Network drop, null/empty input, concurrency race, quota limit.
+- **Pre-Flight Edge-Case Checklist**: Before editing, verify (1) target file paths via `git grep` / `surface` (never guess), (2) Node VM / JS test globals (`window.scrollTo`, `matchMedia`) when touching UI scripts, (3) DB/`PRAGMA user_version` idempotent migration guards on schema changes, and (4) exact CLI flags (`--help`) before invoking skill tools.
 - **OS-Agnostic Verification Command**: The exact cross-platform command (`python -m unittest discover tests`, `pytest`) or browser check that proves it works. Never embed OS-locked virtualenv paths or hidden user customization directories.
 
 *Why it works:* Once these constraints are written into the prompt/artifact context, the model attends to them explicitly while generating code, simulating deep internal reasoning at near-zero latency cost.

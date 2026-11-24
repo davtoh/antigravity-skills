@@ -26,7 +26,7 @@ _IGNORED_ESCALATIONS = {"", "none", "n/a", "null"}
 def _grade_cap(steps: int | None, retries: int | None) -> str:
     """Best grade the SKILL.md rubric allows for the observed steps/retries."""
     cap = "A"
-    if (steps is not None and steps > 100) or (retries is not None and retries > 3):
+    if (steps is not None and steps > 140) or (steps is not None and steps > 100 and retries is not None and retries >= 2) or (retries is not None and retries > 3):
         cap = "C"
     elif (steps is not None and steps > 60) or (retries is not None and retries >= 2):
         cap = "B"

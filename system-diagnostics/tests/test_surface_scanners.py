@@ -209,6 +209,21 @@ class TestSurfaceScanners(unittest.TestCase):
             res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
             self.assertEqual(res["summary"]["total_mismatches"], 0, f"Unexpected mismatches: {res}")
 
+    def test_scan_js_surface_skips_css_utility_and_classname_controls(self):
+        js = """
+        const btn = document.getElementById(dynamicId);
+        btn.className = 'btn-ok';
+        btn.classList.add('btn-reconvert-inline');
+        const html = '<button class="btn btn-sm btn-primary">Save</button>';
+        const table = [['drawer-btn-enroll', () => {}]];
+        """
+        surf = scan_js_surface(js)
+        self.assertIn("drawer-btn-enroll", surf.queried_ids)
+        self.assertNotIn("btn-ok", surf.queried_ids)
+        self.assertNotIn("btn-reconvert-inline", surf.queried_ids)
+        self.assertNotIn("btn-sm", surf.queried_ids)
+        self.assertNotIn("btn-primary", surf.queried_ids)
+
 if __name__ == "__main__":
     unittest.main()
 

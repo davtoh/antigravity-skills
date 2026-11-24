@@ -66,6 +66,9 @@ class TestTranscriptAuditorCore(_TranscriptTestBase):
         log.mkdir(parents=True)
         body = "not json\n" + "\n".join(json.dumps({"type": "GENERIC", "content": ""}) for _ in range(101)) + "\n"
         (log / "transcript.jsonl").write_bytes(body.encode("utf-8"))
+        self.assertEqual(ta.audit_conversation(self.brain, "c3")["suggested_grade_cap"], "B")
+        body_c = "not json\n" + "\n".join(json.dumps({"type": "GENERIC", "content": ""}) for _ in range(141)) + "\n"
+        (log / "transcript.jsonl").write_bytes(body_c.encode("utf-8"))
         self.assertEqual(ta.audit_conversation(self.brain, "c3")["suggested_grade_cap"], "C")
 
     def test_cmd_latest_and_exit_codes(self) -> None:
@@ -369,6 +372,21 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         row = ta.audit_conversation(self.brain, "bg-changelog-1")
         self.assertEqual(row["changelog_adds"], 1)
         self.assertEqual(row["total_failures"], 0)
+
+    def test_broken_pipe_select_object_failed_snippet_and_zero_fail_grade_cap(self) -> None:
+        self.assertEqual(ta.compute_grade_cap(106, 0), "B")
+        self.assertEqual(ta.compute_grade_cap(106, 2), "C")
+        self.assertEqual(ta.compute_grade_cap(145, 0), "C")
+        _write(self.brain, "pipe-1", [
+            _planner(("run_command", {"CommandLine": "python diagnose.py surface --show-ids | Select-Object -First 80"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n#btn-save\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python -m unittest discover tests"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nRan 1027 tests in 300s\nFAILED (failures=2)\nmoov atom not found\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "pipe-1")
+        self.assertEqual(row["failures"], {"cmd_fail": 1})
+        self.assertEqual(row["total_failures"], 1)
+        self.assertIn("FAILED (failures=2)", row["failure_samples"][0])
 
 
 if __name__ == "__main__":

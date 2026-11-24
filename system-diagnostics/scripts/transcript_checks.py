@@ -20,7 +20,7 @@ _NOISE_PREFIXES = (
 
 def compute_grade_cap(steps: int, total_failures: int) -> str:
     """Match plan_digest._grade_cap(steps, retries) rubric across skills."""
-    if steps > 100 or total_failures > 3:
+    if steps > 140 or (steps > 100 and total_failures >= 2) or total_failures > 3:
         return "C"
     if steps > 60 or total_failures >= 2:
         return "B"
@@ -47,6 +47,8 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
         code = int(match.group(1))
         if code == 1 and re.search(r"\bgit\s+grep\b", last_cmd) and "fatal:" not in content.lower():
             return None
+        if code == 1 and "Select-Object -First" in last_cmd and "Traceback" not in content:
+            return None
         low = content.lower()
         has_audit_cmd = bool(re.search(r"(?:(?:run_)?diagnose\.py|\$[a-z_]\w*\b)[^\n]*\b(?:audit|scan|probe\s+run|surface\s+--verify)\b", last_cmd))
         has_audit_marker = "audit result: defects_found" in low or "--- contract verification (mismatches:" in low
@@ -63,7 +65,7 @@ def failure_snippet(content: str) -> str:
     lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
     body = [ln for ln in lines if not ln.startswith(_NOISE_PREFIXES)]
     non_exit = [ln for ln in body if not _EXIT_RE.match(ln)]
-    priority = [ln for ln in non_exit if re.match(r"^(?:FAIL|ERROR|AssertionError|TypeError|ValueError|RuntimeError|ImportError|ModuleNotFoundError|plan_engine\.py.*error):", ln)]
+    priority = [ln for ln in non_exit if re.match(r"^(?:FAIL(?:ED)?\s*\(|(?:FAIL|ERROR|AssertionError|TypeError|ValueError|RuntimeError|ImportError|ModuleNotFoundError|plan_engine\.py.*error):)", ln)]
     if priority:
         return " ".join(priority[-1].split())[:90]
     chosen = non_exit[-1] if non_exit else (body[0] if body else "error")

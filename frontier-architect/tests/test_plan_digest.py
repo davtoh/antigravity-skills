@@ -37,12 +37,14 @@ class TestPlanDigestCore(_PlanDigestBase):
         self.assertEqual(pd._grade_cap(None, None), "A")
         self.assertEqual(pd._grade_cap(61, 0), "B")
         self.assertEqual(pd._grade_cap(10, 2), "B")
-        self.assertEqual(pd._grade_cap(101, 0), "C")
+        self.assertEqual(pd._grade_cap(101, 0), "B")
+        self.assertEqual(pd._grade_cap(101, 2), "C")
+        self.assertEqual(pd._grade_cap(141, 0), "C")
         self.assertEqual(pd._grade_cap(10, 4), "C")
 
     def test_integrity_flags_missing_steps_inflation_and_empty_tri(self) -> None:
         issues = pd.check_retro_integrity([
-            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 120, "retries": 0, "tool_reliability_scores": {"x": 5}},
+            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 145, "retries": 0, "tool_reliability_scores": {"x": 5}},
             {"milestone_index": 2, "token_efficiency_grade": "A", "tool_reliability_scores": {}},
         ])
         joined = "\n".join(issues)
@@ -85,7 +87,7 @@ class TestPlanDigestCore(_PlanDigestBase):
         child_retros = self.root / ".frontier" / "plans" / "child" / "retrospectives.json"
         child_retros.parent.mkdir(parents=True, exist_ok=True)
         child_retros.write_bytes(json.dumps([
-            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 120, "retries": 0, "tool_reliability_scores": {"x": 5}, "learn_candidates": ["child rule"]},
+            {"milestone_index": 1, "token_efficiency_grade": "A", "steps": 145, "retries": 0, "tool_reliability_scores": {"x": 5}, "learn_candidates": ["child rule"]},
         ]).encode("utf-8"))
         digest = pd.build_digest(self.root, "demo")
         self.assertEqual(digest["children"], ["child"])
@@ -334,8 +336,8 @@ class TestPlanDigestBackfillAndScaffold(_PlanDigestBase):
         digest = pd.build_digest(self.root, "demo", cids=["conv-followup-2"], brain_dir=str(brain), backfill=True)
         saved = json.loads((self.root / ".frontier" / "plans" / "demo" / "retrospectives.json").read_text(encoding="utf-8"))
         self.assertEqual(saved[0]["steps"], 112)
-        self.assertEqual(saved[0]["token_efficiency_grade"], "C")
-        self.assertEqual(saved[0]["tool_reliability_scores"]["token_efficiency"], 3)
+        self.assertEqual(saved[0]["token_efficiency_grade"], "B")
+        self.assertEqual(saved[0]["tool_reliability_scores"]["token_efficiency"], 4)
         self.assertIn("conv-followup-2", digest["cids"])
         self.assertIn("User correction (conv-sta): step 1: No, this is still wrong", digest["escalations"])
         joined_sk = " | ".join(digest["skill_learn_candidates"])
