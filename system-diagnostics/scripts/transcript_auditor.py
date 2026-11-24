@@ -122,10 +122,11 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
-            acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
-            acc["pending_unnamed"] += 1
-            if acc["first_subagent_step"] is None:
-                acc["first_subagent_step"] = idx
+            sub_type = args.get("TypeName")
+            acc["subagents"].append({"type": sub_type, "model": args.get("Model", "inherit"), "step": idx})
+            if sub_type in ("research", "Explore", None):
+                acc["pending_unnamed"] += 1
+                acc["first_subagent_step"] = acc["first_subagent_step"] or idx
         elif name == "enter_plan_mode":
             acc["plan_mode_calls"] += 1
         elif name == "exit_plan_mode":

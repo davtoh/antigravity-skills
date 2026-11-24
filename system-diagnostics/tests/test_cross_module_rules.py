@@ -102,3 +102,32 @@ class TestCrossModuleAndDiagnosticsUpgrades(unittest.TestCase):
             rc = trace_recorder.cmd_traces(argparse.Namespace(path=tmp, action="resolve", issue_id=issue["id"], scaffold=None))
             self.assertEqual(rc, 0)
             self.assertEqual(mgr.load_catalog()["issues"][0]["status"], "resolved")
+
+    def test_callable_signature_drift_inside_try_except(self):
+        svc_src = (
+            "class ConfidenceEngine:\n"
+            "    def record_human_feedback(self, entity_id, decision, camera_id=None):\n"
+            "        return (entity_id, decision, camera_id)\n"
+        )
+        caller_src = (
+            "def apply_fb(ce: ConfidenceEngine):\n"
+            "    try:\n"
+            "        ce.record_human_feedback(1, 'confirm', bogus_kw=True)\n"
+            "    except Exception:\n"
+            "        pass\n"
+            "    try:\n"
+            "        ce.record_human_feedback(1, 'reject', camera_id='cam_1')\n"
+            "    except Exception:\n"
+            "        pass\n"
+        )
+        findings = scan_cross_module_defects([("ce.py", ast.parse(svc_src)), ("caller.py", ast.parse(caller_src))])
+        drift = [d for d in findings if d["rule_id"] == "CALLABLE_SIGNATURE_DRIFT"]
+        self.assertEqual(len(drift), 1)
+        self.assertEqual(drift[0]["line"], 3)
+
+    def test_audit_layout_js_has_empty_src_and_squeezed_modal_checks(self):
+        js = (SCRIPTS_DIR / "audit_layout.js").read_text(encoding="utf-8")
+        self.assertIn("squeezedControlWarnings", js)
+        self.assertIn(".data-table", js)
+        self.assertIn("empty or missing src", js)
+        self.assertIn("offsetParent === null", js)

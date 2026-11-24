@@ -54,7 +54,7 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
             return "audit_catch"
         return "cmd_fail" if code != 0 else None
     if status == "ERROR":
-        return "edit_fail" if "target content not found" in content else ("read_fail" if "file does not exist" in content else None)
+        return "edit_fail" if "target content not found" in content else ("read_fail" if ("file does not exist" in content or "failed to parse path" in content) else None)
     return None
 
 

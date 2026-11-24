@@ -11,6 +11,11 @@ Implements:
 import ast
 from typing import Any
 
+try:
+    from signature_drift_rules import check_callable_signature_drift
+except ImportError:
+    from .signature_drift_rules import check_callable_signature_drift  # type: ignore[no-redef]
+
 
 def check_mixed_clock_domains(
     rel_path: str,
@@ -311,4 +316,5 @@ def scan_cross_module_defects(parsed_files: list[tuple[str, ast.AST]]) -> list[d
         + _check_clock_taint(parsed_files)
         + _check_lock_order_inversion(parsed_files)
         + _check_repo_rollback(parsed_files)
+        + check_callable_signature_drift(parsed_files, classes, dynamic, _bind_local_types)
     )

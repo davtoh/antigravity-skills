@@ -168,3 +168,16 @@ class TestSurfaceContracts(unittest.TestCase):
             res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
             self.assertEqual([w["symbol"] for w in res["script_order_warnings"]], ["switchTab"])
             self.assertEqual([(w["path"], w["param"]) for w in res["query_param_warnings"]], [("/analytics/heatmap", "bogus_param")])
+
+    def test_undefined_layout_class_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text(
+                '<div class="modal-wide split-pane custom-tag"></div>',
+                encoding="utf-8",
+            )
+            (root / "styles.css").write_text(".modal-wide { width: 80vw; }\n", encoding="utf-8")
+            files = walk_source_files(root)
+            res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
+            self.assertEqual([u["class"] for u in res["undefined_layout_classes"]], ["split-pane"])
+            self.assertEqual(res["summary"]["undefined_layout_classes"], 1)

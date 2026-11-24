@@ -204,18 +204,50 @@
   const brokenImageWarnings = [];
   for (const img of document.querySelectorAll('img')) {
     if (brokenImageWarnings.length >= 15) break;
-    const ir = img.getBoundingClientRect();
     const ics = window.getComputedStyle(img);
-    if (ir.width === 0 || ir.height === 0 || ics.display === 'none' || ics.visibility === 'hidden') continue;
-    const rawSrc = img.getAttribute('src') || img.currentSrc || '';
-    if (!rawSrc || img.naturalWidth === 0) {
+    if (ics.display === 'none' || ics.visibility === 'hidden' || (img.offsetParent === null && ics.position !== 'fixed')) continue;
+    const rawSrc = (img.getAttribute('src') || '').trim();
+    const curSrc = (img.currentSrc || '').trim();
+    if (!rawSrc || (img.complete && img.naturalWidth === 0) || (!curSrc && img.naturalWidth === 0)) {
       brokenImageWarnings.push({
         selector: formatSelector(img),
-        src: sanitizeSrc(rawSrc),
+        src: sanitizeSrc(curSrc || rawSrc),
         naturalWidth: img.naturalWidth,
         complete: img.complete,
-        warning: !rawSrc ? 'Visible <img> is missing src attribute' : 'Visible <img> failed to load (naturalWidth === 0)',
+        warning: !rawSrc ? 'Visible <img> has empty or missing src attribute' : 'Visible <img> failed to load (naturalWidth === 0)',
       });
+    }
+  }
+
+  const squeezedControlWarnings = [];
+  for (const modal of document.querySelectorAll('.modal, dialog, [role="dialog"]')) {
+    const mcs = window.getComputedStyle(modal);
+    if (mcs.display === 'none' || mcs.visibility === 'hidden' || modal.getBoundingClientRect().width === 0) continue;
+    for (const tbl of modal.querySelectorAll('.data-table')) {
+      if (squeezedControlWarnings.length >= 15) break;
+      const tr = tbl.getBoundingClientRect();
+      if (tr.width > 0 && tbl.scrollWidth > tbl.clientWidth + 2) {
+        squeezedControlWarnings.push({
+          selector: formatSelector(tbl),
+          scrollWidth: Math.round(tbl.scrollWidth),
+          clientWidth: Math.round(tbl.clientWidth),
+          warning: 'Modal .data-table horizontally squeezed (scrollWidth > clientWidth)',
+        });
+      }
+    }
+    for (const ctrl of modal.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea')) {
+      if (squeezedControlWarnings.length >= 15) break;
+      const cr = ctrl.getBoundingClientRect();
+      const ccs = window.getComputedStyle(ctrl);
+      if (cr.width > 0 && ccs.display !== 'none' && (cr.width < 48 || ctrl.scrollWidth > ctrl.clientWidth + 2)) {
+        squeezedControlWarnings.push({
+          selector: formatSelector(ctrl),
+          width: Math.round(cr.width),
+          scrollWidth: Math.round(ctrl.scrollWidth),
+          clientWidth: Math.round(ctrl.clientWidth),
+          warning: 'Modal form control horizontally squeezed',
+        });
+      }
     }
   }
 
@@ -239,6 +271,7 @@
     flushControlWarnings,
     duplicateControlWarnings,
     brokenImageWarnings,
+    squeezedControlWarnings,
     layoutJitterWarnings: []
   };
 

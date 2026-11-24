@@ -124,6 +124,7 @@ def run_probe(
     probe_args: list[str] | None = None,
     python_bin: str | None = None,
     workspace_root: Path | None = None,
+    timeout: float = 60.0,
 ) -> dict[str, Any]:
     """Execute a probe in an isolated subprocess and return structured telemetry."""
     probe_file = find_probe(name_or_path, workspace_root)
@@ -133,12 +134,13 @@ def run_probe(
             "details": {"searched_dirs": [str(d[0]) for d in get_probe_search_dirs(workspace_root)]}, "latency_ms": 0.0,
         }
     cmd = [python_bin or sys.executable, str(probe_file), *(probe_args or [])]
+    effective_timeout = timeout if (timeout is not None and timeout > 0) else None
     start_time = time.perf_counter()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30.0)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=effective_timeout)
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
     except subprocess.TimeoutExpired:
-        return {"status": "error", "probe": probe_file.stem, "summary": "Probe timed out after 30.0s.", "details": {"cmd": cmd}, "latency_ms": 30000.0}
+        return {"status": "error", "probe": probe_file.stem, "summary": f"Probe timed out after {timeout}s.", "details": {"cmd": cmd}, "latency_ms": float(timeout * 1000)}
     except Exception as err:
         return {"status": "error", "probe": probe_file.stem, "summary": f"Failed to execute probe: {err}", "details": {"exception": str(err)}, "latency_ms": 0.0}
 
@@ -249,6 +251,7 @@ def register_parser(subparsers: Any) -> Any:
     p_prun.add_argument("name", help="Probe name or file path")
     p_prun.add_argument("probe_args", nargs="*", default=[], help="Arguments passed to the probe")
     p_prun.add_argument("--path", default=None, help="Root directory (default: current directory)")
+    p_prun.add_argument("--timeout", type=float, default=60.0, help="Max seconds before aborting probe (default: 60; 0 disables)")
     p_prun.add_argument("--json", action="store_true", help="Output JSON format")
 
     p_pnew = probe_sub.add_parser("new", help="Scaffold a new probe template in .diagnostics/probes/")

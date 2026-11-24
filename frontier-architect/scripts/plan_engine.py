@@ -291,6 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--milestone", type=int, default=None, help="Parent milestone/step index for child plan")
     plan_parent = argparse.ArgumentParser(add_help=False, parents=[root_parent])
     plan_parent.add_argument("plan", nargs="?", help="Optional plan target")
+    plan_parent.add_argument("--slug", dest="slug", default=None, help="Alias for positional plan target")
     p_status = sub.add_parser("status", parents=[plan_parent], help="Show active plan status")
     p_status.add_argument("--json", action="store_true", help="Output compact JSON")
     p_next = sub.add_parser("next", parents=[plan_parent], help="Output next active milestone tasks")
@@ -317,6 +318,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "plan", None) is None and getattr(args, "slug", None):
+        args.plan = args.slug
     arg_root = getattr(args, "root", None)
     repo_root = root or (arg_root.resolve() if arg_root is not None else get_repo_root())
     cmd = args.subcommand or "status"
