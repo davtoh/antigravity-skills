@@ -275,6 +275,12 @@
     layoutJitterWarnings: []
   };
 
+  if (window.__FRONTIER_EXTRA_LAYOUT_CHECKS__) {
+    window.__FRONTIER_EXTRA_LAYOUT_CHECKS__.verifyDataSvgImages(brokenImageWarnings, formatSelector, sanitizeSrc);
+    window.__FRONTIER_EXTRA_LAYOUT_CHECKS__.checkFlexChildBoxOverflow(layoutOverflowWarnings, formatSelector);
+    window.__FRONTIER_EXTRA_LAYOUT_CHECKS__.checkCanvasLuminance(report);
+  }
+
   const stabilityMs = Number(window.__FRONTIER_STABILITY_MS__ || 0);
   if (!(stabilityMs > 0)) return report;
 

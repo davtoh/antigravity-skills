@@ -39,6 +39,7 @@ try:
         find_devtools_active_port,
         urls_match,
     )
+    from cdp_viewport import build_generic_audit_js, execute_layout_audit, parse_viewport  # noqa: F401
 except ImportError:
     from scripts.cdp_transport import CDPSession, connect_ws  # type: ignore[no-redef]
     from scripts.cdp_runtime import (  # type: ignore[no-redef]
@@ -46,6 +47,11 @@ except ImportError:
         enable_runtime_capture,
         find_devtools_active_port,
         urls_match,
+    )
+    from scripts.cdp_viewport import (  # type: ignore[no-redef] # noqa: F401
+        build_generic_audit_js,
+        execute_layout_audit,
+        parse_viewport,
     )
 
 # Ensure UTF-8 output across Windows, macOS, and Linux terminals
@@ -91,11 +97,6 @@ def find_chrome_executable() -> str:
 
     return shutil.which("chrome") or shutil.which("google-chrome") or "google-chrome"
 
-def build_generic_audit_js(custom_selectors: list[str], stability_ms: float = 0) -> str:
-    js_path = Path(__file__).parent / "audit_layout.js"
-    base_js = js_path.read_text(encoding="utf-8")
-    return f"window.__FRONTIER_SELECTORS__ = {json.dumps(custom_selectors)};\nwindow.__FRONTIER_STABILITY_MS__ = {float(stability_ms)};\n{base_js}"
-
 async def evaluate(cdp: CDPSession, session_id: str | None, expression: str):
     """Evaluate JS and surface page-side exceptions instead of silently printing null."""
     res = await cdp.send(
@@ -140,13 +141,7 @@ async def run_against_target(cdp: CDPSession, session_id: str | None, args) -> i
     exit_code = 0
     if args.click:
         await _click_selector(cdp, session_id, args.click)
-    custom_sels = [s.strip() for s in args.selectors.split(",") if s.strip()] if args.selectors else []
-    if args.audit_layout or custom_sels:
-        result = await evaluate(cdp, session_id, build_generic_audit_js(custom_sels, getattr(args, "stability_ms", 0)))
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        if getattr(args, "strict", False) and isinstance(result, dict):
-            if result.get("layoutOverflowWarnings") or result.get("layoutJitterWarnings") or result.get("viewport", {}).get("hasHorizontalWindowScroll", False):
-                exit_code = 1
+    exit_code = max(exit_code, await execute_layout_audit(cdp, session_id, evaluate, args))
     if args.eval:
         eval_result = await evaluate(cdp, session_id, args.eval)
         print(json.dumps(eval_result, indent=2, ensure_ascii=False))
@@ -292,13 +287,6 @@ async def main_async(args) -> int:
             return live_result
     return await run_headless(args)
 
-def parse_viewport(value: str) -> tuple[int, int]:
-    try:
-        width, height = (int(x) for x in value.lower().split("x"))
-        return width, height
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"--window-size must look like 1440x900, got '{value}'") from exc
-
 def _resolve_eval_arg(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     eval_file = getattr(args, "eval_file", None)
     if args.eval and eval_file:
@@ -332,6 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-capture-runtime", dest="capture_runtime", action="store_false", help="Disable runtime capture during --eval/--eval-file")
     parser.set_defaults(fallback_headless=True)
     parser.add_argument("--window-size", dest="viewport", type=parse_viewport, default=(1440, 900), help="Headless viewport (default: 1440x900)")
+    parser.add_argument("--viewports", default=None, help="Comma-separated viewports for multi-viewport --audit-layout (e.g. 960x720,1280x800,1920x1080)")
     parser.add_argument("--port", type=int, default=0, help="Headless debugging port (default: 0 = OS-assigned free port)")
     return parser
 

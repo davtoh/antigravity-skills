@@ -90,5 +90,25 @@ if __name__ == "__main__":
         ret = diagnose.cmd_probe(args)
         self.assertEqual(ret, 0)
 
+    def test_infra_unavailable_and_empty_cdp_sweep_rejected(self):
+        """Verify INFRA_UNAVAILABLE is preserved and empty CDP sweeps fail."""
+        target_dir = self.ws_root / ".diagnostics" / "probes"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "infra_probe.py").write_text(
+            'import json, sys\nprint(json.dumps({"status": "INFRA_UNAVAILABLE", "summary": "No Chrome", "details": {}}))\nsys.exit(1)\n',
+            encoding="utf-8",
+        )
+        (target_dir / "empty_sweep_probe.py").write_text(
+            'import json\nprint(json.dumps({"status": "ok", "summary": "ok", "details": {"checks": {"sweep": {}}}}))\n',
+            encoding="utf-8",
+        )
+        infra_res = probe_runner.run_probe("infra_probe", workspace_root=self.ws_root)
+        self.assertEqual(infra_res["status"], probe_runner.INFRA_UNAVAILABLE)
+        sweep_res = probe_runner.run_probe("empty_sweep_probe", workspace_root=self.ws_root)
+        self.assertEqual(sweep_res["status"], "error")
+        self.assertIn("Empty CDP sweep", sweep_res["summary"])
+        ok_zero_tabs, _ = probe_runner.validate_cdp_sweep({"sweep": {"tabs": {}}})
+        self.assertFalse(ok_zero_tabs)
+
 if __name__ == "__main__":
     unittest.main()

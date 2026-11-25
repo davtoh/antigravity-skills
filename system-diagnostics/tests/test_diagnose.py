@@ -210,10 +210,12 @@ class TestSubcommandsExecution(unittest.TestCase):
             cmd_eval_file = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_eval_file)
             self.assertIn("--capture-runtime", cmd_eval_file)
 
-            args_plain = parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout"])
+            args_plain = parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout", "--viewports", "960x720,1280x800"])
             cmd_plain = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_plain)
             self.assertNotIn("--capture-runtime", cmd_plain)
             self.assertNotIn("--no-capture-runtime", cmd_plain)
+            self.assertIn("--viewports", cmd_plain)
+            self.assertIn("960x720,1280x800", cmd_plain)
 
     def test_stage_standalone_skill_materializes_ssot(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -22,6 +22,7 @@ python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
 - `--eval-file <PATH>`: Reads UTF-8 JavaScript from a file (or `-` for stdin) and evaluates in page context (avoids Windows PowerShell quote-stripping).
 - `--click <SELECTOR>`: Clicks an element before measuring.
 - `--window-size <WxH>`: Headless viewport dimensions (default: `1440x900`).
+- `--viewports <LIST>`: Comma-separated viewports for multi-viewport `--audit-layout` sweeps (e.g. `'960x720,1280x800,1920x1080'`).
 - `--wait <SEC>`: Maximum post-load/click settle wait in seconds (default: `1.5`).
 - `--stability-ms <MS>`: Early-exit layout stability window in milliseconds (default: `0`).
 - `--connect-timeout <SEC>`: Live CDP handshake timeout in seconds (default: `15.0`).
@@ -163,10 +164,13 @@ skills/system-diagnostics/
 │   ├── diagnose.py                   # Unified CLI entrypoint
 │   ├── diagnose_cli.py               # Core parser builders & 3-tier runner
 │   ├── arch_mapper.py                # Compact architecture, modularity & coupling mapper
+│   ├── ast_guard_rules.py            # AST guard rules for silent shape-guarded skips
 │   ├── audit_layout.js               # Injected DOM bounding box & overflow auditor
+│   ├── audit_layout_extra.js         # SVG data-URI, flex overflow & canvas luminance checks
 │   ├── cdp_inspect.py                # CDP layout, DOMRect, and runtime inspector
 │   ├── cdp_runtime.py                # Console, exception, network & DevToolsActivePort helpers
 │   ├── cdp_transport.py              # Zero-dependency RFC 6455 WebSocket client
+│   ├── cdp_viewport.py               # Viewport parsing & multi-viewport audit helpers
 │   ├── changelog_archive.py          # Semester sharding & sanitization helpers
 │   ├── changelog_manager.py          # Unified CHANGELOG.md & commit-hint engine
 │   ├── connector_scaffolder.py       # Framework trace middleware scaffolder
@@ -182,6 +186,7 @@ skills/system-diagnostics/
 │   ├── skill_packager.py             # Standalone .skill bundler materializing SSOT shims
 │   ├── static_auditor.py             # Modular static defect, smell & callable auditor
 │   ├── surface_contracts.py          # Surface CLI & response-key contract matcher
+│   ├── surface_layout_checks.py      # Undefined layout class & App.navigate target checks
 │   ├── surface_scanners.py           # AST surface parser for HTML/JS/Python/CSS
 │   ├── surface_verifier.py           # Cross-contract verifier (fetch vs routes, window.*, IDs)
 │   ├── trace_cli.py                  # CLI handler for runtime trace inspection & resolution

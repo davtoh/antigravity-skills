@@ -181,3 +181,26 @@ class TestSurfaceContracts(unittest.TestCase):
             res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
             self.assertEqual([u["class"] for u in res["undefined_layout_classes"]], ["split-pane"])
             self.assertEqual(res["summary"]["undefined_layout_classes"], 1)
+
+    def test_fetch_default_get_method_parity_and_app_navigate_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text(
+                '<div id="tab-live"></div><button id="btn-jump" onclick="App.navigate(\'tab-missing\')">Jump</button>',
+                encoding="utf-8",
+            )
+            (root / "app.js").write_text(
+                'document.getElementById("btn-jump");\n'
+                'fetch("/api/post-only", {});\n'
+                'App.navigate("tab-live");\n',
+                encoding="utf-8",
+            )
+            (root / "api.py").write_text(
+                'from fastapi import APIRouter\nrouter = APIRouter()\n'
+                '@router.post("/api/post-only")\ndef do_post(): return {"ok": True}\n',
+                encoding="utf-8",
+            )
+            files = walk_source_files(root)
+            res = verify_surface_contracts(root, files, scan_html_surface, scan_js_surface, scan_python_surface)
+            self.assertEqual([(u["method"], u["path"]) for u in res["unmatched_fetches"]], [("GET", "/api/post-only")])
+            self.assertEqual([n["target"] for n in res["invalid_nav_targets"]], ["tab-missing"])

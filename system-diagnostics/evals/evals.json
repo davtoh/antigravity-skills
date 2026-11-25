@@ -166,7 +166,8 @@
         "Uses diagnose.py ui --eval-file <path> to evaluate multi-statement JavaScript safely without Windows PowerShell quote-stripping",
         "Supports --click <selector> and --screenshot <path> for interactive state transitions and visual capture",
         "Supports --no-fallback-headless to fail immediately when live Chrome is unreachable",
-        "Supports --navigate and --window-size for fresh asset reloads and custom viewport dimensions"
+        "Supports --navigate and --window-size for fresh asset reloads and custom viewport dimensions",
+        "Supports --viewports for multi-viewport --audit-layout sweeps"
       ]
     },
     {

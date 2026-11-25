@@ -66,6 +66,7 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("--click", "--screenshot"), (r"--click", r"--screenshot"), "ui --click & --screenshot"),
     (("--no-fallback-headless",), (r"--no-fallback-headless",), "ui --no-fallback-headless"),
     (("--navigate", "--window-size"), (r"--navigate", r"--window-size"), "ui --navigate & --window-size"),
+    (("--viewports",), (r"--viewports",), "ui --viewports multi-viewport sweep"),
     (("arch-map",), (r"diagnose\.py\s+arch-map",), "arch-map"),
     (("--include-tests",), (r"--json", r"--full", r"--include-tests", r"--out"), "arch-map options"),
     (("diagnose.py run",), (r"diagnose\.py\s+run", r"zero-code runner"), "diagnose.py run"),

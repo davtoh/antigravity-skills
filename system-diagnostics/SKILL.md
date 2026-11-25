@@ -16,7 +16,7 @@ For exhaustive per-subcommand flag permutations and internal script topology, re
 1. **Browser UI & Layout Inspection (`diagnose.py ui`)**:
    - Inspects DOM bounding boxes (`DOMRect`), computed styles, and scroll dimensions via zero-Node/npm pure-Python RFC 6455 WebSocket CDP.
    - Detects layout overflows and horizontal viewport blowouts; attaches to the user's active visible Chrome tab via `DevToolsActivePort` (`--live`, with `--no-fallback-headless` enforced unless `--allow-headless-fallback`) or runs an isolated temporary headless browser (`--headless`).
-   - Supports `--eval-file <path>` (avoids Windows PowerShell quote-stripping; `--capture-runtime` defaults ON for `--eval`/`--eval-file`, opt out via `--no-capture-runtime`), `--click`, `--screenshot`, `--navigate`, `--window-size`, `--wait`, and `--strict`.
+   - Supports `--eval-file <path>` (avoids Windows PowerShell quote-stripping; `--capture-runtime` defaults ON for `--eval`/`--eval-file`, opt out via `--no-capture-runtime`), `--click`, `--screenshot`, `--navigate`, `--window-size`, `--viewports`, `--wait`, and `--strict`.
 2. **Docker Runtime & Sync Audit (`diagnose.py container`)**:
    - Snapshots container CPU, Memory, Network I/O, and PIDs (`docker stats --no-stream`) and active processes (`docker top`).
    - Verifies host-vs-container MD5 file synchronization (`--sync-check`) to catch stale mounted files, scans recent container logs for unhandled Tracebacks/exceptions (`--lines`), and auto-probes active containers when `--container` is omitted.
