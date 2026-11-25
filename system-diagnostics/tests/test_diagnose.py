@@ -360,6 +360,20 @@ class TestMainDispatcher(unittest.TestCase):
             retro_text = (root / ".frontier" / "DEBUG_RETRO.md").read_text(encoding="utf-8")
             self.assertIn("Overlay missing", retro_text)
 
+    def test_cmd_tests_resolves_parent_repo_root_when_path_is_tests_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / ".git").mkdir()
+            (root / "pkg").mkdir()
+            (root / "pkg" / "__init__.py").write_text("VAL = 42\n", encoding="utf-8")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_ok.py").write_text(
+                "import unittest\nfrom pkg import VAL\nclass T(unittest.TestCase):\n    def test_v(self): self.assertEqual(VAL, 42)\n",
+                encoding="utf-8",
+            )
+            rc = diagnose.cmd_tests(argparse.Namespace(path=str(root / "tests"), args=[], timeout=30.0))
+            self.assertEqual(rc, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

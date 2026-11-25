@@ -167,6 +167,18 @@ def _cid_matches(entry_cid: str, cids: list[str] | None) -> bool:
     return any(c.startswith(entry_cid) or entry_cid.startswith(c) for c in cids if c)
 
 
+def _collect_verified_retros(blocks: list[str]) -> tuple[set[str], set[str]]:
+    """Return (verified_cid_prefixes, verified_titles) across DEBUG_RETRO blocks."""
+    import re
+    v_cids, v_titles = set(), set()
+    for blk in blocks:
+        if vm := re.search(r"^##\s+\[[^\]]+\]\s+\[VERIFIED\]\s+(.+)$", blk, re.M | re.I):
+            v_titles.add(re.sub(r"\s+", " ", vm.group(1).strip().lower()))
+            if mc := re.search(r"-\s+\*\*Telemetry\*\*:.*\bcid=([a-zA-Z0-9_-]+)", blk):
+                v_cids.add(mc.group(1)[:8].lower())
+    return v_cids, v_titles
+
+
 def merge_debug_retro_items(
     root: Path, learns: list[str], skill_learns: list[str], escalations: list[str], cids: list[str] | None = None
 ) -> None:
@@ -176,6 +188,7 @@ def merge_debug_retro_items(
         if not cand.is_file():
             continue
         blocks = re.split(r"(?=^##\s+\[)", cand.read_text(encoding="utf-8", errors="replace"), flags=re.M)
+        v_cids, v_titles = _collect_verified_retros(blocks)
         for blk in blocks:
             m_cid = re.search(r"-\s+\*\*Telemetry\*\*:.*\bcid=([a-zA-Z0-9_-]+)", blk)
             ecid = m_cid.group(1) if m_cid else ""
@@ -186,7 +199,9 @@ def merge_debug_retro_items(
             for line in blk.splitlines():
                 s = line.strip()
                 if m := re.match(r"^##\s+\[[^\]]+\]\s+\[(UNCONFIRMED|ESCALATED)\]\s+(.+)$", s, re.I):
-                    _append_unique(escalations, f"Debug retro ({m.group(1).lower()}): {m.group(2).strip()}")
+                    norm_t = re.sub(r"\s+", " ", m.group(2).strip().lower())
+                    if (not ecid or ecid[:8].lower() not in v_cids) and norm_t not in v_titles:
+                        _append_unique(escalations, f"Debug retro ({m.group(1).lower()}): {m.group(2).strip()}")
                 elif m := re.match(r"^-\s+\*\*Project\s+`/learn`\*\*:\s*(.+)$", s):
                     _append_unique(learns, m.group(1).strip())
                 elif m := re.match(r"^-\s+\*\*Skill\s+`/learn`\*\*:\s*(.+)$", s):

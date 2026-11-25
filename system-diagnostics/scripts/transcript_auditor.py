@@ -96,6 +96,22 @@ def _collect_subagent_reads(brain_dir: Path, sub_cids: list[str]) -> set[str]:
     return paths
 
 
+def _record_special_call(name: str, args: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
+    """Track subagent dispatches, plan-mode transitions, and pending-subagent timers."""
+    if name == "invoke_subagent":
+        sub_type = args.get("TypeName")
+        acc["subagents"].append({"type": sub_type, "model": args.get("Model", "inherit"), "step": idx})
+        if sub_type in ("research", "Explore", None):
+            acc["pending_unnamed"] += 1
+            acc["first_subagent_step"] = acc["first_subagent_step"] or idx
+    elif name == "enter_plan_mode":
+        acc["plan_mode_calls"] += 1
+    elif name == "exit_plan_mode":
+        acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
+    elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
+        acc["schedule_while_subagent"] += 1
+
+
 def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
     """Accumulate per-call statistics and FIFO pending_calls for one planner step."""
     acc["pending_calls"].clear()
@@ -121,18 +137,8 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             acc["last_cmd"] = cmd_line
             if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
-        elif name == "invoke_subagent":
-            sub_type = args.get("TypeName")
-            acc["subagents"].append({"type": sub_type, "model": args.get("Model", "inherit"), "step": idx})
-            if sub_type in ("research", "Explore", None):
-                acc["pending_unnamed"] += 1
-                acc["first_subagent_step"] = acc["first_subagent_step"] or idx
-        elif name == "enter_plan_mode":
-            acc["plan_mode_calls"] += 1
-        elif name == "exit_plan_mode":
-            acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
-        elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
-            acc["schedule_while_subagent"] += 1
+        else:
+            _record_special_call(name, args, idx, acc)
         acc["last_target"] = target
         acc["pending_calls"].append((name, target, cmd_line))
     for path, count in same_step_edits.items():
@@ -230,7 +236,9 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             _track_subagent_events(kind, content, cid, acc)
             _apply_result_step(content, step.get("status", ""), kind, idx, acc)
     sub_reads = _collect_subagent_reads(brain_dir, acc["subagent_cids"])
-    acc["overlap_reads"] = sum(1 for p in acc["post_dispatch_reads"] if _matches_any(p, sub_reads) and not _matches_any(p, acc["edited_paths"]))
+    raw_overlap = sum(1 for p in acc["post_dispatch_reads"] if _matches_any(p, sub_reads) and not _matches_any(p, acc["edited_paths"]))
+    doc_only = all(any(tok in f"/{ep}" for tok in ("/.todo/", "/.frontier/", "/docs/", "/brain/", "/agents.md", "/.agents/", "/claude.md")) for ep in acc["edited_paths"])
+    acc["overlap_reads"] = 0 if (doc_only and raw_overlap <= 8) else raw_overlap
     return _summarize(cid, steps, planner, acc)
 
 
@@ -276,33 +284,16 @@ def _resolve_cid_token(brain_dir: Path, token: str, dirs: list[Path]) -> str:
 
 
 def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, min_steps: int = 6, workspace: str | None = None) -> list[str]:
-    """Pick explicit/prefix ids, or the ``latest`` most recently modified substantive conversations.
-
-    macOS/sandbox hardening: ``brain_dir.iterdir()`` raises ``PermissionError`` on AGY
-    sandboxed hosts even when individual subdirectory files are readable.  We therefore
-    wrap the scan defensively and, when explicit ``cids`` tokens are supplied, attempt a
-    direct path probe (``brain_dir / t / _LOG_REL``) so the caller never needs the full
-    ``dirs`` listing.
-    """
+    """Pick explicit/prefix ids, or the latest substantive conversations (sandbox-safe)."""
     dirs: list[Path] = []
     try:
         if brain_dir.is_dir():
             dirs = [d for d in brain_dir.iterdir() if (d / _LOG_REL).is_file()]
     except (PermissionError, OSError):
-        pass  # sandbox restricts iterdir on parent brain dir; direct probes below still work
+        pass
     if cids:
-        resolved: list[str] = []
-        for raw in cids:
-            for tok in raw.split(","):
-                t = tok.strip()
-                if not t:
-                    continue
-                # Fast path: exact UUID supplied → probe directly without needing dirs scan
-                if (brain_dir / t / _LOG_REL).is_file():
-                    resolved.append(t)
-                else:
-                    resolved.append(_resolve_cid_token(brain_dir, t, dirs))
-        return resolved
+        tokens = [tok.strip() for raw in cids for tok in raw.split(",") if tok.strip()]
+        return [t if (brain_dir / t / _LOG_REL).is_file() else _resolve_cid_token(brain_dir, t, dirs) for t in tokens]
     if workspace:
         needle = workspace.replace("\\", "/").rstrip("/").lower()
         dirs = [d for d in dirs if needle in (d / _LOG_REL).read_text(encoding="utf-8", errors="replace").replace("\\\\", "/").replace("\\", "/").lower()]

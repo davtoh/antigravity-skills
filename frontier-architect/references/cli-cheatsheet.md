@@ -2,7 +2,7 @@
 
 Consult this quick-reference sheet during **Phase 1B (Diagnostics)** and **Phase 6 (Plan Execution & Milestone Sign-Off)** to avoid `--help` round-trips and quote-stripping errors on Windows PowerShell.
 
-> `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside the config repo).
+> `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside `<config_dir>`). Note: `<config_dir>` itself is **not** a git repo—run `git -C "<config_dir>/skills" ...` when inspecting skill git state.
 
 ---
 

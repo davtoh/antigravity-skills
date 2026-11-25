@@ -52,11 +52,16 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
         low = content.lower()
         has_audit_cmd = bool(re.search(r"(?:(?:run_)?diagnose\.py|\$[a-z_]\w*\b)[^\n]*\b(?:audit|scan|probe\s+run|surface\s+--verify)\b", last_cmd))
         has_audit_marker = "audit result: defects_found" in low or "--- contract verification (mismatches:" in low
-        if code == 1 and not is_cli_usage_error(content) and "traceback" not in low and (has_audit_cmd or has_audit_marker):
+        has_non_audit_crash = (
+            "can't open file" in low or "no such file or directory" in low
+            or bool(re.search(r"failed\s*\((?:failures|errors)=", low))
+            or bool(re.search(r"fullyqualifiederrorid\s*:\s*(?:[\w-]+\s+)?tests\s+failed", low))
+        )
+        if code == 1 and not is_cli_usage_error(content) and "traceback" not in low and not has_non_audit_crash and (has_audit_cmd or has_audit_marker):
             return "audit_catch"
         return "cmd_fail" if code != 0 else None
     if status == "ERROR":
-        return "edit_fail" if "target content not found" in content else ("read_fail" if ("file does not exist" in content or "failed to parse path" in content) else None)
+        return "edit_fail" if "target content not found" in content else ("read_fail" if ("file does not exist" in content or "failed to parse path" in content) else ("hook_fail" if "denied by pre-tool hook" in content.lower() else None))
     return None
 
 
@@ -108,7 +113,7 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
     raw_cmd = (r.get("failures") or {}).get("cmd_fail")
     samples = r.get("failure_samples") or []
-    non_tdd_fails = sum(1 for s in samples if "unittest" not in s and "AssertionError" not in s and "plan_engine.py" not in s)
+    non_tdd_fails = sum(1 for s in samples if not re.search(r"unittest|AssertionError|FAILED\s*\(|plan_engine\.py", s))
     cmd_fails = (int(raw_cmd) if raw_cmd is not None else int(r.get("total_failures") or 0)) - cli_errs
     if cmd_fails >= 4 and (not samples or non_tdd_fails >= 2) and not r.get("has_debug_retro"):
         notes.append(f"- FLAG {cid8}: {r['total_failures']} failures without /app-debugger or debug-retro (unescalated thrash)")

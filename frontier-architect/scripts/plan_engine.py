@@ -267,10 +267,10 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
             missing_prior_retro = target_idx - 1
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
+    parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
     if ps["status"] == "completed":
         from plan_digest import build_workspace_digest, write_workspace_scaffold
         write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
-    parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
     print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced)
     return 0
 
