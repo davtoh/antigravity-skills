@@ -219,7 +219,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "tooling_cli_fails": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
         "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
-        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False,
+        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False, "observed_models": [],
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -227,6 +227,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         content, kind = step.get("content") or "", step.get("type", "")
         if kind == "PLANNER_RESPONSE":
             planner += 1
+            if (sm := str(step.get("model") or "").strip()) and sm not in acc["observed_models"]: acc["observed_models"].append(sm)
             if "git commit" in content: acc["has_commit_hint"] = True
             if "Continuous Learning & Introspective Options" in content: acc["has_learning_block"] = True
             _record_calls(step, idx, acc)
@@ -250,7 +251,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
     dupes = acc["reads_while_pending"] + acc["overlap_reads"]
     total_failures = sum(acc["failures"].values())
     return {
-        "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"], "tool_calls": dict(acc["tools"]),
+        "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"] or acc["observed_models"], "observed_models": acc["observed_models"], "tool_calls": dict(acc["tools"]),
         "failures": dict(acc["failures"]), "total_failures": total_failures, "audit_catches": acc["audit_catches"], "tooling_cli_fails": acc["tooling_cli_fails"],
         "failure_samples": acc["failure_samples"], "user_corrections": acc["user_corrections"],
         "workflow_redirects": acc["workflow_redirects"], "subagents": acc["subagents"],

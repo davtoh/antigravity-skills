@@ -161,16 +161,15 @@ def _build_retrospective_entry(
 def _resolve_cid_telemetry(
     args: argparse.Namespace, steps: int | None, retries: int | None
 ) -> tuple[int | None, int | None, str | None]:
-    """Populate missing steps/retries and canonicalize short CIDs via transcript audit."""
+    """Populate steps/retries (preferring empirical --cid transcript counts) and canonicalize short CIDs."""
     cid = getattr(args, "cid", None)
     if not cid:
         return steps, retries, None
-    if steps is None or retries is None or len(cid) < 36:
-        from plan_digest import audit_single_cid
-        if row := audit_single_cid(cid, getattr(args, "brain_dir", None)):
-            cid = str(row.get("cid") or cid)
-            steps = row["steps"] if steps is None else steps
-            retries = row["total_failures"] if retries is None else retries
+    from plan_digest import audit_single_cid
+    if row := audit_single_cid(cid, getattr(args, "brain_dir", None)):
+        cid = str(row.get("cid") or cid)
+        steps = row["steps"]
+        retries = row["total_failures"]
     return steps, retries, cid
 
 

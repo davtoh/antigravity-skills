@@ -382,11 +382,14 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
             {"type": "GENERIC", "content": "Command exited with code 1.\n#btn-save\n", "status": "DONE"},
             _planner(("run_command", {"CommandLine": "python -m unittest discover tests"})),
             {"type": "GENERIC", "content": "Command exited with code 1.\nRan 1027 tests in 300s\nFAILED (failures=2)\nmoov atom not found\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "pytest tests/a.py"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nAssertionError: broken\n", "status": "DONE"},
         ])
         row = ta.audit_conversation(self.brain, "pipe-1")
+        self.assertEqual(row["audit_catches"], 1)
         self.assertEqual(row["failures"], {"cmd_fail": 1})
         self.assertEqual(row["total_failures"], 1)
-        self.assertIn("FAILED (failures=2)", row["failure_samples"][0])
+        self.assertIn("AssertionError: broken", row["failure_samples"][0])
 
     def test_chained_unittest_hook_fail_and_doc_only_overlap_exemption(self) -> None:
         _write(self.brain, "sub-a", [_planner(("read_file", {"Path": "src/a.py"}), ("read_file", {"Path": "src/b.py"}))])
@@ -403,8 +406,24 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         ])
         row = ta.audit_conversation(self.brain, "plan-doc")
         self.assertEqual(row["subagent_overlap_reads"], 0)
-        self.assertEqual(row["audit_catches"], 0)
-        self.assertEqual(row["failures"], {"hook_fail": 1, "cmd_fail": 2})
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["failures"], {"hook_fail": 1, "cmd_fail": 1})
+
+    def test_observed_models_and_get_childitem_silently_continue_exempt(self) -> None:
+        _write(self.brain, "orch-1", [
+            {"type": "PLANNER_RESPONSE", "model": "gemini-4-neon-medium", "tool_calls": [
+                {"name": "run_command", "args": {"CommandLine": "Get-ChildItem -Force .plan, .TODO -ErrorAction SilentlyContinue"}},
+            ]},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n.TODO/step_3.md\n", "status": "DONE"},
+            {"type": "PLANNER_RESPONSE", "model": "gemini-4-hydrogen-high", "tool_calls": [
+                {"name": "read_file", "args": {"Path": "a.py"}},
+            ]},
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "orch-1")
+        self.assertEqual(row["models"], ["gemini-4-neon-medium", "gemini-4-hydrogen-high"])
+        self.assertEqual(row["observed_models"], ["gemini-4-neon-medium", "gemini-4-hydrogen-high"])
+        self.assertEqual(row["total_failures"], 0)
 
     def test_conversation_id_in_read_output_without_subagent_not_counted_as_pending(self) -> None:
         _write(self.brain, "read-cid-1", [

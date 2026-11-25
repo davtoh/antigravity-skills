@@ -803,6 +803,26 @@ class TestPlanEngineCLI(unittest.TestCase):
         p_retros = load_json(get_frontier_dir(self.root) / "plans" / "pass_grade" / "retrospectives.json")
         self.assertEqual(p_retros[0]["token_efficiency_grade"], "C")
 
+    def test_cli_path_alias_and_cid_overrides_guessed_steps(self):
+        code_st, out_st = self._run_cli(["--path", str(self.root), "discover"])
+        self.assertEqual(code_st, 0)
+        self.assertIn("sample_plan.md", out_st)
+
+        self._run_cli(["init", "sample_plan"])
+        brain = self.root / "brain_cid_override"
+        log_dir = brain / "cid-real-120" / ".system_generated" / "logs"
+        log_dir.mkdir(parents=True)
+        rows = [{"type": "GENERIC", "content": "ok"} for _ in range(120)]
+        (log_dir / "transcript.jsonl").write_bytes(("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8"))
+        code_r, _ = self._run_cli([
+            "retrospective", "sample_plan", "--milestone", "1", "--grade", "A",
+            "--steps", "12", "--retries", "0", "--cid", "cid-real-120", "--brain-dir", str(brain),
+        ])
+        self.assertEqual(code_r, 0)
+        retros = load_json(get_frontier_dir(self.root) / "plans" / "sample_plan" / "retrospectives.json")
+        self.assertEqual(retros[0]["steps"], 120)
+        self.assertEqual(retros[0]["token_efficiency_grade"], "C")
+
 
 if __name__ == "__main__":
     unittest.main()

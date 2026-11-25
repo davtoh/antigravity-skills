@@ -278,11 +278,11 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Construct CLI argument parser with subcommands."""
     parser = argparse.ArgumentParser(description="Frontier Architect Plan & Continuation Engine")
-    parser.add_argument("--root", type=Path, default=None, help="Optional workspace root override")
+    parser.add_argument("--root", "--path", dest="root", type=Path, default=None, help="Optional workspace root override")
     sub = parser.add_subparsers(dest="subcommand", help="Engine subcommands")
 
     root_parent = argparse.ArgumentParser(add_help=False)
-    root_parent.add_argument("--root", type=Path, default=argparse.SUPPRESS, help="Optional workspace root override")
+    root_parent.add_argument("--root", "--path", dest="root", type=Path, default=argparse.SUPPRESS, help="Optional workspace root override")
 
     sub.add_parser("discover", parents=[root_parent], help="Discover architectural plans in workspace")
     p_init = sub.add_parser("init", parents=[root_parent], help="Initialize or bind active plan")
