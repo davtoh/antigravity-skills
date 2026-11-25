@@ -406,6 +406,19 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["audit_catches"], 0)
         self.assertEqual(row["failures"], {"hook_fail": 1, "cmd_fail": 2})
 
+    def test_conversation_id_in_read_output_without_subagent_not_counted_as_pending(self) -> None:
+        _write(self.brain, "read-cid-1", [
+            _planner(("read_file", {"Path": "tests/test_transcript_auditor.py"})),
+            {"type": "GENERIC", "content": 'Showing lines 1-20 of 20\n{"conversationId": "sub-fake"}', "status": "DONE"},
+            _planner(("read_file", {"Path": "a.py"}), ("read_file", {"Path": "b.py"})),
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "read-cid-1")
+        self.assertEqual(row["subagents"], [])
+        self.assertEqual(row["reads_while_pending"], 0)
+        self.assertEqual(row["reads_after_subagent"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

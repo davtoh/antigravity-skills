@@ -148,12 +148,14 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
 
 def _track_subagent_events(kind: str, content: str, cid: str, acc: dict[str, Any]) -> None:
     """Track dispatched subagent IDs and completion SYSTEM_MESSAGE arrivals."""
-    if kind == "GENERIC" and "conversationId" in content:
-        for scid in _SUB_CID_RE.findall(content):
-            if scid not in acc["subagent_cids"]:
-                acc["subagent_cids"].append(scid)
-                acc["pending_cids"].add(scid)
-                acc["pending_unnamed"] = max(0, acc["pending_unnamed"] - 1)
+    if kind == "GENERIC" and "conversationId" in content and acc["pending_unnamed"] > 0:
+        next_call = acc["pending_calls"][0][0] if acc["pending_calls"] else ""
+        if next_call in ("invoke_subagent", ""):
+            for scid in _SUB_CID_RE.findall(content):
+                if scid not in acc["subagent_cids"]:
+                    acc["subagent_cids"].append(scid)
+                    acc["pending_cids"].add(scid)
+                    acc["pending_unnamed"] = max(0, acc["pending_unnamed"] - 1)
     elif kind == "SYSTEM_MESSAGE":
         for sender in _SENDER_RE.findall(content):
             if sender == cid or "/task-" in sender:
