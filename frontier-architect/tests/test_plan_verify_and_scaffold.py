@@ -28,7 +28,7 @@ class TestPlanVerifyAndScaffold(unittest.TestCase):
             "workflow_redirects": ["step 94: why did you not pause for model switch"],
         }]
         ps.promote_transcript_findings(rows, skill_learns, escalations)
-        self.assertIn("Transcript audit: 07c31c62 called enter/exit_plan_mode (2x)", skill_learns)
+        self.assertNotIn("Transcript audit: 07c31c62 called enter/exit_plan_mode (2x)", skill_learns)
         self.assertIn("Workflow redirect (07c31c62): step 94: why did you not pause for model switch", escalations)
 
     def test_format_digest_includes_ready_learn_prompt_when_candidates_exist(self) -> None:

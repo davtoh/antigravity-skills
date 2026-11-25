@@ -122,12 +122,15 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
         elif name == "invoke_subagent":
-            acc["subagents"].append({"type": args.get("TypeName"), "model": args.get("Model", "inherit"), "step": idx})
-            acc["pending_unnamed"] += 1
-            if acc["first_subagent_step"] is None:
-                acc["first_subagent_step"] = idx
-        elif name in ("enter_plan_mode", "exit_plan_mode"):
+            sub_type = args.get("TypeName")
+            acc["subagents"].append({"type": sub_type, "model": args.get("Model", "inherit"), "step": idx})
+            if sub_type in ("research", "Explore", None):
+                acc["pending_unnamed"] += 1
+                acc["first_subagent_step"] = acc["first_subagent_step"] or idx
+        elif name == "enter_plan_mode":
             acc["plan_mode_calls"] += 1
+        elif name == "exit_plan_mode":
+            acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
         elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
             acc["schedule_while_subagent"] += 1
         acc["last_target"] = target
@@ -183,7 +186,8 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
     elif not is_cdp_noise and "[CDP] Live connection failed" in content:
         acc["cdp_live_failures"] += 1
     fail = classify_result(content, status, call_cmd)
-    if "changelog add" in call_cmd and ("[changelog add] Added entry" in content or (kind != "SYSTEM_MESSAGE" and not fail)) and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", call_cmd):
+    is_bg_running = kind == "GENERIC" and status == "RUNNING"
+    if "changelog add" in call_cmd and not is_bg_running and ("[changelog add] Added entry" in content or (kind != "SYSTEM_MESSAGE" and not fail)) and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", call_cmd):
         acc["changelog_adds"] += 1
     if fail == "audit_catch":
         acc["audit_catches"] += 1
@@ -242,7 +246,8 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "workflow_redirects": acc["workflow_redirects"], "subagents": acc["subagents"],
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
-        "parallel_same_file_edits": acc["parallel_same_file_edits"], "plan_mode_calls": acc["plan_mode_calls"],
+        "parallel_same_file_edits": acc["parallel_same_file_edits"],
+        "plan_mode_calls": acc["plan_mode_calls"] + max(0, acc.get("exit_plan_mode_calls", 0) - 1),
         "schedule_while_subagent": acc["schedule_while_subagent"], "has_debug_retro": acc["has_debug_retro"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],

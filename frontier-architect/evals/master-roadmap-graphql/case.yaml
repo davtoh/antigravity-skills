@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: master-roadmap-graphql
+expected_outcome: |
+  Produces a master roadmap plus a first child plan with checkbox tasks, one active phase per turn, per-milestone verification, file-size budgets and portable repo-relative paths.

@@ -64,6 +64,46 @@ def get_git_sha(target_dir: Path) -> str:
         return ""
 
 
+def reconcile_pending_commits(root: Path, ps: dict[str, Any]) -> bool:
+    """Resolve ``pending:<base_sha>`` markers once git HEAD advances on a clean tree."""
+    head_sha = get_git_sha(root)
+    if not head_sha:
+        return False
+    try:
+        st = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3.0)
+        if st.returncode != 0:
+            return False
+        prefixes = (".frontier", ".TODO", ".plans", ".refactor", ".changelogs")
+        dirty = [ln[3:].strip() for ln in st.stdout.splitlines() if len(ln) > 3 and not any(ln[3:].strip().replace("\\", "/").startswith(p) for p in prefixes)]
+        if dirty:
+            return False
+    except Exception:
+        return False
+    done = [m for m in ps.get("milestones", []) if m.get("status") == "completed"]
+    if not done:
+        return False
+    fdir = get_frontier_dir(root)
+    changed = False
+    for m in done:
+        sha = str(m.get("commit_sha") or "")
+        if not sha.startswith("pending:") or sha.split(":", 1)[1] == head_sha:
+            continue
+        c_info = (ps.get("child_plans") or {}).get(str(m.get("index")))
+        if isinstance(c_info, dict) and c_info.get("slug"):
+            child_ps = load_json(fdir / "plans" / c_info["slug"] / "state.json", {})
+            c_done = [cm.get("commit_sha") for cm in child_ps.get("milestones", []) if cm.get("status") == "completed" and cm.get("commit_sha") and not str(cm.get("commit_sha")).startswith("pending:")]
+            if c_done:
+                m["commit_sha"] = c_done[-1]
+                changed = True
+                continue
+        if m is done[-1]:
+            m["commit_sha"] = head_sha
+            changed = True
+    if changed:
+        save_json(fdir / "plans" / ps["slug"] / "state.json", ps)
+    return changed
+
+
 def load_json(path: Path, default: Any = None) -> Any:
     """Safe JSON file reader."""
     if not path.exists():

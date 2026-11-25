@@ -32,7 +32,7 @@ from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_che
 from plan_reconcile import _find_duplicate_milestones, cmd_reconcile, register_reconcile_parser
 from plan_state import (
     bootstrap_plan, get_frontier_dir, get_git_sha, get_repo_root,
-    link_child_plan, load_json, record_milestone_advance, resolve_plan_path,
+    link_child_plan, load_json, reconcile_pending_commits, record_milestone_advance, resolve_plan_path,
 )
 from plan_telemetry import (
     _extract_leading_env,  # noqa: F401
@@ -63,7 +63,7 @@ def cmd_discover(root: Path, _args: argparse.Namespace) -> int:
 
 def _check_plan_portability(text: str) -> str | None:
     """Warn if a plan embeds machine-local paths or file:/// URIs."""
-    if re.search(r"(file:///|[A-Za-z]:[/\\]Users[/\\]|\.venv[/\\]Scripts)", text):
+    if re.search(r"(file:///[A-Za-z0-9_%/]|[A-Za-z]:[/\\]Users[/\\]|\.venv[/\\]Scripts)", text):
         return "[plan_engine] PORTABILITY WARNING: Machine-local paths/URIs detected; prefer POSIX repo-relative paths and portable commands."
     return None
 
@@ -104,6 +104,7 @@ def cmd_status(root: Path, args: argparse.Namespace) -> int:
         print("[plan_engine] No active or discovered plan. Run 'plan_engine.py init <path>' first.")
         return 1
     ws, ps = bootstrap_plan(root, plan_p)
+    reconcile_pending_commits(root, ps)
     if args.json:
         print(json.dumps({"workspace": ws, "plan": ps}, indent=2))
         return 0
@@ -290,6 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--milestone", type=int, default=None, help="Parent milestone/step index for child plan")
     plan_parent = argparse.ArgumentParser(add_help=False, parents=[root_parent])
     plan_parent.add_argument("plan", nargs="?", help="Optional plan target")
+    plan_parent.add_argument("--slug", dest="slug", default=None, help="Alias for positional plan target")
     p_status = sub.add_parser("status", parents=[plan_parent], help="Show active plan status")
     p_status.add_argument("--json", action="store_true", help="Output compact JSON")
     p_next = sub.add_parser("next", parents=[plan_parent], help="Output next active milestone tasks")
@@ -316,6 +318,8 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     """Main CLI entrypoint."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "plan", None) is None and getattr(args, "slug", None):
+        args.plan = args.slug
     arg_root = getattr(args, "root", None)
     repo_root = root or (arg_root.resolve() if arg_root is not None else get_repo_root())
     cmd = args.subcommand or "status"

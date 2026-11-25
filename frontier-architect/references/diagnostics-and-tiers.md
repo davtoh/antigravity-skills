@@ -1,5 +1,7 @@
 # Diagnostics, Browser Protocols & Model Tier Strategy
 
+> *Antigravity vocabulary below; Claude Code users translate it with [`claude-adapter.md`](./claude-adapter.md).*
+
 Consult this reference during **Phase 1B (Reproduce-First Bug & Regression Diagnostics)** and **Phase 2 (Capability & Model Tier Scan)**.
 
 ---
@@ -26,6 +28,6 @@ When handling **Bucket D** (multi-symptom bugs, UI regressions, CPU bottlenecks)
 
 - **MCP & Tool Expansion**: Check whether an MCP server (Chrome DevTools, database, Flutter inspector) or frontier SDK (e.g., Gemini Live bidirectional streaming, local WASM vector search) eliminates custom boilerplate; use `search_marketplace` when a missing integration would replace a fragile workaround.
 - **Model Tier Strategy**:
-  - Use **Gemini Flash + Cognitive Harness** (`Hydrogen` + `research` on `flash` for `> 3–4` file sweeps) for rapid exploration, debugging, technical SPIKEs, and iterative vertical slices.
+  - Use the **Executor tier + Reasoning Harness** (Claude: Sonnet + `Explore` agents; Antigravity: Flash `research` subagents for `> 3–4` file sweeps) for rapid exploration, debugging, technical SPIKEs, and iterative vertical slices.
   - Execute already-approved `.TODO/` plans directly in single-agent `Hydrogen` rather than toggling IDE Plan/Execution split mode (which causes redundant re-planning and context reloads).
-  - Reserve `Opus` / `Orchestrator` / `Neon` for upfront `/plan` + `/grill-me` architecture design, final review, or deep theoretical bottlenecks that resist 2–3 empirical loops—never for raw un-delegated file-reading marathons (keep `useG1Credits` enabled in CLI settings if seamless quota overflow is desired).
+  - Reserve the **Planner/Reviewer tier** (Claude: Opus; Antigravity: `Orchestrator`/`Neon`) and, for master roadmaps, the **Strategist tier** (Ultra) for upfront `/plan` + `/grill-me` architecture design, final review, or deep theoretical bottlenecks that resist 2–3 empirical loops—never for raw un-delegated file-reading marathons.

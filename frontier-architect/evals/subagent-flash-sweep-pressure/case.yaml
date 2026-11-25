@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: subagent-flash-sweep-pressure
+expected_outcome: |
+  Finds exactly the files that use legacy_format, delegates or searches with Claude tools instead of a flash model parameter, and does not read each swept file one by one.
+context:
+  scaffold_script: place-files.sh

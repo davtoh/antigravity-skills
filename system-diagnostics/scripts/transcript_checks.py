@@ -20,7 +20,7 @@ _NOISE_PREFIXES = (
 
 def compute_grade_cap(steps: int, total_failures: int) -> str:
     """Match plan_digest._grade_cap(steps, retries) rubric across skills."""
-    if steps > 100 or total_failures > 3:
+    if steps > 140 or (steps > 100 and total_failures >= 2) or total_failures > 3:
         return "C"
     if steps > 60 or total_failures >= 2:
         return "B"
@@ -47,6 +47,8 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
         code = int(match.group(1))
         if code == 1 and re.search(r"\bgit\s+grep\b", last_cmd) and "fatal:" not in content.lower():
             return None
+        if code == 1 and "Select-Object -First" in last_cmd and "Traceback" not in content:
+            return None
         low = content.lower()
         has_audit_cmd = bool(re.search(r"(?:(?:run_)?diagnose\.py|\$[a-z_]\w*\b)[^\n]*\b(?:audit|scan|probe\s+run|surface\s+--verify)\b", last_cmd))
         has_audit_marker = "audit result: defects_found" in low or "--- contract verification (mismatches:" in low
@@ -54,7 +56,7 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
             return "audit_catch"
         return "cmd_fail" if code != 0 else None
     if status == "ERROR":
-        return "edit_fail" if "target content not found" in content else ("read_fail" if "file does not exist" in content else None)
+        return "edit_fail" if "target content not found" in content else ("read_fail" if ("file does not exist" in content or "failed to parse path" in content) else None)
     return None
 
 
@@ -63,7 +65,7 @@ def failure_snippet(content: str) -> str:
     lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
     body = [ln for ln in lines if not ln.startswith(_NOISE_PREFIXES)]
     non_exit = [ln for ln in body if not _EXIT_RE.match(ln)]
-    priority = [ln for ln in non_exit if re.match(r"^(?:FAIL|ERROR|AssertionError|TypeError|ValueError|RuntimeError|ImportError|ModuleNotFoundError|plan_engine\.py.*error):", ln)]
+    priority = [ln for ln in non_exit if re.match(r"^(?:FAIL(?:ED)?\s*\(|(?:FAIL|ERROR|AssertionError|TypeError|ValueError|RuntimeError|ImportError|ModuleNotFoundError|plan_engine\.py.*error):)", ln)]
     if priority:
         return " ".join(priority[-1].split())[:90]
     chosen = non_exit[-1] if non_exit else (body[0] if body else "error")
@@ -104,8 +106,11 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     if (r.get("failures") or {}).get("read_fail", 0) >= 2:
         notes.append(f"- FLAG {cid8}: {r['failures']['read_fail']} read_fail path-guess errors (use git grep/surface first)")
     cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
-    cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0) - cli_errs
-    if cmd_fails >= 4 and not r.get("has_debug_retro"):
+    raw_cmd = (r.get("failures") or {}).get("cmd_fail")
+    samples = r.get("failure_samples") or []
+    non_tdd_fails = sum(1 for s in samples if "unittest" not in s and "AssertionError" not in s and "plan_engine.py" not in s)
+    cmd_fails = (int(raw_cmd) if raw_cmd is not None else int(r.get("total_failures") or 0)) - cli_errs
+    if cmd_fails >= 4 and (not samples or non_tdd_fails >= 2) and not r.get("has_debug_retro"):
         notes.append(f"- FLAG {cid8}: {r['total_failures']} failures without /app-debugger or debug-retro (unescalated thrash)")
     notes += [f"- FAIL {cid8}: {s}" for s in r.get("failure_samples", [])]
     if r.get("plan_mode_calls"):

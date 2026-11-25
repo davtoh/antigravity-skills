@@ -261,6 +261,14 @@ class TestStaticAuditor(unittest.TestCase):
             issues = static_auditor.audit_callable_smoke(tmp / "win_structs.py")
             self.assertEqual(issues, [])
 
+    def test_audit_modularity_budgets_excludes_comments_and_blanks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "commented.py"
+            body = "\n".join(["    # helpful comment"] * 10 + [""] * 5 + ["    x = 1"] * 4)
+            p.write_text(f"def well_commented() -> int:\n{body}\n    return 1\n", encoding="utf-8")
+            issues = static_auditor.audit_modularity_budgets(p, max_fn_lines=10)
+            self.assertEqual(issues, [])
+
 
 if __name__ == "__main__":
     unittest.main()

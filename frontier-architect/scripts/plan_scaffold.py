@@ -278,25 +278,20 @@ def promote_transcript_findings(
         if not isinstance(r, dict) or r.get("missing"):
             continue
         cid8 = str(r.get("cid") or "")[:8]
-        if p_edits := r.get("parallel_same_file_edits") or []:
-            files = list(dict.fromkeys(Path(str(it.get("path") or it.get("file") or "?")).name for it in p_edits if isinstance(it, dict)))
-            detail = f" ({', '.join(files[:4])})" if files else ""
-            _append_unique(skill_learns, f"Transcript audit: {len(p_edits)} parallel same-file edit(s){detail}")
         if reps := [f"{Path(str(k)).name} ({v}x)" for k, v in (r.get("repeated_reads") or {}).items() if int(v) >= 3]:
             _append_unique(skill_learns, f"Transcript audit: repeated file reads (>=3x): {', '.join(reps[:4])}")
         if (rf := int((r.get("failures") or {}).get("read_fail", 0))) >= 2:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {rf} read_fail path-guess errors (use git grep/surface first)")
-        if (ca := int(r.get("changelog_adds", 0))) >= 2:
-            _append_unique(skill_learns, f"Transcript audit: {cid8} ran {ca} changelog add calls in one session")
         if (fb := int(r.get("cdp_live_fallbacks", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {fb} CDP --live->headless fallback(s)")
         if (lf := int(r.get("cdp_live_failures", 0))) >= 1:
             _append_unique(skill_learns, f"Transcript audit: {cid8} had {lf} CDP --live handshake failure(s) (Chrome Allow prompt)")
-        if (pm := int(r.get("plan_mode_calls", 0))) >= 1:
-            _append_unique(skill_learns, f"Transcript audit: {cid8} called enter/exit_plan_mode ({pm}x)")
         cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
-        cmd_fails = int((r.get("failures") or {}).get("cmd_fail") or r.get("total_failures") or 0) - cli_errs
-        if cmd_fails >= 4 and not r.get("has_debug_retro"):
+        raw_cmd = (r.get("failures") or {}).get("cmd_fail")
+        samples = r.get("failure_samples") or []
+        non_tdd_fails = sum(1 for s in samples if "unittest" not in s and "AssertionError" not in s and "plan_engine.py" not in s)
+        cmd_fails = (int(raw_cmd) if raw_cmd is not None else int(r.get("total_failures") or 0)) - cli_errs
+        if cmd_fails >= 4 and (not samples or non_tdd_fails >= 2) and not r.get("has_debug_retro"):
             _append_unique(escalations, f"Unescalated thrash ({cid8}): {r['total_failures']} failures without /app-debugger or debug-retro")
         for corr in r.get("user_corrections") or ():
             _append_unique(escalations, f"User correction ({cid8}): {corr}")

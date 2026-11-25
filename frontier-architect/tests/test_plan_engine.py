@@ -155,7 +155,7 @@ class TestPlanState(unittest.TestCase):
 
     def test_repo_root_and_frontier_dir(self):
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
+            root = Path(td).resolve()
             (root / ".git").mkdir()
             sub = root / "src" / "deep"
             sub.mkdir(parents=True)
@@ -175,7 +175,7 @@ class TestPlanState(unittest.TestCase):
 
     def test_resolve_plan_path(self):
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
+            root = Path(td).resolve()
             (root / ".plans").mkdir()
             p = root / ".plans" / "my_cool_feature_plan.md"
             p.write_text("# Feature Plan\n### Milestone 1: Go\n- [ ] Task", encoding="utf-8")

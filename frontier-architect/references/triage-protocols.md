@@ -1,5 +1,7 @@
 # Triage Edge Cases & Multi-Skill Co-Invocation Protocols
 
+> *Antigravity vocabulary below; Claude Code users translate it with [`claude-adapter.md`](./claude-adapter.md).*
+
 Consult this reference when handling **Improvement Intent**, **Multi-Skill Co-Invocation**, or **Mixed Requests** in **Phase 0**.
 
 ---

@@ -221,12 +221,17 @@ def audit_modularity_budgets(
             tree = ast.parse(code, filename=str(p))
         except Exception:
             continue
-        lines = len(code.splitlines())
+        lines = sum(1 for ln in code.splitlines() if ln.strip() and not ln.lstrip().startswith("#"))
         if lines >= max_lines:
             issues.append({"type": "file_budget_overrun", "file": str(p), "line": 1, "message": f"File has {lines} lines (budget < {max_lines})."})
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and getattr(node, "end_lineno", None):
-                span = (node.end_lineno or node.lineno) - node.lineno + 1
+                seg = ast.get_source_segment(code, node)
+                if seg is not None:
+                    # Exclude blank and comment-only lines so helpful comments never penalize budgets
+                    span = sum(1 for ln in seg.splitlines() if ln.strip() and not ln.lstrip().startswith("#"))
+                else:
+                    span = (node.end_lineno or node.lineno) - node.lineno + 1
                 if span > max_fn_lines:
                     issues.append({"type": "function_budget_overrun", "file": str(p), "line": node.lineno, "message": f"Function '{node.name}' is {span} lines (budget <= {max_fn_lines})."})
             elif isinstance(node, ast.ClassDef):
@@ -294,6 +299,7 @@ def register_parser(subparsers: Any) -> Any:
     p_aud = subparsers.add_parser("audit", help="Static quality, defect, typecheck and code smell audit")
     p_aud.add_argument("--path", nargs="+", default=None, help="Root directory or file(s) to audit")
     p_aud.add_argument("--typecheck", action="store_true", help="Run virtualenv typecheckers (ruff/mypy)")
+    p_aud.add_argument("--no-typecheck", action="store_false", dest="typecheck", help="Skip typecheckers (default)")
     p_aud.add_argument("--smells", action="store_true", help="Scan for platform import smells")
     p_aud.add_argument("--callable-smoke", action="store_true", help="Run callable signature and constructor smoke checks")
     p_aud.add_argument("--json", action="store_true", help="Output JSON report")

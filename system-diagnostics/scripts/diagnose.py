@@ -210,7 +210,13 @@ def _run_probe_list_or_exec(action: str, root: Path | None, args: argparse.Names
         print("[diagnose probe run] Error: Probe name or path required.", file=sys.stderr)
         return 2
     py_bin = find_virtualenv_python(root or Path.cwd())
-    res = probe_runner.run_probe(args.name, probe_args=args.probe_args, python_bin=py_bin, workspace_root=root)
+    res = probe_runner.run_probe(
+        args.name,
+        probe_args=args.probe_args,
+        python_bin=py_bin,
+        workspace_root=root,
+        timeout=getattr(args, "timeout", 60.0),
+    )
     _print_probe_run_result(res, getattr(args, "json", False))
     return 0 if res.get("status") in ("ok", "warning") else 1
 

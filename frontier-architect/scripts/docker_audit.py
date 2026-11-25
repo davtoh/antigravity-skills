@@ -15,6 +15,9 @@ def _resolve_ssot(script_name: str) -> Path:
     candidates = [
         Path(env_dir) / "scripts" / script_name if env_dir else None,
         here.parent.parent / "system-diagnostics" / "scripts" / script_name,
+        here.parent / "system-diagnostics" / "scripts" / script_name,
+        Path.cwd() / ".claude" / "skills" / "system-diagnostics" / "scripts" / script_name,
+        Path.home() / ".claude" / "skills" / "system-diagnostics" / "scripts" / script_name,
         Path.home() / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts" / script_name,
     ]
     for cand in candidates:
