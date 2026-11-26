@@ -76,6 +76,7 @@ class TestCues(unittest.TestCase):
     def test_pasted_content_and_hyphenated_words_do_not_trigger(self) -> None:
         acc = _acc()
         tc.extract_user_correction('based on this is it true this is best? <pasted_content id="b1">no, wrong, stop</pasted_content>', 1, acc, load_cues(self.root))
+        tc.extract_user_correction('see this <pasted_content id="2"> do NOT load it (never closed)', 3, acc, load_cues(self.root))
         tc.extract_user_correction("keep the review-gate and no-brain guidance", 2, acc, load_cues(self.root))
         self.assertEqual(acc["user_corrections"], [])
 

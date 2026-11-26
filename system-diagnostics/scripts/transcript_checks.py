@@ -16,7 +16,7 @@ _QUESTION_OPEN_RE = re.compile(
     r"^(?:can|could|would|will|is|are|do|does|did|how|what|which|where|when|should|puedes|podr[ií]as|podr[ií]a|"
     r"es\s+verdad|c[oó]mo|qu[eé]|cu[aá]l|d[oó]nde|cu[aá]ndo|deber[ií]a)\b", re.I)
 _BLAME_QUESTION_RE = re.compile(r"\bwhy\s+did\s+you\b|\bpor\s+qu[eé]\s+hiciste\b", re.I)
-_PASTED_RE = re.compile(r"<pasted_content\b[^>]*>.*?</pasted_content>", re.S)
+_PASTED_RE = re.compile(r"<pasted_content\b[^>]*>.*?(?:</pasted_content>|\Z)", re.S)
 _NOISE_PREFIXES = (
     "Created At:", "Completed At:", "Command output:", "Log: file:///",
     "<SYSTEM_MESSAGE>", "</SYSTEM_MESSAGE>", "YOU MUST TAKE ", "DO NOTHING ELSE.",
