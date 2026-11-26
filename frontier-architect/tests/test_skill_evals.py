@@ -116,6 +116,9 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("live browser: unverified", "cannot attach"), (r"live browser: unverified", r"axiom 9"), "Explicit Live Browser: UNVERIFIED status"),
     (("synthesizes the empirical symptom matrix",), (r"symptom-to-root-cause matrix", r"implementation plan"), "Synthesize Symptom Matrix into Implementation Plan"),
     (("extracted signal/helper adapter", "getattr stubs"), (r"frozen-monolith signal adapters", r"getattr"), "Frozen-Monolith Signal Adapters"),
+    (("advance --note", "milestone completion summary note"), (r"plan_engine\.py\"?\s+advance", r"--note"), "plan_engine.py advance --note summary"),
+    (("learn_queue.md", "updates .frontier/learn_queue.md"), (r"plan_engine\.py\s+digest\s+<slug>\s+--backfill\s+--write-scaffold", r"LEARN_QUEUE\.md"), "digest updates LEARN_QUEUE.md"),
+    (("changelog pr-description",), (r"diagnose\.py\"?\s+changelog\s+pr-description", r"--base\s+main", r"--plan\s+<slug>"), "diagnose.py changelog pr-description"),
 ]
 
 

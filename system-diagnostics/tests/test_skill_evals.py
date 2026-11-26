@@ -89,6 +89,9 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("missing virtualenv",), (r"falling back cleanly to system python",), "Fallback to system Python when venv missing"),
     (("comma-separated defect ids",), (r"comma-separated defect ids, fingerprints, or rule ids",), "Comma-separated defect IDs/fingerprints/rules"),
     (("single root or multiple subpaths",), (r"Single root or multi-subpath", r"arch-map"), "arch-map single root or multiple subpaths"),
+    (("changelog pr-description", "pr summary"), (r"pr-description", r"changelog"), "changelog pr-description command"),
+    (("--base, --plan, and --recent",), (r"--base\s+--plan\s+--recent", r"pr-description"), "changelog pr-description flags"),
+    (("structured markdown pr summary",), (r"pr-description", r"PR summary"), "changelog pr-description Markdown summary"),
 ]
 
 
