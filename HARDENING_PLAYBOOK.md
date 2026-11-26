@@ -14,6 +14,7 @@ Process proven on `frontier-architect`. Apply it to `app-debugger`, `system-diag
 3. Find Gemini-only terms and hard-coded paths: `grep -rnE "ask_question|run_command|view_file|RequestFeedback|appDataDir|\.gemini|python skills/"`.
 
 ## 2. Changes, in this order
+0. **Fix baseline test failures first, cross-platform.** The usual cause is comparing unresolved temp paths (macOS `/var` vs `/private/var`): wrap temp dirs in `.resolve()` and compare with `.resolve()` on both sides. Never special-case macOS; the same change is a no-op on Windows.
 1. **Portability**: Python 3.10-compatible syntax; resolve scripts relative to the skill folder; shims also search `.claude/skills/` and `~/.claude/skills/`.
 2. **Adapter**: `references/claude-adapter.md` with a mapping table (every Gemini term used anywhere gets a row) and a "script paths" section.
 3. **Router `SKILL.md`**: target under 12 KB; keep phase headings and gate names; move detail verbatim into `references/`; description under ~700 characters, pushy about triggers, with explicit exclusions.

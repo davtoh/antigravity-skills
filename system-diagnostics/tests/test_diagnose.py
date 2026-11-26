@@ -332,7 +332,7 @@ class TestSubcommandsExecution(unittest.TestCase):
             f = sub / "a.py"
             f.write_text("def f(x=[]):\n    pass\n", encoding="utf-8")
             _, json_path, _ = shadow_prober.scan_and_save(f)
-            self.assertEqual(json_path.parent.parent, sub.resolve())
+            self.assertEqual(json_path.parent.parent.resolve(), sub.resolve())
 
 class TestMainDispatcher(unittest.TestCase):
     """Test top-level main() entrypoint."""

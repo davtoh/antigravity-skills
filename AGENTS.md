@@ -2,6 +2,8 @@
 
 This document serves as persistent operational memory across conversations for AI agents working in `skills/`.
 
+> **Start here:** [`ARCHITECTURE.md`](ARCHITECTURE.md) maps every skill, script, CLI subcommand, test suite and known gap (including what works under Claude). Read it before sweeping the repo.
+
 ---
 
 ## 1. Architecture & Repository Topology
@@ -46,6 +48,7 @@ Authoritative Plan: [`.TODO/latent_defect_and_smell_protocol_plan.md`](.TODO/lat
 4. **Split-Before-You-Grow:** Never append new CLI subcommands or logic directly into a file $\ge 350$ lines.
 5. **Zero Secrets in Source Control:** Resolve exclusively via `os.getenv()` with empty string fallback per Rule 1.
 6. **Cross-Platform Discipline:** Pure standard-library OS-agnostic code (`pathlib.Path`, forward slashes in relative paths, UTF-8 LF normalized).
+7. **Tests resolve temp paths:** build workspaces with `Path(tempfile.mkdtemp()).resolve()` (or `TemporaryDirectory().name` wrapped in `.resolve()`) and compare paths with `.resolve()` on both sides; macOS temp dirs are symlinks (`/var` -> `/private/var`). Tests needing `node` or Chrome must skip, not fail, when absent.
 
 ---
 

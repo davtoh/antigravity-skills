@@ -30,7 +30,7 @@ class TestDefectCatalog(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.ws = Path(self.tmp.name)
+        self.ws = Path(self.tmp.name).resolve()
 
     def tearDown(self):
         self.tmp.cleanup()
