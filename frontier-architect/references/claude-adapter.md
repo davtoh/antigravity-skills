@@ -24,6 +24,16 @@ This skill was authored in Antigravity (Gemini) vocabulary. When running under C
 | `/boost`, `Opus`/`Neon` escalation | Switch tier per [`reasoning-harness.md`](./reasoning-harness.md#5-tier-escalation-which-model-tier-does-what) (`/model`) |
 | `TaskCreate` | Optional mirror of `plan_engine.py next` tasks for visibility; `plan_engine.py` stays the source of truth for status |
 
+## Python interpreter (`<py>`)
+
+Bare `python` is Python 2 on some machines (older macOS) and `python3` does not exist on others (Windows). Before the first script call, pick `<py>` as the first of `python3`, `python`, `py -3` that passes:
+
+```bash
+<candidate> -c "import sys; sys.exit(sys.version_info < (3, 10))"
+```
+
+Use that `<py>` wherever these docs write `python "<skill_dir>/scripts/..."`. Scripts that launch other scripts already use `sys.executable`, so this only matters for the first command you type.
+
 ## Script paths
 
 Never assume the repo sits at `./skills/`. Resolve scripts relative to this skill's folder:

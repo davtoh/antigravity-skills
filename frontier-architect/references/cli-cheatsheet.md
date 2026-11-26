@@ -4,6 +4,8 @@ Consult this quick-reference sheet during **Phase 1B (Diagnostics)** and **Phase
 
 > `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside `<config_dir>`). Note: `<config_dir>` itself is **not** a git repo—run `git -C "<config_dir>/skills" ...` when inspecting skill git state.
 
+> **Interpreter:** every `python` below means `<py>`, the first of `python3`, `python`, `py -3` that is Python 3.10+ (see [`claude-adapter.md`](./claude-adapter.md#python-interpreter-py)). Bare `python` can be Python 2 on macOS; `python3` may not exist on Windows.
+
 ---
 
 ## 1. Plan Continuation Engine (`scripts/plan_engine.py`)

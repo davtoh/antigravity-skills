@@ -45,9 +45,11 @@ class TestPlanParser(unittest.TestCase):
                 (root / d).mkdir()
             p1, p2 = root / ".plans" / "plan_a.md", root / ".TODO" / "plan_b.md"
             ign = root / "node_modules" / "plan_c.md"
-            for p in (p1, p2, ign):
+            lp = root / ".TODO" / "learning_proposal_x.md"
+            for p in (p1, p2, ign, lp):
                 p.write_text("# Plan", encoding="utf-8")
             found = [p.name for p in discover_plans(root)]
+            self.assertNotIn("learning_proposal_x.md", found)
             self.assertIn("plan_a.md", found)
             self.assertIn("plan_b.md", found)
             self.assertNotIn("plan_c.md", found)
