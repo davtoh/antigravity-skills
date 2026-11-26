@@ -11,13 +11,19 @@ Standardizes interactive browser observation capture, DevTools-style element pic
 | :--- | :--- | :--- |
 | I1 | One standard way to capture what a human sees while debugging a web app, reusable across projects | Milestones 1-3 |
 | I2 | DevTools-style **Pick Element** and scoped **Record / Stop** session with a soft **Pause** while inspecting | Milestone 2 |
-| I3 | Agents triage cheaply: default `list` shows only unresolved items so `/frontier-architect`, `/app-debugger` and audit runs never re-read solved observations. (The original draft also named "FOR AUDITS"; that term is not defined anywhere in this repo. Treat it as "audit-style runs" and confirm with the user if it means something else.) | Milestone 1, 4 |
+| I3 | Agents triage cheaply: default `list` shows only unresolved items so `/frontier-architect`, `/app-debugger` and audit runs never re-read solved observations. ("FOR AUDITS" is the user's post-plan architecture audit prompt: an agent reads the current architecture, runs the diagnostics batch, verifies user-observed findings and ideas in code, and explains why existing tests and tools missed each bug. It is defined in the consuming project (`intelligent-tracker`), not in this repo; see Related External Context.) | Milestone 1, 4 |
 | I4 | Observations are linked to server-side runtime traces | Milestones 1, 3 |
 | I5 | Connector scaffolder gives a project the whole thing in about 3 lines of setup (`fastapi`, `flask`, `generic`) | Milestone 3 |
 | I6 | Skills tell agents to read open observations automatically and mark them resolved after a **verified** fix | Milestone 4 |
 | I7 | Every new file <= 350 lines (target 150-250), every function <= 40 lines | all milestones |
 | I8 | **One codebase for Gemini/Antigravity (Windows) and Claude Code (macOS/Linux)**: no `.gemini`-only paths, no `python skills/...` assumptions, tests that pass on both | all milestones |
 | I9 | Debug data never leaks: off by default, local only, redacted, size-capped | Milestones 2, 3 |
+| I10 | **Feed the FOR AUDITS workflow:** findings and ideas the user captures with the HUD (or describes in chat) arrive as structured observations, so the audit starts from `observations list --json` instead of retyped `[Finding N]` / `[Idea N]` placeholders; and each triaged item records **why existing tests and diagnostics missed it** and the proposed tooling guard | Milestones 1, 4 |
+
+## Related External Context (not in this repository)
+
+- `intelligent-tracker` has a plan `.TODO/debug_observation_connector_adoption_plan.md` (PR #13 in `davtoh/intelligent-tracker`) that adopts this connector in that project. It was not available when this roadmap was written, so its contents are **unverified here**. At Milestone 4's pre-plan gate, read it (the user will provide it) and reconcile naming, endpoints and status vocabulary; this roadmap's contracts win on conflicts unless the user decides otherwise.
+- The user's two reusable prompts, **FOR RETROSPECTIVE** (audit conversations, `/learn` queue, plan granularity) and **FOR AUDITS** (post-plan architecture alignment, bug catalog, tooling blind-spot check, then `/grill-me`), live in that project's workflow. They use Antigravity vocabulary (`ask_question`, `Model: 'flash'`, `RequestFeedback`). This roadmap only needs the **FOR AUDITS** hand-off: its baseline command batch gains `diagnose.py observations list --json`, and its sections "User-Observed Findings" and "User Observations or Ideas" are fed from observations (kinds `element`/`error`/`network`/`note` for findings, `idea` for ideas). Nothing in the audit prompt is executed or changed by this plan.
 
 ## Decisions (defaults chosen by the audit; change here before Milestone 1 if you disagree)
 
@@ -29,6 +35,8 @@ Standardizes interactive browser observation capture, DevTools-style element pic
 | D4 | Observations correlate with **exception traces** (what `trace_recorder` stores today), not with every request | Request logging does not exist; out of scope |
 | D5 | Server routes exist only when env `FRONTIER_DEBUG_OBSERVATIONS=1`; they accept loopback clients only; the HUD does nothing unless `window.__FRONTIER_DEBUG__ === true` | Safe by default |
 | D6 | Commands in docs use `python "<skill_dir>/scripts/diagnose.py" ...` where `<skill_dir>` is the `system-diagnostics` folder | Works from `.claude/skills/`, `~/.claude/skills/` and the monorepo |
+| D7 | A fifth kind `idea` (alongside `element`, `error`, `network`, `note`) for user ideas; fingerprint form `OBS-IDEA-<6HEX>`; `list --kind` filters by kind | The FOR AUDITS prompt separates observed findings from ideas to plan. **New since the audit; confirm.** |
+| D8 | `triage` accepts optional `--missed-by LIST` (any of `tests,surface,scan,audit,ui,probes,trace,other`) and `--guard TEXT`; stored as `missed_by` and `proposed_guard` | Captures the audit's "why did our tools miss it, and what upgrade catches this class" answer where agents can query it. **New since the audit; confirm.** |
 
 ## Preconditions
 
@@ -53,7 +61,7 @@ Standardizes interactive browser observation capture, DevTools-style element pic
 
 **Raw record** (one JSON object per line in `.diagnostics/observations.jsonl`, UTF-8, `\n` newlines):
 ```json
-{"schema": 1, "ts": "2026-11-26T14:03:11.120Z", "kind": "element|error|network|note",
+{"schema": 1, "ts": "2026-11-26T14:03:11.120Z", "kind": "element|error|network|note|idea",
  "page_path": "/dashboard", "selector": "main > button#save", "rect": {"x":0,"y":0,"w":0,"h":0},
  "attrs": {"tag":"button","id":"save","class":"btn primary","data-testid":"save","role":"button","aria-label":"Save"},
  "message": "Save does nothing", "recording_id": "rec-8f3a2c", "window": {"started_at": "...", "stopped_at": "..."},
@@ -63,7 +71,7 @@ Limits enforced on write: record <= 64 KB; `message` <= 500 chars; `timeline` <=
 
 **Fingerprint:** `sha256("{kind}|{page_path}|{selector or url_path}|{normalized_message}")[:6]`, formatted `OBS-<KIND upper, max 7>-<6HEX>`. Normalization = lowercase, collapse whitespace, strip digits runs longer than 4 and hex pointers (same idea as `trace_recorder._sanitize_message`). Same fingerprint increments `occurrence_count` and refreshes `last_seen`; it never creates a second entry.
 
-**Catalog** (`.diagnostics/observation_catalog.json`, atomic save): `{"schema_version":"1.0","workspace":"<posix path>","updated_at":"...","summary":{"total":0,"open":0,"triaged":0,"in_progress":0,"resolved":0,"dismissed":0},"observations":[ ... ]}` where each entry has `id`, `fingerprint`, `kind`, `status`, `first_seen`, `last_seen`, `occurrence_count`, `page_path`, `selector`, `rect`, `attrs`, `message`, `recording_id`, `window`, `timeline`, `correlated_traces` (list of `TRC-...` fingerprints), `root_cause`, `resolution`, `linked_plan`, `linked_commit`, `history` (list of `{ts, from, to, note}`).
+**Catalog** (`.diagnostics/observation_catalog.json`, atomic save): `{"schema_version":"1.0","workspace":"<posix path>","updated_at":"...","summary":{"total":0,"open":0,"triaged":0,"in_progress":0,"resolved":0,"dismissed":0},"observations":[ ... ]}` where each entry has `id`, `fingerprint`, `kind`, `status`, `first_seen`, `last_seen`, `occurrence_count`, `page_path`, `selector`, `rect`, `attrs`, `message`, `recording_id`, `window`, `timeline`, `correlated_traces` (list of `TRC-...` fingerprints), `root_cause`, `missed_by` (list), `proposed_guard`, `resolution`, `linked_plan`, `linked_commit`, `history` (list of `{ts, from, to, note}`).
 
 **Allowed transitions:** open -> triaged | in_progress | resolved | dismissed; triaged -> in_progress | resolved | dismissed; in_progress -> resolved | dismissed | triaged; resolved -> open (re-occurrence of the same fingerprint reopens it and appends a history note); dismissed stays dismissed unless explicitly reopened.
 
@@ -73,10 +81,10 @@ All actions accept `--path DIR` (workspace root, default cwd) and `--json`. Exit
 
 | Action | Flags | Behavior |
 | :--- | :--- | :--- |
-| `list` | `--status active\|all\|open\|triaged\|in_progress\|resolved\|dismissed` (default `active`), `--limit N` (default 20) | One compact line per item: `OBS-003 [open] element /dashboard button#save "Save does nothing" (2x, 2026-11-26)`. Empty: `No active observations.` JSON mode returns only `id,status,kind,page_path,selector,message,occurrence_count,last_seen`. |
+| `list` | `--status active\|all\|open\|triaged\|in_progress\|resolved\|dismissed` (default `active`), `--kind element\|error\|network\|note\|idea`, `--limit N` (default 20) | One compact line per item: `OBS-003 [open] element /dashboard button#save "Save does nothing" (2x, 2026-11-26)`. Empty: `No active observations.` JSON mode returns only `id,status,kind,page_path,selector,message,occurrence_count,last_seen`. |
 | `show` | `--id OBS-001\|fingerprint`, `--full` | Full entry; timeline and correlated traces; `--full` includes all history. |
 | `add` | `--kind`, `--page`, `--selector`, `--message`, `--recording-id` | Manual or test capture (also what an agent uses when the user describes a problem in chat). Goes through the same dedup and caps as HUD posts. |
-| `triage` | `--id`, `--root-cause` (required), `--plan SLUG`, `--status triaged\|in_progress` | Records root cause and plan link. |
+| `triage` | `--id`, `--root-cause` (required), `--plan SLUG`, `--status triaged\|in_progress`, `--missed-by LIST`, `--guard TEXT` | Records root cause, plan link, which tools missed it (unknown tool name is a usage error, exit 2) and the proposed guard. |
 | `resolve` | `--id`, `--resolution` (required), `--commit SHA` | Marks `resolved`; hidden from default `list`. |
 | `dismiss` | `--id`, `--reason` (required) | Marks `dismissed`. |
 
@@ -118,6 +126,9 @@ All actions accept `--path DIR` (workspace root, default cwd) and `--json`. Exit
 | Agent lists work (default) | `python "<skill_dir>/scripts/diagnose.py" observations list` | Only open, triaged and in_progress items, compact lines; exit 0 |
 | Nothing open | same | `No active observations.`; exit 0 |
 | Include history | `... observations list --status all` | Resolved and dismissed appear too |
+| Audit baseline batch | `... observations list --json` inside the FOR AUDITS command batch | Compact active findings and ideas, ready to paste into the audit's sections 2 and 3 |
+| Findings vs ideas | `... observations list --kind idea` | Only idea entries |
+| Record why tools missed it | `... observations triage --id OBS-004 --root-cause "..." --missed-by tests,surface --guard "add layout probe"` | Stored; `show` prints them; unknown tool name exits 2 |
 | Triage and link to plan | `... observations triage --id OBS-001 --root-cause "..." --plan <slug>` | Status `triaged`, plan linked, history entry |
 | Resolve after verified fix | `... observations resolve --id OBS-001 --resolution "..." --commit <sha>` | `resolved`; absent from default `list` |
 | Unknown id | `... observations show --id OBS-999` | message on stderr; exit 1 |
@@ -174,6 +185,8 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 
 - [ ] **child plan .TODO/step_4_*.md**: created just in time. Expected files: `system-diagnostics/SKILL.md` (pointer only; it is already 15.5 KB, so detail goes in references), `system-diagnostics/references/observations.md` (new workflow doc), `system-diagnostics/references/cli-reference.md`, `app-debugger/SKILL.md` and its evals (read open observations in Step 0/2, resolve after verified fix), `frontier-architect/SKILL.md` + `references/phase-protocols.md` (Phase 0 auto-pickup; **SKILL.md must stay under 12,000 bytes: only about 170 bytes of headroom, so put the text in the reference and keep one short line in the router**), `ARCHITECTURE.md` and `AGENTS.md` (refresh), regression guards. If that exceeds 8 files at the gate, split into **4A** (system-diagnostics + app-debugger) and **4B** (frontier-architect + repo docs + guards).
 
+Also in Milestone 4 (docs only): `references/observations.md` includes an **Audit hand-off** section (how a FOR AUDITS-style run uses `list --json`, `list --kind idea`, `show --full` and `triage --missed-by --guard`), and the pre-plan gate reconciles with the external adoption plan named in Related External Context.
+
 **Verifier**: the four suite commands in the Definition of Done, plus `python -m unittest discover -s frontier-architect/tests -p "test_adapter_gating.py"`.
 **Exit criteria:** docs use `<skill_dir>` commands only; adapter-gating and router-size tests still pass; evals for `system-diagnostics` and `app-debugger` include observation expectations; `ARCHITECTURE.md` section 3 and 7 updated.
 
@@ -208,7 +221,8 @@ Request-level logging of every HTTP call; non-web debugging; a graphical triage 
 7. A SPIKE Spec now precedes the HUD, as the skill requires.
 8. Milestone 3's templates moved to a new module because `connector_scaffolder.py` would exceed 350 lines; the bridge engine-path bug (silent no-op under Claude installs) is fixed there.
 9. Milestone 3's verifier previously ran a suite with 4 known failures; Precondition P0 now requires green suites first.
-10. Docs milestone added (4), with the router-size constraint for `frontier-architect`; the plan is now four milestones, hence a master roadmap with just-in-time child plans.
+10. FOR AUDITS meaning clarified by the user (2026-11-26): intents I3 and new I10, decisions D7 and D8, an audit hand-off in Milestone 4, and the external adoption plan noted as unverified context.
+11. Docs milestone added (4), with the router-size constraint for `frontier-architect`; the plan is now four milestones, hence a master roadmap with just-in-time child plans.
 
 ## Definition of Done
 
