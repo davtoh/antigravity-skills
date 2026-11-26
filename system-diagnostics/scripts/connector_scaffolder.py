@@ -10,24 +10,17 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from connector_bridge_common import BOOTSTRAP_SRC, PLACEHOLDER
+from connector_templates_obs import observation_block
+
 TEMPLATES = {
     "fastapi": """#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 \"\"\"Diagnostic Trace Bridge & FastAPI Exception Middleware.\"\"\"
 
-import sys
-from pathlib import Path
 from typing import Optional
 
-# Dynamic discovery of system-diagnostics trace engine
-_candidates = [
-    Path.home() / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts",
-    Path(__file__).resolve().parents[2] / "skills" / "system-diagnostics" / "scripts",
-]
-for _p in _candidates:
-    if _p.is_dir() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
-        break
+# @@ENGINE_BOOTSTRAP@@
 
 try:
     from trace_recorder import install_trace_recorder, record_exception
@@ -46,18 +39,9 @@ def init_diagnostic_tracer(workspace_root: Optional[Path] = None) -> bool:
 # -*- coding: utf-8 -*-
 \"\"\"Diagnostic Trace Bridge & Flask Error Handler Hook.\"\"\"
 
-import sys
-from pathlib import Path
 from typing import Optional
 
-_candidates = [
-    Path.home() / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts",
-    Path(__file__).resolve().parents[2] / "skills" / "system-diagnostics" / "scripts",
-]
-for _p in _candidates:
-    if _p.is_dir() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
-        break
+# @@ENGINE_BOOTSTRAP@@
 
 try:
     from trace_recorder import install_trace_recorder, record_exception
@@ -79,18 +63,9 @@ def init_diagnostic_tracer(app=None, workspace_root: Optional[Path] = None) -> b
 # -*- coding: utf-8 -*-
 \"\"\"Universal Runtime Diagnostic Trace Connector.\"\"\"
 
-import sys
-from pathlib import Path
 from typing import Optional
 
-_candidates = [
-    Path.home() / ".gemini" / "config" / "skills" / "system-diagnostics" / "scripts",
-    Path(__file__).resolve().parents[2] / "skills" / "system-diagnostics" / "scripts",
-]
-for _p in _candidates:
-    if _p.is_dir() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
-        break
+# @@ENGINE_BOOTSTRAP@@
 
 try:
     from trace_recorder import install_trace_recorder, record_exception
@@ -110,10 +85,13 @@ def scaffold_connector(
     target_root: Path,
     framework: str = "generic",
     dest_dir: str = "services",
+    with_observations: bool = False,
 ) -> Path:
     """Scaffold a framework connector file into the target project."""
     fw = framework.lower()
-    tmpl = TEMPLATES.get(fw, TEMPLATES["generic"])
+    tmpl = TEMPLATES.get(fw, TEMPLATES["generic"]).replace(PLACEHOLDER, BOOTSTRAP_SRC.rstrip("\n"))
+    if with_observations:
+        tmpl += observation_block(fw)
     out_dir = target_root / dest_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / "diagnostic_bridge.py"
@@ -128,7 +106,8 @@ def cmd_traces_scaffold(args: Any) -> int:
     framework = getattr(args, "framework", "fastapi") or "fastapi"
     dest = getattr(args, "dest", "services") or "services"
 
-    out_file = scaffold_connector(root, framework=framework, dest_dir=dest)
+    with_obs = bool(getattr(args, "with_observations", False))
+    out_file = scaffold_connector(root, framework=framework, dest_dir=dest, with_observations=with_obs)
     try:
         rel_path = out_file.relative_to(root)
     except ValueError:
@@ -147,4 +126,7 @@ def cmd_traces_scaffold(args: Any) -> int:
     else:
         print(f"  from {dest.replace('/', '.')}.diagnostic_bridge import init_diagnostic_tracer")
         print(f"  init_diagnostic_tracer()\n")
+    if with_obs:
+        print("  Observations: call register_observation_routes(app) and set FRONTIER_DEBUG_OBSERVATIONS=1")
+        print("  (routes under /api/diagnostics, loopback only; see references/observation-connector-contract.md)\n")
     return 0

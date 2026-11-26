@@ -18,6 +18,7 @@ def register_parser(sub: Any) -> None:
     p.add_argument("--clear", action="store_true", help="Clear active trace catalog and logs")
     p.add_argument("--scaffold", choices=["fastapi", "flask", "generic"], help="Scaffold framework connector bridge")
     p.add_argument("--dest", default="services", help="Destination folder for scaffold bridge (default: services)")
+    p.add_argument("--with-observations", action="store_true", help="With --scaffold: also generate the observation routes (Wire Contract v1)")
 
 
 def resolve_trace_issue(mgr: Any, issue_id: str | None, note: str | None = None) -> int:
@@ -70,6 +71,9 @@ def _print_trace_summary(root: Path, catalog: dict[str, Any], recent: int) -> No
 
 def cmd_traces(args: Any, mgr_cls: Any) -> int:
     """CLI handler for 'diagnose.py traces'."""
+    if getattr(args, "with_observations", False) and not getattr(args, "scaffold", None):
+        print("[diagnose traces] Error: --with-observations is only valid together with --scaffold.", flush=True)
+        return 2
     if getattr(args, "scaffold", None):
         import connector_scaffolder
         setattr(args, "framework", args.scaffold)
