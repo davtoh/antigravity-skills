@@ -253,7 +253,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         sha = base_sha
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
-    ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
+    ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso, note=getattr(args, "note", None))
     commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective
@@ -301,6 +301,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_adv = sub.add_parser("advance", parents=[plan_parent], help="Check off tasks and advance milestone")
     p_adv.add_argument("--milestone", type=int, help="Milestone number to complete")
     p_adv.add_argument("--commit", help="Commit SHA to record")
+    p_adv.add_argument("--note", default=None, help="Optional milestone completion summary note")
     p_adv.add_argument("--no-sync-parent", action="store_true", help="Skip auto-advancing parent master milestone when child plan completes")
     add_retrospective_parser(sub, plan_parent)
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")

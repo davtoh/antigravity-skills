@@ -54,8 +54,15 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
         low = content.lower()
         has_audit_cmd = bool(re.search(r"(?:(?:run_)?diagnose\.py|\$[a-z_]\w*\b)[^\n]*\b(?:audit|scan|probe\s+run|surface\s+--verify)\b", last_cmd))
         has_audit_marker = "audit result: defects_found" in low or "--- contract verification (mismatches:" in low
-        is_tdd_fail = bool(re.search(r"failed\s*\((?:failures|errors)=", low)) or bool(re.search(r"fullyqualifiederrorid\s*:\s*(?:[\w-]+\s+)?(?:tests|unittest|pytest|probe)\s+failed", low))
-        if code == 1 and not is_cli_usage_error(content) and is_tdd_fail and "can't open file" not in low and "no such file or directory" not in low and re.search(r"\b(?:unittest|pytest|diagnose\.py)\b", last_cmd, re.I):
+        is_test_runner = bool(re.search(r"\b(?:unittest|pytest)\b", last_cmd, re.I))
+        is_truncated = "truncated due to being too long" in content[:800].lower()
+        has_runner_crash = any(tok in low for tok in ("can't open file", "no such file or directory", "modulenotfounderror", "syntaxerror"))
+        is_tdd_fail = (
+            bool(re.search(r"failed\s*\((?:failures|errors)=", low))
+            or bool(re.search(r"fullyqualifiederrorid\s*:\s*(?:[\w-]+\s+)?(?:tests|unittest|pytest|probe)\s+failed", low))
+            or (is_test_runner and (is_truncated or bool(re.search(r"(?:^|\s)-f(?:\s|$)", last_cmd))) and not has_runner_crash)
+        )
+        if code == 1 and not is_cli_usage_error(content) and is_tdd_fail and not has_runner_crash and re.search(r"\b(?:unittest|pytest|diagnose\.py)\b", last_cmd, re.I):
             return "audit_catch"
         has_non_audit_crash = "can't open file" in low or "no such file or directory" in low or is_tdd_fail
         if code == 1 and not is_cli_usage_error(content) and "traceback" not in low and not has_non_audit_crash and (has_audit_cmd or has_audit_marker):

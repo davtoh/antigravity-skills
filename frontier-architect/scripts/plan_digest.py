@@ -333,6 +333,7 @@ def cmd_digest(root: Path, args: argparse.Namespace) -> int:
     rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_digest(digest)
     if write_scaf:
         rel_path = _write_scaffold_file(root, digest)
+        write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
         if not getattr(args, "json", False):
             rendered += f"\n\n[plan_engine] Wrote learning scaffold: {rel_path}"
     print(rendered)

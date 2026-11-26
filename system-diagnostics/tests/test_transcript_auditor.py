@@ -457,6 +457,20 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         ])
         self.assertEqual(ta.audit_conversation(self.brain, "replan-loop")["plan_mode_calls"], 1)
 
+    def test_truncated_and_failfast_unittest_classified_as_audit_catch(self) -> None:
+        _write(self.brain, "tdd-trunc", [
+            _planner(("run_command", {"CommandLine": "python -m unittest discover -s tests -p \"test_*.py\" -f"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n{\"result\": 2}\n]", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": ".venv\\Scripts\\python.exe -m unittest tests/test_e2e.py"})),
+            {"type": "GENERIC", "content": "Tool is running as a background task with task id: tdd-trunc/task-1", "status": "RUNNING"},
+            {"type": "SYSTEM_MESSAGE", "content": "<SYSTEM_MESSAGE>\nsender=tdd-trunc/task-1\nThe tool's output was truncated due to being too long.\nCommand exited with code 1.\n[mov,mp4] moov atom not found\n</SYSTEM_MESSAGE>", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python -m unittest tests/missing.py -f"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nModuleNotFoundError: No module named 'tests.missing'\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "tdd-trunc")
+        self.assertEqual(row["audit_catches"], 2)
+        self.assertEqual(row["total_failures"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

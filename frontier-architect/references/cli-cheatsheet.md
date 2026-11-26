@@ -91,6 +91,9 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url htt
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add \
   --title "<Milestone Title>" --type feat --summary "<1-line summary>" --verify "<test_cmd>" --path .
 
+# Generate a PR description from branch commits, CHANGELOG.md, and completed plans
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog pr-description --base main --recent 5 --path .
+
 # Package standalone .skill archive (resolves SSOT shims into full scripts & strips tests/evals per /skill-creator)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" package-skill all --out dist/
 ```

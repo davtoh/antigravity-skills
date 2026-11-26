@@ -118,6 +118,8 @@ class TestPlanEngineFixes(unittest.TestCase):
         self.assertEqual(v_args.command, "python -m unittest")
         r_args = parser.parse_args(["retrospective", "demo_plan", "--summary", "Clean milestone"])
         self.assertEqual(r_args.went_well, "Clean milestone")
+        a_args = parser.parse_args(["advance", "demo_plan", "--milestone", "2", "--note", "Milestone 2 summary"])
+        self.assertEqual(a_args.note, "Milestone 2 summary")
 
 
 if __name__ == "__main__":
