@@ -168,6 +168,17 @@
         "Runs targeted module tests through run_diagnose.py tests tests.test_mod1 tests.test_mod2 to enforce the 180s --timeout guard",
         "Executes debug-retro --plan <slug> before transcript-audit --latest 1 at turn closeout so followup_cids and LEARNING_SCAFFOLD.md are backfilled first"
       ]
+    },
+    {
+      "id": 14,
+      "prompt": "The app is running with FRONTIER_DEBUG_OBSERVATIONS=1 and I logged three findings in the DevTools HUD. Fix the bug they describe and close them out. Use /app-debugger.",
+      "expected_output": "Reads active observations via diagnose.py observations list --json (pull first for a remote app) as reproduction evidence, fixes surgically, and only after the fix is VERIFIED runs observations resolve with --resolution and --commit.",
+      "files": [],
+      "expectations": [
+        "Reads active observations with observations list --json before reproducing",
+        "Runs observations pull --url http://127.0.0.1 first when the app is remote or containerized",
+        "Resolves observations with observations resolve --resolution --commit only after the fix is verified"
+      ]
     }
   ]
 }

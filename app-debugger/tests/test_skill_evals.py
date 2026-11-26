@@ -198,6 +198,18 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         ok = bool(re.search(r"Test-Path\s+\.frontier/DEBUG_RETRO\.md", text)) and bool(re.search(r"read_fail", text))
         return ok, f"Check Test-Path before read_file on DEBUG_RETRO.md: {ok}"
 
+    if "observations list" in exp_lower:
+        ok = bool(re.search(r"observations list --json", text)) and bool(re.search(r"reproduction evidence", text, re.I))
+        return ok, f"Read active observations first: {ok}"
+
+    if "observations pull" in exp_lower:
+        ok = bool(re.search(r"observations pull --url http://127\.0\.0\.1", text)) and bool(re.search(r"remote or containerized", text, re.I))
+        return ok, f"Pull remote observations first: {ok}"
+
+    if "observations resolve" in exp_lower:
+        ok = bool(re.search(r"observations resolve --id", text)) and bool(re.search(r"never resolve on an unverified", text, re.I))
+        return ok, f"Resolve observations only after verification: {ok}"
+
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_cnt = sum(1 for w in words if w in text.lower())

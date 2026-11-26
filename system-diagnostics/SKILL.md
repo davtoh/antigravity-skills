@@ -8,6 +8,7 @@ description: >-
 
 **System Diagnostics** consolidates browser layout inspection, container runtime monitoring, AST surface analysis, polyglot defect scanning, transcript telemetry, and virtualenv test execution into a single zero-dependency CLI (`diagnose.py`).
 For exhaustive per-subcommand flag permutations and internal script topology, read [`references/cli-reference.md`](./references/cli-reference.md).
+For the HUD observation workflow (`observations`, `brief`, audit hand-off, privacy), read [`references/observations.md`](./references/observations.md).
 
 ---
 
