@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
-    p_ver.add_argument("--command", "--cmd", "--test-cmd", dest="command", help="Explicit verifier command")
+    p_ver.add_argument("--command", "--cmd", "--test-cmd", "--verify-cmd", dest="command", help="Explicit verifier command")
     p_ver.add_argument("--timeout", type=float, default=180.0, help="Max seconds before aborting hung verifier (default: 180; 0 disables)")
     register_digest_parser(sub, plan_parent)
     register_reconcile_parser(sub, root_parent)

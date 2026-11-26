@@ -229,7 +229,7 @@ def add_retrospective_parser(sub: Any, plan_parent: argparse.ArgumentParser) -> 
     p_retro.add_argument("--learn", help="Project-level candidate proposal for /learn (AGENTS.md)")
     p_retro.add_argument("--skill-learn", help="Skill/script candidate improvement for /learn (SKILL.md or scripts/)")
     p_retro.add_argument("--tool-gap", help="Tooling or script defect encountered during execution")
-    p_retro.add_argument("--went-well", "--notes", dest="went_well", default=None, help="Positive execution or architectural pattern that worked well")
+    p_retro.add_argument("--went-well", "--notes", "--summary", dest="went_well", default=None, help="Positive execution or architectural pattern that worked well")
 
 
 def print_retrospective_summary(entry: dict[str, Any], slug: str, scaffold_rel: str | None) -> None:

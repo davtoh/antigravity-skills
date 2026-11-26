@@ -110,6 +110,15 @@ class TestPlanEngineFixes(unittest.TestCase):
             triaged = _triage_candidates(items, [agents_md])
             self.assertEqual(triaged, ["Always scale `warmup_timeout` proportionally with `read_timeout`."])
 
+    def test_verify_cmd_and_retrospective_summary_cli_aliases(self):
+        import plan_engine
+
+        parser = plan_engine.build_parser()
+        v_args = parser.parse_args(["verify", "demo_plan", "--verify-cmd", "python -m unittest"])
+        self.assertEqual(v_args.command, "python -m unittest")
+        r_args = parser.parse_args(["retrospective", "demo_plan", "--summary", "Clean milestone"])
+        self.assertEqual(r_args.went_well, "Clean milestone")
+
 
 if __name__ == "__main__":
     unittest.main()

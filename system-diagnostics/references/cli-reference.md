@@ -119,11 +119,12 @@ python skills/system-diagnostics/scripts/diagnose.py dismiss-defect --id <ID_FP_
 
 ### Subcommand: `changelog`
 ```bash
-python skills/system-diagnostics/scripts/diagnose.py changelog {add,migrate,show,status} [OPTIONS]
+python skills/system-diagnostics/scripts/diagnose.py changelog {add,migrate,show,status,pr-description} [OPTIONS]
 ```
 - `add --title "<T>" --type <TYPE> --summary "<S>" [--files <FILES...>] [--verify "<V>"] [--path <DIR>] [--max-lines 150] [--no-commit-hint]`: Appends a sanitized milestone entry to `CHANGELOG.md`, auto-migrates any legacy `MIGRATION_LOG.md`, shards overflow into `.changelogs/`, and prints a copy-pasteable `git commit` snippet by default (pass `--no-commit-hint` to suppress).
 - `migrate [--path <DIR>] [--source-log <NAME>] [--target-log <NAME>] [--max-lines 150]`: Migrates and shards an oversized legacy log into `CHANGELOG.md`.
 - `show [--path <DIR>] [--recent 3] [--json]` / `status [--path <DIR>] [--max-lines 150] [--json]`: Reads recent entries or inspects line/shard status.
+- `pr-description [--path <DIR>] [--base <REF>] [--plan <SLUG>] [--recent 5] [--json]`: Generates a structured Markdown PR description from `CHANGELOG.md`/`.changelogs/`, `.TODO/<plan>.md` milestones, and `git log`/`diff --stat`.
 
 ### Subcommand: `transcript-audit`
 ```bash
@@ -180,6 +181,7 @@ skills/system-diagnostics/
 │   ├── defect_catalog.py             # SSOT catalog manager, git safety & JIT router
 │   ├── docker_audit.py               # Docker stats, top, and MD5 sync auditor
 │   ├── probe_runner.py               # Pluggable extension runner & probe registry
+│   ├── pr_description.py             # Deterministic PR description generator
 │   ├── runtime_runner.py             # Zero-code runtime trace bootstrapper
 │   ├── scaffold_templates.py         # Tactical Red/Green tests & architectural briefs
 │   ├── shadow_prober.py              # Polyglot AST/lexer rules, sandbox & scan runner

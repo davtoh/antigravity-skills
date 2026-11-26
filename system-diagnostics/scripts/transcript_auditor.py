@@ -258,7 +258,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
         "parallel_same_file_edits": acc["parallel_same_file_edits"],
-        "plan_mode_calls": acc["plan_mode_calls"] + max(0, acc.get("exit_plan_mode_calls", 0) - 1),
+        "plan_mode_calls": max(0, acc["plan_mode_calls"] - 1) + max(0, acc.get("exit_plan_mode_calls", 0) - 2),
         "schedule_while_subagent": acc["schedule_while_subagent"], "has_debug_retro": acc["has_debug_retro"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],

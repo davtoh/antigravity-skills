@@ -438,6 +438,25 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["reads_while_pending"], 0)
         self.assertEqual(row["reads_after_subagent"], 0)
 
+    def test_probe_failed_classified_as_audit_catch_and_single_orchestrator_cycle_exempt(self) -> None:
+        _write(self.brain, "probe-orch", [
+            _planner(("exit_plan_mode", {})),
+            _planner(("enter_plan_mode", {"reason": "plan review due"})),
+            _planner(("exit_plan_mode", {})),
+            _planner(("run_command", {"CommandLine": "python skills/system-diagnostics/scripts/diagnose.py probe run seam ; if ($LASTEXITCODE -ne 0) { throw 'probe failed' }"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nFullyQualifiedErrorId : probe failed\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "probe-orch")
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["total_failures"], 0)
+        self.assertEqual(row["plan_mode_calls"], 0)
+
+        _write(self.brain, "replan-loop", [
+            _planner(("enter_plan_mode", {"reason": "a"})),
+            _planner(("enter_plan_mode", {"reason": "b"})),
+        ])
+        self.assertEqual(ta.audit_conversation(self.brain, "replan-loop")["plan_mode_calls"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

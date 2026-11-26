@@ -309,6 +309,29 @@ class TestCliSubcommands(unittest.TestCase):
             self.assertEqual(changelog_manager.cmd_changelog(a2), 0)
             self.assertIn("Warning: 1 same-day fix entry/entries already recorded overlapping app.js", out.getvalue())
 
+    def test_pr_description_subcommand_from_changelog_and_plan(self):
+        (self.root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [2026-11-25] feat: Step 4 UX\n- **Summary**: Added review undo\n- **Verification**: unittest (29 passed)\n",
+            encoding="utf-8",
+        )
+        todo_dir = self.root / ".TODO"
+        todo_dir.mkdir(parents=True, exist_ok=True)
+        (todo_dir / "demo_plan.md").write_text(
+            "# Demo Plan\n\n## Milestone 1: Backend Undo\n- [x] **repo.py**: Added undo\n",
+            encoding="utf-8",
+        )
+        parser = changelog_manager.argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="subcommand")
+        changelog_manager.register_parser(sub)
+        args = parser.parse_args(["changelog", "pr-description", "--path", str(self.root), "--plan", "demo_plan", "--json"])
+        with patch("sys.stdout", new_callable=io.StringIO) as out:
+            ret = changelog_manager.cmd_changelog(args)
+            data = json.loads(out.getvalue())
+        self.assertEqual(ret, 0)
+        self.assertEqual(data["milestones"], ["Milestone 1: Backend Undo"])
+        self.assertIn("Added review undo", data["markdown"])
+        self.assertIn("unittest (29 passed)", data["markdown"])
+
 
 if __name__ == "__main__":
     unittest.main()
