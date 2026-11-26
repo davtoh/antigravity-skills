@@ -89,7 +89,18 @@ Scripts with no direct test [S]: `connector_scaffolder`, `changelog_archive`, `s
 
 ## 7. In-flight work: Universal Debug Observation Connector
 
-Plan: `.TODO/universal_debug_observation_connector_plan.md`, rewritten 2026-11-26 as a **master roadmap** (4 milestones, M1 active). Child plan for Milestone 1: `.TODO/step_1_observation_store_cli.md` (7 tasks, function-level design). Both register and parse with `plan_engine`. Milestones: (1) observation store, correlation reader and `diagnose.py observations` CLI; (2) DevTools HUD assets, preceded by a SPIKE; (3) `recording_id` stamping in the trace middleware and the `--with-observations` scaffolder flag (also fixes the generated bridge so it finds the engine under `.claude/skills`); (4) skill docs and Claude/Gemini parity. The master file holds the intent ledger, decisions, data, CLI, HUD, correlation, security and parity contracts. **Status: not implemented.**
+Plan: `.TODO/universal_debug_observation_connector_plan.md`, a **master roadmap with 6 milestones** (M1 active; `plan_engine status` parses it). Child plan for M1: `.TODO/step_1_observation_store_cli.md` (7 tasks, function-level design). **Status: not implemented.** Goal: a user captures findings and ideas with a DevTools-style HUD, then says "audit this app" and the agent connects, shows everything pending and continues the FOR AUDITS workflow.
+
+| Milestone | Delivers |
+| :--- | :--- |
+| 1 | Observation store, correlation reader, `diagnose.py observations` (list/show/add/triage/resolve/dismiss) |
+| 2 | HUD assets (Pick Element, Record/Stop, Soft Pause), preceded by a SPIKE |
+| 3 | Wire routes in generated bridges, `recording_id` stamping, `--with-observations`, **published contract + JSON Schema** |
+| 4 | `observations pull --url` (read from a running app) and `observations verify-connector` (conformance) |
+| 5 | `diagnose.py brief [--run-probes] [--pull URL]` and probe history |
+| 6 | `/frontier-architect audit` mode, skill integration, docs, adoption-plan reconciliation |
+
+The HTTP **wire contract v1** (routes under `/api/diagnostics`, gated by env `FRONTIER_DEBUG_OBSERVATIONS=1`, loopback only, versioned by `X-Diagnostics-Contract`) is the standard an app implements in any language; Python apps may use the scaffold instead. The app-side half is `.TODO/debug_observation_connector_adoption_plan.md`, written to be copied into `intelligent-tracker` (PR #13); that repo's own version of the file was not available and is unverified.
 
 ## 8. Documentation that is stale or inconsistent [S]
 - `README.md`: Antigravity-only branding, `python skills/...` commands, test commands only for two skills.
