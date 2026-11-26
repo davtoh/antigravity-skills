@@ -361,6 +361,19 @@
         "Generates a PR description from branch changelogs and completed plans via diagnose.py changelog pr-description",
         "Runs diagnose.py changelog add and surfaces git diff main...plan/<slug> on final completion"
       ]
+    },
+    {
+      "id": 29,
+      "prompt": "/frontier-architect audit our app. I logged findings and ideas in the DevTools HUD; the app runs on port 8000 with FRONTIER_DEBUG_OBSERVATIONS=1. I'm away, so don't wait for me.",
+      "expected_output": "Runs diagnose.py brief --run-probes --pull http://127.0.0.1:8000 as the baseline (UNAVAILABLE sections reported UNVERIFIED), builds findings and ideas from observations list --json, records why tools missed each bug with triage --missed-by --guard, states assumptions instead of waiting, and ends with an Axiom 9 verified/not-verified split.",
+      "files": [],
+      "expectations": [
+        "Starts the audit with diagnose.py brief --run-probes and reports UNAVAILABLE sections as UNVERIFIED",
+        "Builds findings and ideas from active observations (observations list --json and --kind idea)",
+        "Records why current tools missed each bug with observations triage --root-cause --missed-by --guard",
+        "Unattended run states working assumptions instead of waiting",
+        "Ends with an Axiom 9 verified versus not verified split"
+      ]
     }
   ]
 }

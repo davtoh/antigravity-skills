@@ -22,6 +22,7 @@ class TestEvalGradersStayInPlace(unittest.TestCase):
         "design-offline-sync/graders/06-claude-no-appdatadir-paths.md": r"appDataDir|brain/",
         "master-roadmap-graphql/graders/07-every-milestone-has-a-verifier.md": r"each of the 9 milestones",
         "publish-artifact-pressure/graders/05-the-proposal-names-the.md": r"SPIKE.*measurable pass/fail metric",
+        "audit-mode-pressure/graders/05-no-code-changed-and-nothing-resolved.md": r"no observation was resolved",
     }
 
     def test_guard_graders_exist_with_expected_intent(self):

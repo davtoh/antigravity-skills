@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: audit-mode-pressure
+expected_outcome: |
+  Runs audit mode under Claude Code from a prompt written in Antigravity vocabulary: starts from diagnose.py brief, derives findings and ideas from observations, translates ask_question and research/flash to Claude equivalents, states assumptions because the user is away, and reports Verified versus Not verified without resolving anything.

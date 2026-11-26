@@ -35,7 +35,7 @@ Sibling discovery means a normal side-by-side install still works under Claude e
 
 ## 3. system-diagnostics (the SSOT engine)
 
-`SKILL.md` 15.5 KB (over the 12 KB router target) [V]; commands live in `references/cli-reference.md`.
+`SKILL.md` 15.5 KB (over the 12 KB router target) [V]; commands live in `references/cli-reference.md`; the observation workflow lives in `references/observations.md` (pointer line only in `SKILL.md`).
 
 **Layers** [S] (lines in parentheses):
 - **CLI front doors:** `diagnose.py` (309; dispatch dict at lines 283-300), `diagnose_cli.py` (178), `trace_cli.py` (93), `runtime_runner.py` (49).
@@ -43,14 +43,15 @@ Sibling discovery means a normal side-by-side install still works under Claude e
 - **Docker:** `docker_audit.py` (113).
 - **Surface / AST scanners:** `surface_scanners.py` (**359**), `surface_verifier.py` (342), `surface_contracts.py` (329), `surface_layout_checks.py` (81), `arch_mapper.py` (327), `cross_module_rules.py` (323), `ast_guard_rules.py` (65), `signature_drift_rules.py` (117).
 - **Defects, audit, probes:** `shadow_prober.py` (349), `defect_catalog.py` (346), `scaffold_templates.py` (198, *defect* templates, not connector templates), `static_auditor.py` (313), `probe_runner.py` (293) + `probes/camera_hardware.py`.
+- **Observation connector (M1-M5):** `observation_store.py` (257; `.diagnostics/observations.jsonl` + `observation_catalog.json`, `OBS-001` and `OBS-<KIND>-<6HEX>` ids), `observation_cli.py` (182) + `observation_cli_remote.py` (64), `observation_correlate.py` (93), `observation_routes.py` (123; wire contract v1), `observation_pull.py` (108), `observation_merge.py` (70), `observation_verify.py` (134; `verify-connector`), `observation_assets.py` (25) + `assets/hud_core.js`, `hud_picker.js`, `hud_recorder.js` (the HUD), `connector_templates_obs.py` (97), `connector_bridge_common.py` (40), `brief.py` (97) + `brief_sections.py` (146), `probe_history.py` (59; `.diagnostics/probe_last_run.json`). Docs: `references/observations.md`, `observation-connector-contract.md`, `observation_contract.schema.json`.
 - **Runtime traces and connectors:** `trace_recorder.py` (282; `.diagnostics/trace_catalog.json` + daily `traces/trace_YYYYMMDD.jsonl`, `TRC-<type>-<hash>` fingerprints), `trace_middleware.py` (63), `connector_scaffolder.py` (150; writes `diagnostic_bridge.py` for fastapi/flask/generic), `bootstrap/sitecustomize.py` (24).
 - **Changelog, transcripts, PR text:** `changelog_manager.py` (278), `changelog_archive.py` (144), `pr_description.py` (153), `transcript_auditor.py` (345), `transcript_checks.py` (134), `debug_retro.py` (169), `skill_packager.py` (166).
 
-**`diagnose.py` subcommands** [S]: `ui`, `container`, `surface`, `tests`, `all`, `probe {list,run,new,save}`, `audit`, `scan`, `scaffold-defect`, `resolve-defect`, `dismiss-defect`, `changelog {add,migrate,show,status,pr-description}`, `traces` (actions `list|resolve`; flags `--scaffold {fastapi,flask,generic} --dest`), `run`, `package-skill`, `arch-map`, `transcript-audit`, `debug-retro`.
+**`diagnose.py` subcommands** [S]: `ui`, `container`, `surface`, `tests`, `all`, `probe {list,run,new,save}`, `audit`, `scan`, `scaffold-defect`, `resolve-defect`, `dismiss-defect`, `changelog {add,migrate,show,status,pr-description}`, `traces` (actions `list|resolve`; flags `--scaffold {fastapi,flask,generic} --dest [--with-observations]`), `observations {list,show,add,triage,resolve,dismiss,pull,verify-connector}`, `brief [--run-probes] [--pull URL]`, `run`, `package-skill`, `arch-map`, `transcript-audit`, `debug-retro`.
 
 **New on this branch vs `main`** [S]: `changelog pr-description` (`pr_description.py`), multi-viewport audit (`cdp_viewport.py`), extra layout checks (`audit_layout_extra.js`), `SILENT_SHAPE_SKIP` rule (`ast_guard_rules.py`), probe status hardening (`INFRA_UNAVAILABLE`, empty-CDP-sweep downgrade), `App.navigate` target checks, TDD-failure handling in transcript audit. The branch does **not** touch `trace_*`, `connector_scaffolder.py` or `trace_cli.py`, despite its name.
 
-**What does not exist yet** [V: grep + file checks]: any "observation" store, `observations` subcommand, trace correlation across requests, HUD asset, `assets/` folder, `observation_store.py`, `diagnostic_bridge.py` observation routes.
+**Observation connector status** [V]: implemented through Milestone 5 (store, HUD, wire routes, pull, verify-connector, brief). Remaining gap: WebSocket frames are not captured (contract v1).
 
 ## 4. The other three skills
 
@@ -78,8 +79,8 @@ Sibling discovery means a normal side-by-side install still works under Claude e
 
 | Suite | Tests | Result | Notes |
 | :--- | :--- | :--- | :--- |
-| `frontier-architect/tests` | 140 | **OK** | includes adapter gating, regression guards, Claude install layout |
-| `system-diagnostics/tests` | 264 | **OK** | 4 previously failing tests fixed: they built paths from an unresolved macOS temp dir |
+| `frontier-architect/tests` | 165 | **OK** | includes adapter gating, regression guards, Claude install layout, audit-mode evals |
+| `system-diagnostics/tests` | 441 | **OK** | 4 previously failing tests fixed: they built paths from an unresolved macOS temp dir |
 | `refactor-monolith/tests` | 159 | **OK** | `test_discover_virtualenv` fixed the same way |
 | `app-debugger/tests` | 24 | **OK** | `test_resolve_python_*venv` fixed the same way |
 
@@ -87,27 +88,27 @@ Sibling discovery means a normal side-by-side install still works under Claude e
 
 Scripts with no direct test [S]: `connector_scaffolder`, `changelog_archive`, `surface_layout_checks`, `runtime_runner`, `scaffold_templates`, `ast_guard_rules` (indirect only), `pr_description` and `skill_packager` (CLI-level only), `trace_cli` (via `test_cross_module_rules`).
 
-## 7. In-flight work: Universal Debug Observation Connector
+## 7. Universal Debug Observation Connector (implemented; adoption pending)
 
-Plan: `.TODO/universal_debug_observation_connector_plan.md`, a **master roadmap with 6 milestones** (M1 active; `plan_engine status` parses it). Child plan for M1: `.TODO/step_1_observation_store_cli.md` (7 tasks, function-level design). **Status: not implemented.** Goal: a user captures findings and ideas with a DevTools-style HUD, then says "audit this app" and the agent connects, shows everything pending and continues the FOR AUDITS workflow.
+Plan: `.TODO/universal_debug_observation_connector_plan.md` (master roadmap, 6 milestones). **Status:** M1-M5 shipped; M6 shipped as 6A (docs, app-debugger integration) and 6B (audit mode, this file, `AGENTS.md`, adoption plan). Goal: a user captures findings and ideas with a DevTools-style HUD, then says "audit this app" and the agent connects, shows everything pending and continues the audit workflow.
 
-| Milestone | Delivers |
-| :--- | :--- |
-| 1 | Observation store, correlation reader, `diagnose.py observations` (list/show/add/triage/resolve/dismiss) |
-| 2 | HUD assets (Pick Element, Record/Stop, Soft Pause), preceded by a SPIKE |
-| 3 | Wire routes in generated bridges, `recording_id` stamping, `--with-observations`, **published contract + JSON Schema** |
-| 4 | `observations pull --url` (read from a running app) and `observations verify-connector` (conformance) |
-| 5 | `diagnose.py brief [--run-probes] [--pull URL]` and probe history |
-| 6 | `/frontier-architect audit` mode, skill integration, docs, adoption-plan reconciliation |
+| Milestone | Delivers | Status |
+| :--- | :--- | :--- |
+| 1 | Observation store, correlation reader, `diagnose.py observations` | done |
+| 2 | HUD assets (Pick Element, Record/Stop, Soft Pause) after a SPIKE | done |
+| 3 | Wire routes in generated bridges, `recording_id` stamping, `--with-observations`, published contract + JSON Schema | done |
+| 4 | `observations pull --url`, `observations verify-connector` | done |
+| 5 | `diagnose.py brief [--run-probes] [--pull URL]`, probe history | done |
+| 6 | `/frontier-architect audit` (`references/audit-recipe.md`, `connector-integration.md`), `references/observations.md`, app-debugger Step 2/4 hooks, eval 29 + `audit-mode-pressure`, adoption plan | done (see plan for sign-off) |
 
-The HTTP **wire contract v1** (routes under `/api/diagnostics`, gated by env `FRONTIER_DEBUG_OBSERVATIONS=1`, loopback only, versioned by `X-Diagnostics-Contract`) is the standard an app implements in any language; Python apps may use the scaffold instead. The app-side half is `.TODO/debug_observation_connector_adoption_plan.md`, written to be copied into `intelligent-tracker` (PR #13); that repo's own version of the file was not available and is unverified.
+The HTTP **wire contract v1** (routes under `/api/diagnostics`, env `FRONTIER_DEBUG_OBSERVATIONS=1`, loopback only, `X-Diagnostics-Contract`) is the standard an app implements in any language; Python apps may use the scaffold. The app-side half is `.TODO/debug_observation_connector_adoption_plan.md`, shipped into `intelligent-tracker` PR #13; its header carries a ready-to-paste prompt so an agent (Claude or Gemini) can reconcile it with the project. The skill repo's contract wins on conflicts.
 
-**Also planned:** `.TODO/retrospective_claude_support_plan.md` (5 milestones) closes the Claude gap in section 5: a vendor flag (`--vendor` for the transcript format, `--recipe` for the instructions), a Claude Code session-log reader, session discovery (`--list`, `--plan`), an automatic session ledger (`.frontier/sessions.jsonl`), and separate Gemini and Claude retrospective recipes, while Antigravity output stays byte-identical. Its **Capture Protocol** is usable now: after each milestone session, append one ledger line (`CLAUDE_CODE_SESSION_ID` identifies a Claude Code session). Milestones 1 to 4 are implemented; Milestone 5 (calibration and sign-off) is in progress.
+**Also planned:** `.TODO/retrospective_claude_support_plan.md` closes the Claude gap in section 5 (vendor flag, Claude session-log reader, session ledger `.frontier/sessions.jsonl`, separate recipes). Its **Capture Protocol** is usable now.
 
 ## 8. Documentation that is stale or inconsistent [S]
 - `README.md`: Antigravity-only branding, `python skills/...` commands, test commands only for two skills.
-- `AGENTS.md`: verification block omits `app-debugger`.
-- `frontier-architect/tests/README.md`: says 28 scenarios / 125 assertions / "115+" tests; reality is 29 / 129 / 140. It also lists test files that do not exist and a `skills/skill-creator` path that is not in this tree.
+- `AGENTS.md`: verification block lists the app-debugger suite as of M6B.
+- `frontier-architect/tests/README.md`: scenario and assertion counts were refreshed to 30 / 134; the "115+" test count and some listed test files are still stale. It also lists test files that do not exist and a `skills/skill-creator` path that is not in this tree.
 - Playbook targets not yet met: `refactor-monolith` SKILL.md 16.3 KB, `system-diagnostics` 15.5 KB, descriptions over ~700 chars for `refactor-monolith` and `app-debugger`.
 
 ## 9. Open risks for agents

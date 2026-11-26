@@ -18,6 +18,7 @@ This document serves as persistent operational memory across conversations for A
 - **`app-debugger/`**: Dedicated empirical bug hunter and symptom-to-root-cause debugger (`scripts/run_diagnose.py` delegates to `system-diagnostics`).
 - **In-Flight Tool Elevation Rule (SSOT)**: Always fix shared diagnostic bugs in `system-diagnostics/scripts/` and run `system-diagnostics/tests/`—never overwrite thin delegating shims with forked code copies.
 - **Transcript audit (Claude + Antigravity)**: `diagnose.py transcript-audit --vendor claude` reads `~/.claude/projects/`; cue calibration lives in `system-diagnostics/scripts/transcript_cues.py` / `transcript_checks.py` (questions and pasted content are not corrections; `fails` is a floor, see `masked_failures`).
+- **Debug observation connector**: HUD observations (`diagnose.py observations`, `brief`), wire contract v1 in `system-diagnostics/references/observation-connector-contract.md`, workflow in `references/observations.md`; `/frontier-architect audit` follows `frontier-architect/references/audit-recipe.md`. Default-off (`FRONTIER_DEBUG_OBSERVATIONS=1`), loopback only, never commit `.diagnostics/`.
 - **`.TODO/`**: Active implementation plans and architectural roadmaps.
 
 ---
@@ -62,6 +63,9 @@ python -m unittest discover -s system-diagnostics/tests -p "test_*.py"
 
 # Refactor Monolith Suite
 python -m unittest discover -s refactor-monolith/tests -p "test_*.py"
+
+# App Debugger Suite
+python -m unittest discover -s app-debugger/tests -p "test_*.py"
 ```
 
 ---

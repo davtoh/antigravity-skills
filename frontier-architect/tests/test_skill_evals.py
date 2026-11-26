@@ -154,6 +154,20 @@ def _check_special_rules(text: str, exp_lower: str) -> tuple[bool, str] | None:
     if "research subagent" in exp_lower and "never re-reads" in exp_lower:
         ok = bool(re.search(r"do not re-read files a `research` subagent", text, re.I))
         return ok, f"Zero Subagent Duplication: {ok}"
+    return _check_audit_rules(text, exp_lower)
+
+
+def _check_audit_rules(text: str, exp_lower: str):
+    """Audit-mode expectations (observations connector)."""
+    if "diagnose.py brief" in exp_lower:
+        ok = bool(re.search(r"brief --run-probes", text)) and bool(re.search(r"UNAVAILABLE.*UNVERIFIED", text, re.S))
+        return ok, f"Audit baseline via brief, UNAVAILABLE is UNVERIFIED: {ok}"
+    if "active observations" in exp_lower:
+        ok = bool(re.search(r"observations list --json", text)) and bool(re.search(r"observations list --kind idea", text))
+        return ok, f"Findings and ideas from observations: {ok}"
+    if "--missed-by" in exp_lower:
+        ok = bool(re.search(r"triage --id <ID> --root-cause .* --missed-by .* --guard", text))
+        return ok, f"Record why tools missed it: {ok}"
     return None
 
 
