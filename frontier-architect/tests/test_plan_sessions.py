@@ -74,6 +74,18 @@ class TestLedger(_Base):
         events = [(l["plan"], l["milestone"], l["event"]) for l in self._lines()]
         self.assertIn(("demo", 1, "advance"), events)
 
+    def test_agy_conversation_id_records_gemini(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "", "AGY_CONVERSATION_ID": "agy-conv-1234"}):
+            self.assertTrue(ps.record_session(self.root, "demo", 1, "advance"))
+        line = self._lines()[0]
+        self.assertEqual((line["vendor"], line["session_id"]), ("gemini", "agy-conv-1234"))
+
+    def test_explicit_session_id_records_gemini_when_env_unset(self) -> None:
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "", "AGY_CONVERSATION_ID": ""}):
+            self.assertTrue(ps.record_session(self.root, "demo", 1, "retrospective", session_id="gem-cid-9999"))
+        line = self._lines()[0]
+        self.assertEqual((line["vendor"], line["session_id"], line["event"]), ("gemini", "gem-cid-9999", "retrospective"))
+
 
 class TestTranscriptRouting(_Base):
     def test_resolve_prefix_of_claude_session_and_dedupe(self) -> None:

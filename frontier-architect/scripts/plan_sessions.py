@@ -21,7 +21,11 @@ EVENTS = ("advance", "retrospective", "handoff", "manual")
 
 def current_session() -> tuple[str, str]:
     """``(vendor, session_id)`` of the running agent; empty id when it cannot be known."""
-    return ("claude", os.getenv("CLAUDE_CODE_SESSION_ID", "").strip())
+    if claude_id := os.getenv("CLAUDE_CODE_SESSION_ID", "").strip():
+        return ("claude", claude_id)
+    if agy_id := os.getenv("AGY_CONVERSATION_ID", "").strip():
+        return ("gemini", agy_id)
+    return ("", "")
 
 
 def _branch(root: Path) -> str:
@@ -49,16 +53,21 @@ def _already(path: Path, line: dict) -> bool:
     return False
 
 
-def record_session(root: Path, plan: str, milestone: int | None, event: str = "manual") -> bool:
+def record_session(
+    root: Path, plan: str, milestone: int | None, event: str = "manual",
+    session_id: str | None = None, vendor: str | None = None,
+) -> bool:
     """Append one ledger line for the current session; returns True when a line was written."""
-    vendor, sid = current_session()
+    cur_vendor, cur_sid = current_session()
+    sid = (session_id or "").strip() or cur_sid
+    resolved_vendor = vendor or (cur_vendor if sid == cur_sid and cur_vendor else "gemini")
     if not sid:
         if os.getenv("CLAUDECODE"):
             print("[plan_engine] session ledger: no session id (CLAUDE_CODE_SESSION_ID unset); nothing recorded.", file=sys.stderr)
         return False
     line = {"v": 1, "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "plan": plan,
             "milestone": milestone if isinstance(milestone, int) else None, "event": event if event in EVENTS else "manual",
-            "vendor": vendor, "session_id": sid, "inferred": False}
+            "vendor": resolved_vendor, "session_id": sid, "inferred": False}
     if branch := _branch(root):
         line["branch"] = branch
     path = get_frontier_dir(root) / "sessions.jsonl"

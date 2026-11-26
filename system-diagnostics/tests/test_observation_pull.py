@@ -121,6 +121,16 @@ class TestPull(PullBase):
         self.assertEqual(code, 1)
         self.assertIn("HTTP 302", out)
 
+    def test_malformed_observations_list_exits_1(self):
+        def override(method, rel, query, hdrs, body, default):
+            if rel.startswith("/observations"):
+                return 200, {"X-Diagnostics-Contract": "1"}, b'{"observations": "not-a-list"}'
+            return default()
+        with stub.StubServer(self.remote_ws, override) as srv:
+            code, out = run_cli("pull", "--url", srv.url, "--path", str(self.local_ws))
+        self.assertEqual(code, 1)
+        self.assertIn("non-list", out)
+
 
 class TestPullRefusals(PullBase):
     def test_remote_host_refused_without_flag(self):

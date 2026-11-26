@@ -78,8 +78,8 @@ Loop per milestone: `plan_engine.py status`/`next` → **Pre-Flight Critic Gate*
 
 ## Scripts, References & Self-Tests
 
-- **Scripts (`scripts/`)**: `plan_engine.py` (status/next/advance/verify/reconcile), `cdp_inspect.py`, `docker_audit.py` (SSOT shims to `system-diagnostics`).
+- **Scripts (`scripts/`)**: `plan_engine.py`, `cdp_inspect.py`, `docker_audit.py` (SSOT shims).
 - **References (`references/`)**: [`claude-adapter.md`](./references/claude-adapter.md), [`phase-protocols.md`](./references/phase-protocols.md), [`cli-cheatsheet.md`](./references/cli-cheatsheet.md), [`plan-contracts.md`](./references/plan-contracts.md), [`triage-protocols.md`](./references/triage-protocols.md), [`diagnostics-and-tiers.md`](./references/diagnostics-and-tiers.md), [`reasoning-harness.md`](./references/reasoning-harness.md), [`sota-patterns.md`](./references/sota-patterns.md), [`spike-protocol.md`](./references/spike-protocol.md), [`workflow-diagram.md`](./references/workflow-diagram.md).
 - **Tests**: `python -m unittest discover -s <skill_dir>/tests -p "test_*.py"`.
-- **Pre-commit self-audit (on monorepo edits)**: run the `system-diagnostics`, `app-debugger` and `frontier-architect` suites plus `diagnose.py audit --path <modified_skill_files>`.
+- **Pre-commit (monorepo)**: run `system-diagnostics`, `app-debugger`, `frontier-architect` tests + `diagnose.py audit --path <targets>`.
 - **Modes**: `retrospective` follows [`retrospective-recipe.md`](./references/retrospective-recipe.md); `audit` follows [`audit-recipe.md`](./references/audit-recipe.md).

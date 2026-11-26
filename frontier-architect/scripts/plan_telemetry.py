@@ -255,7 +255,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     ws = load_json(fdir / "state.json", {})
     _upsert_retro(ws.setdefault("retrospectives", []), {**entry, "_slug": ps["slug"]}, slug=ps["slug"])
     save_json(fdir / "state.json", ws)
-    from plan_sessions import record_session; record_session(root, ps["slug"], milestone_idx, "retrospective")  # noqa: E702
+    from plan_sessions import record_session; record_session(root, ps["slug"], milestone_idx, "retrospective", session_id=cid)  # noqa: E702
     from plan_digest import build_workspace_digest, write_learning_scaffold, write_workspace_scaffold
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
     if ps.get("status") == "completed":

@@ -1,0 +1,10 @@
+[
+  {"query": "the app is running with FRONTIER_DEBUG_OBSERVATIONS=1 and I logged three HUD findings; reproduce and fix the bug they describe", "should_trigger": true},
+  {"query": "my camera stream fails with a DirectShow hardware lock on Windows, diagnose and fix the leak", "should_trigger": true},
+  {"query": "the Docker container is serving stale code even though I edited app.py on the host, check container sync drift", "should_trigger": true},
+  {"query": "TypeError: Cannot read properties of undefined (reading 'map') at Gallery.jsx:42 when the list is empty, find the root cause and fix it", "should_trigger": true},
+  {"query": "design a 3-tier architecture for offline sync comparing CRDTs vs op-logs", "should_trigger": false},
+  {"query": "split this 1,800-line worker.py monolith into smaller modules without changing behavior", "should_trigger": false},
+  {"query": "write a SQL query for top 10 customers by revenue", "should_trigger": false},
+  {"query": "create a new skill for reviewing Terraform plans", "should_trigger": false}
+]

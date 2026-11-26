@@ -53,6 +53,24 @@ class TestScaffolder(unittest.TestCase):
         shutil.rmtree(other, ignore_errors=True)
         self.assertEqual(out.stdout.strip(), "True", out.stderr)
 
+    def test_gemini_layout_finds_engine_from_another_cwd(self):
+        fake_home = Path(tempfile.mkdtemp(prefix="sysdiag_home_")).resolve()
+        try:
+            skills = fake_home / ".gemini" / "config" / "skills"
+            skills.mkdir(parents=True)
+            shutil.copytree(SCRIPTS_DIR.parent, skills / "system-diagnostics", ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            connector_scaffolder.scaffold_connector(self.root, "generic", "services", with_observations=True)
+            other = Path(tempfile.mkdtemp()).resolve()
+            env = {k: v for k, v in os.environ.items() if k != "SYSTEM_DIAGNOSTICS_DIR"}
+            env["HOME"] = str(fake_home)
+            env["USERPROFILE"] = str(fake_home)
+            code = "import sys; sys.path.insert(0, %r); import diagnostic_bridge as b; print(b._obs is not None)" % str(self.root / "services")
+            out = subprocess.run([sys.executable, "-c", code], cwd=other, env=env, capture_output=True, text=True)
+            shutil.rmtree(other, ignore_errors=True)
+            self.assertEqual(out.stdout.strip(), "True", out.stderr)
+        finally:
+            shutil.rmtree(fake_home, ignore_errors=True)
+
     def test_cli_rejects_flag_without_scaffold(self):
         args = argparse.Namespace(with_observations=True, scaffold=None)
         self.assertEqual(trace_cli.cmd_traces(args, None), 2)

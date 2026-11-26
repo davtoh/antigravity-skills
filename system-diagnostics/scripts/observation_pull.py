@@ -93,7 +93,14 @@ def pull(ws: Path, url: str, status: str = "all", kind: str | None = None, timeo
     listing, _ = get_json(base + "/observations?" + urllib.parse.urlencode(query), timeout)
     catalog = store.load_catalog(ws)
     counts = {"new": 0, "updated": 0, "unchanged": 0}
-    for item in listing.get("observations", []):
+    items = listing.get("observations")
+    if items is None:
+        items = []
+    if not isinstance(items, list):
+        raise PullError("remote /observations returned non-list 'observations'")
+    for item in items:
+        if not isinstance(item, dict) or not item.get("id"):
+            raise PullError("remote /observations entry missing 'id'")
         if not merge.needs_fetch(catalog, item):
             counts["unchanged"] += 1
             continue
