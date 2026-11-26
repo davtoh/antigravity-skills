@@ -106,7 +106,7 @@ class TestClaudeRows(_Base):
         self._session()
         code, out, _ = self._cli(cids=["c1c1c1c1"])
         self.assertEqual(code, 0)
-        self.assertIn("| c1c1c1c1 | 7 | 1 | 1 | 0 | A |", out)
+        self.assertIn("| c1c1c1c1 | claude | 7 | 1 | 1 | 1 | A | 2 in / 0 cached / 3 out |", out)
 
     def test_mixed_audit_returns_both_rows(self) -> None:
         self._gemini()

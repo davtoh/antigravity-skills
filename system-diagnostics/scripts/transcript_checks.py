@@ -85,21 +85,27 @@ def failure_snippet(content: str) -> str:
     return " ".join(chosen.split())[:90]
 
 
-def extract_user_correction(content: str, idx: int, acc: dict[str, Any]) -> None:
-    """Capture bug/code corrections into ``user_corrections`` and model/workflow switches into ``workflow_redirects``."""
+def extract_user_correction(content: str, idx: int, acc: dict[str, Any], cues: dict[str, Any] | None = None) -> None:
+    """Capture bug/code corrections into ``user_corrections`` and model/workflow switches into ``workflow_redirects``.
+
+    ``cues`` (from ``transcript_cues.load_cues``) replaces the English-only defaults; ``None`` keeps them.
+    """
+    cues = cues or {}
+    bug, flow, verb, corr = (cues.get("bug_symptom", _BUG_SYMPTOM_RE), cues.get("workflow_redirect", _WORKFLOW_REDIRECT_RE),
+                             cues.get("redirect_verb", _REDIRECT_VERB_RE), cues.get("correction", _CORRECTION_RE))
     is_first = not acc["seen_first_user"]
     acc["seen_first_user"] = True
     matches = _USER_REQ_RE.findall(content)
     clean_req = " ".join(("\n".join(matches) if matches else content).split())
     if not clean_req or (is_first and not _FIRST_OVERRIDE_RE.match(clean_req)):
         return
-    is_redirect = _WORKFLOW_REDIRECT_RE.search(clean_req) and not _BUG_SYMPTOM_RE.search(clean_req)
-    if is_redirect and (_CORRECTION_RE.search(clean_req) or _REDIRECT_VERB_RE.search(clean_req)):
+    is_redirect = flow.search(clean_req) and not bug.search(clean_req)
+    if is_redirect and (corr.search(clean_req) or verb.search(clean_req)):
         redirects = acc.setdefault("workflow_redirects", [])
         if len(redirects) < 3:
             redirects.append(f"step {idx}: {clean_req[:110]}")
         return
-    if len(acc["user_corrections"]) < 3 and _CORRECTION_RE.search(clean_req):
+    if len(acc["user_corrections"]) < 3 and corr.search(clean_req):
         acc["user_corrections"].append(f"step {idx}: {clean_req[:110]}")
 
 

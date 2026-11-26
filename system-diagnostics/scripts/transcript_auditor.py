@@ -329,11 +329,11 @@ def cmd_transcript_audit(args: argparse.Namespace) -> int:
     """Run the audit for the requested conversations; exit 1 if none could be read."""
     brain = Path(args.brain_dir) if args.brain_dir else default_brain_dir()
     cids = _resolve_cids(brain, args.cids, args.latest, getattr(args, "min_steps", 6), getattr(args, "workspace", None))
-    from transcript_router import audit_for_cli  # lazy: the router imports this module
+    from transcript_router import audit_for_cli, format_rows  # lazy: the router imports this module
     rows = audit_for_cli(args, brain, cids)
     if rows is None:
         return 2
-    print(json.dumps(rows, indent=2) if args.json else format_markdown(rows))
+    print(json.dumps(rows, indent=2) if args.json else format_rows(rows))
     return 0 if any(not r.get("missing") for r in rows) else 1
 
 

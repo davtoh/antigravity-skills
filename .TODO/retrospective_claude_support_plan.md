@@ -129,14 +129,14 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 
 ## Milestone 1: Vendor layer and Claude transcript reader
 
-- [ ] **child plan .TODO/step_1_*.md**: created at the pre-plan gate (~6 files): `system-diagnostics/scripts/transcript_sources.py` (vendor detection per D2, session discovery in both roots, `current_session_id(vendor)` from `CLAUDE_CODE_SESSION_ID`), `transcript_claude.py` (read one session plus its `subagents/` files; yield normalized steps; tolerant of unknown keys), `transcript_router.py` (`audit(cid, vendor, ...)` returning the common row shape; calls the existing Antigravity reader unchanged; a **hook of at most 5 lines** in `transcript_auditor.cmd_transcript_audit`, extracting helpers out first if that would push it past 350 lines), tests `test_transcript_sources.py`, `test_transcript_claude.py` (synthetic fixtures built in the test, **no real transcripts committed**), `test_transcript_router.py` (including the Antigravity golden-output test).
+- [x] **child plan .TODO/step_1_*.md**: created at the pre-plan gate (~6 files): `system-diagnostics/scripts/transcript_sources.py` (vendor detection per D2, session discovery in both roots, `current_session_id(vendor)` from `CLAUDE_CODE_SESSION_ID`), `transcript_claude.py` (read one session plus its `subagents/` files; yield normalized steps; tolerant of unknown keys), `transcript_router.py` (`audit(cid, vendor, ...)` returning the common row shape; calls the existing Antigravity reader unchanged; a **hook of at most 5 lines** in `transcript_auditor.cmd_transcript_audit`, extracting helpers out first if that would push it past 350 lines), tests `test_transcript_sources.py`, `test_transcript_claude.py` (synthetic fixtures built in the test, **no real transcripts committed**), `test_transcript_router.py` (including the Antigravity golden-output test).
 
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_transcript_*.py"` then the four suites.
 **Exit criteria:** Claude fixture sessions (with and without subagents) yield normalized steps; precedence rules D2 covered; the Antigravity golden output is unchanged; no raw content printed beyond snippets.
 
-## Milestone 2: Claude checks and metrics *(Deferred to Next Turn / Milestone)*
+## Milestone 2: Claude checks and metrics
 
-- [ ] **child plan .TODO/step_2_*.md**: created at the gate (~5 files): `transcript_claude_checks.py` (the metric derivation table above), `transcript_claude_rows.py` if needed to stay under budget, cue-file loader for `.diagnostics/retro_cues.json` (English cues plus Spanish defaults), tests `test_transcript_claude_checks.py` (one fixture per metric row), `test_transcript_cues.py`.
+- [x] **child plan .TODO/step_2_*.md**: created at the gate (~5 files): `transcript_claude_checks.py` (the metric derivation table above), `transcript_claude_rows.py` if needed to stay under budget, cue-file loader for `.diagnostics/retro_cues.json` (English cues plus Spanish defaults), tests `test_transcript_claude_checks.py` (one fixture per metric row), `test_transcript_cues.py`.
 
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_transcript_*.py"`
 **Exit criteria:** every derivation row has a passing fixture test; the row shape equals the Antigravity row plus the documented new keys; markdown and JSON output contracts honored (Antigravity-only output unchanged).

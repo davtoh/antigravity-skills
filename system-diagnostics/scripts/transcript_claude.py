@@ -7,13 +7,18 @@ beyond ``text_snippet`` (<= 120 chars).
 
 Step counting rule (used by the router): a *step* is a ``tool_call`` step or a user ``text`` step.
 Normalized step: ``{idx, ts, role, kind, tool, args:{path,command,target}, ok, exit_code, error,
-model, tokens, agent_id, call_id, text_snippet}``.
+model, tokens, agent_id, call_id, text_snippet}`` plus derived, content-free fields so checks never
+need raw text: ``fail`` (cmd_fail|audit_catch|edit_fail|read_fail|tool_fail|None), ``usage_error``,
+``fail_note`` (<= 90 chars), ``markers`` (names such as ``commit_hint``) and, for user text only,
+``cue_text`` (<= 600 chars, in memory for cue matching; checks never emit more than 110 chars of it).
 """
 
 import json
 import re
 from pathlib import Path
 from typing import Any, Iterator
+
+from transcript_checks import classify_result, failure_snippet, is_cli_usage_error
 
 SNIPPET_MAX = 120
 CANONICAL_TOOLS = {
@@ -23,6 +28,9 @@ CANONICAL_TOOLS = {
     "Glob": "search", "ScheduleWakeup": "schedule", "Skill": "skill",
 }
 _EXIT_RE = re.compile(r"^Exit code (-?\d+)", re.M)
+_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>|<(command-[\w-]+|local-command-[\w-]+)>.*?</\1>", re.S)
+_CDP_NOISE_RE = re.compile(r"\b(?:unittest|pytest|Select-String|Get-Content|git\s+(?:diff|grep|show|log))\b", re.I)
+_FAIL_BY_TOOL = {"edit_file": "edit_fail", "view_file": "read_fail"}
 
 
 def _snippet(text: Any) -> str:
@@ -86,26 +94,63 @@ def _tokens(message: Any) -> dict[str, int] | None:
             "cache_read": pick("cache_read_input_tokens"), "cache_creation": pick("cache_creation_input_tokens")}
 
 
+def _result_markers(tool: str, cmd: str, text: str, fail: str | None) -> list[str]:
+    marks: list[str] = []
+    noise = "Showing lines " in text[:220] or bool(_CDP_NOISE_RE.search(cmd))
+    live_no_fallback = ("diagnose.py" in cmd and "--live" in cmd and "--allow-headless-fallback" not in cmd) or "--no-fallback-headless" in cmd
+    if not noise and ("[CDP] Falling back to isolated headless browser" in text or ("[CDP] Live connection failed" in text and not live_no_fallback)):
+        marks.append("cdp_fallback")
+    elif not noise and "[CDP] Live connection failed" in text:
+        marks.append("cdp_live_fail")
+    if "changelog add" in cmd and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", cmd) and ("[changelog add] Added entry" in text or not fail):
+        marks.append("changelog_add")
+    if tool == "invoke_subagent" and "background" in text[:300].lower():
+        marks.append("bg_launch")
+    return marks
+
+
+def _result_failure(tool: str, cmd: str, text: str, is_error: bool) -> str | None:
+    """Classify one result like the Antigravity reader (``Exit code N`` is rewritten to its wording)."""
+    if tool == "run_command":
+        fail = classify_result(_EXIT_RE.sub(r"Command exited with code \1", text, count=1), "", cmd)
+        return fail or ("cmd_fail" if is_error else None)
+    return _FAIL_BY_TOOL.get(tool, "tool_fail") if is_error else None
+
+
 def _base(rec: dict[str, Any], role: str, kind: str, agent: str | None) -> dict[str, Any]:
     msg = rec.get("message")
     return {"ts": str(rec.get("timestamp") or ""), "role": role, "kind": kind, "tool": "", "args": {},
             "ok": None, "exit_code": None, "error": False, "agent_id": agent, "call_id": "", "text_snippet": "",
-            "model": str(msg.get("model") or "") if isinstance(msg, dict) and role == "assistant" else "", "tokens": None}
+            "model": str(msg.get("model") or "") if isinstance(msg, dict) and role == "assistant" else "", "tokens": None,
+            "fail": None, "usage_error": False, "fail_note": "", "markers": [], "cue_text": ""}
 
 
-def _normalize_block(block: Any, rec: dict[str, Any], role: str, agent: str | None, calls: dict[str, str]) -> dict[str, Any] | None:
+def _text_markers(role: str, raw: str) -> list[str]:
+    marks = [name for name, needle in (("commit_hint", "git commit"), ("learning_block", "Continuous Learning & Introspective Options")) if role == "assistant" and needle in raw]
+    if role == "user" and "/app-debugger" in raw.lower():
+        marks.append("debug_retro")
+    if role == "user" and "<task-notification" in raw:
+        marks.append("task_notification")
+    return marks
+
+
+def _normalize_block(block: Any, rec: dict[str, Any], role: str, agent: str | None, calls: dict[str, tuple[str, str]]) -> dict[str, Any] | None:
     if not isinstance(block, dict):
         return None
     btype = block.get("type")
     if btype == "text" and block.get("text"):
         step = _base(rec, role, "text", agent)
-        step["text_snippet"] = _snippet(block["text"])
+        step["text_snippet"], step["markers"] = _snippet(block["text"]), _text_markers(role, str(block["text"]))
+        if role == "user" and not rec.get("isMeta") and not rec.get("isSidechain"):
+            step["cue_text"] = " ".join(_REMINDER_RE.sub(" ", str(block["text"])).split())[:600]
         return step
     if btype == "tool_use":
         step = _base(rec, "assistant", "tool_call", agent)
         name = str(block.get("name") or "")
         step.update(tool=CANONICAL_TOOLS.get(name, name), args=_tool_args(block.get("input")), call_id=str(block.get("id") or ""))
-        calls[step["call_id"]] = step["tool"]
+        calls[step["call_id"]] = (step["tool"], step["args"]["command"])
+        if step["tool"] == "run_command" and ("debug-retro" in step["args"]["command"] or "/app-debugger" in step["args"]["command"]):
+            step["markers"] = ["debug_retro"]
         return step
     if btype == "tool_result":
         step = _base(rec, "tool_result", "tool_result", agent)
@@ -113,13 +158,17 @@ def _normalize_block(block: Any, rec: dict[str, Any], role: str, agent: str | No
         match = _EXIT_RE.search(text)
         step.update(call_id=str(block.get("tool_use_id") or ""), error=err, ok=not err, text_snippet=_snippet(text),
                     exit_code=int(match.group(1)) if match else None)
-        step["tool"] = calls.get(step["call_id"], "")
+        step["tool"], cmd = calls.get(step["call_id"], ("", ""))
+        step["fail"] = _result_failure(step["tool"], cmd, text, err)
+        step["usage_error"] = step["fail"] == "cmd_fail" and is_cli_usage_error(text)
+        step["fail_note"] = failure_snippet(text) if step["fail"] else ""
+        step["markers"] = _result_markers(step["tool"], cmd, text, step["fail"])
         return step
     return None
 
 
 def _file_steps(path: Path, agent: str | None, start: int) -> Iterator[dict[str, Any]]:
-    calls: dict[str, str] = {}
+    calls: dict[str, tuple[str, str]] = {}
     idx = start
     for rec in iter_records(path):
         role = rec.get("type")
