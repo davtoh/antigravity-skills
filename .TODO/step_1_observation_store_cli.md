@@ -21,7 +21,7 @@ Parent: `universal_debug_observation_connector_plan`, Milestone 1. Read the pare
 **Closing checks (after the verifier passes):**
 1. `python "<skill_dir>/scripts/diagnose.py" audit --path system-diagnostics/scripts/observation_store.py system-diagnostics/scripts/observation_correlate.py system-diagnostics/scripts/observation_cli.py system-diagnostics/scripts/diagnose.py` exits 0.
 2. The four full suites are still green, with the same counts plus the new tests.
-3. Review Gate (fresh reviewer, diff plus verify output) confirms the parent's Milestone 1 exit criteria. Then `plan_engine.py advance`, echo `Suggested Commit`, stop.
+3. Review Gate (fresh reviewer, diff plus verify output) confirms the parent's Milestone 1 exit criteria. Then `plan_engine.py advance`, echo `Suggested Commit`, record this session's id for the retrospective (Capture Protocol in `.TODO/retrospective_claude_support_plan.md`), stop.
 
 ## Deferred to Next Turn / Milestone
 

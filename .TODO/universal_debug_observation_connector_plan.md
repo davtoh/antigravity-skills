@@ -41,8 +41,8 @@ Goal in one sentence: a user debugs a web app with a DevTools-style HUD, logs fi
 | D4 | Observations correlate with **exception traces** only, not every request | Request logging does not exist; out of scope |
 | D5 | Server routes exist only when env `FRONTIER_DEBUG_OBSERVATIONS=1`; loopback clients only; the HUD does nothing unless `window.__FRONTIER_DEBUG__ === true` | Safe by default |
 | D6 | Docs use `python "<skill_dir>/scripts/diagnose.py" ...` where `<skill_dir>` is the `system-diagnostics` folder | Works from `.claude/skills/`, `~/.claude/skills/` and the monorepo |
-| D7 | Fifth kind `idea`; fingerprint `OBS-IDEA-<6HEX>`; `list --kind` filter. **Confirm.** | FOR AUDITS separates findings from ideas |
-| D8 | `triage --missed-by LIST --guard TEXT` (tools: `tests,surface,scan,audit,ui,probes,trace,other`). **Confirm.** | Captures the audit's "why did our tools miss it" answer |
+| D7 | Fifth kind `idea`; fingerprint `OBS-IDEA-<6HEX>`; `list --kind` filter. **Confirmed by the user 2026-11-26.** | FOR AUDITS separates findings from ideas |
+| D8 | `triage --missed-by LIST --guard TEXT` (tools: `tests,surface,scan,audit,ui,probes,trace,other`). **Confirmed by the user 2026-11-26.** | Captures the audit's "why did our tools miss it" answer |
 | D9 | **Agreed:** a read route and `observations pull` are in | Needed to reach apps in containers or other hosts |
 | D10 | **Agreed:** `brief` does not run probes by default; `--run-probes` runs fresh ones | Probes cost time and may open a browser |
 | D11 | The wire contract is versioned: every response carries `X-Diagnostics-Contract: 1` and `GET .../health` reports `contract_version` | Lets `pull`, `verify-connector` and apps detect mismatches |
@@ -259,7 +259,7 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 
 ## Handoff Protocol (every session)
 
-Start: `plan_engine.py status universal_debug_observation_connector_plan` then `next`; open only the contract sections the milestone cites. End: run `advance`, echo `Suggested Commit` (never commit without consent), and stop. If a milestone exceeds about 110 steps, pause with a Ready-to-Paste Handoff Prompt listing completed edits, pending items and verify commands.
+Start: `plan_engine.py status universal_debug_observation_connector_plan` then `next`; open only the contract sections the milestone cites. End: run `advance`, echo `Suggested Commit` (never commit without consent), **record this session for the retrospective** (follow "Capture Protocol" in `.TODO/retrospective_claude_support_plan.md`: one line appended to `.frontier/sessions.jsonl` using `$CLAUDE_CODE_SESSION_ID` under Claude Code, or the conversation id under Antigravity), and stop. If a milestone exceeds about 110 steps, pause with a Ready-to-Paste Handoff Prompt listing completed edits, pending items and verify commands.
 
 ## Risks and Rollback
 

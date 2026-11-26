@@ -102,6 +102,8 @@ Plan: `.TODO/universal_debug_observation_connector_plan.md`, a **master roadmap 
 
 The HTTP **wire contract v1** (routes under `/api/diagnostics`, gated by env `FRONTIER_DEBUG_OBSERVATIONS=1`, loopback only, versioned by `X-Diagnostics-Contract`) is the standard an app implements in any language; Python apps may use the scaffold instead. The app-side half is `.TODO/debug_observation_connector_adoption_plan.md`, written to be copied into `intelligent-tracker` (PR #13); that repo's own version of the file was not available and is unverified.
 
+**Also planned:** `.TODO/retrospective_claude_support_plan.md` (5 milestones) closes the Claude gap in section 5: a vendor flag (`--vendor` for the transcript format, `--recipe` for the instructions), a Claude Code session-log reader, session discovery (`--list`, `--plan`), an automatic session ledger (`.frontier/sessions.jsonl`), and separate Gemini and Claude retrospective recipes, while Antigravity output stays byte-identical. Its **Capture Protocol** is usable now: after each milestone session, append one ledger line (`CLAUDE_CODE_SESSION_ID` identifies a Claude Code session). Not implemented.
+
 ## 8. Documentation that is stale or inconsistent [S]
 - `README.md`: Antigravity-only branding, `python skills/...` commands, test commands only for two skills.
 - `AGENTS.md`: verification block omits `app-debugger`.
