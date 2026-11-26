@@ -12,6 +12,11 @@ _BUG_SYMPTOM_RE = re.compile(r"\b(bug|broken|error|fail(?:ed|ing)?|crash(?:ed|in
 _WORKFLOW_REDIRECT_RE = re.compile(r"\b(agent|model|hydrogen|neon|opus|sonnet|flash|plan\s+mode|swarm|unchecked|cleanup|housekeeping)\b", re.I)
 _REDIRECT_VERB_RE = re.compile(r"\b(switch|change\s+to)\b", re.I)
 _FIRST_OVERRIDE_RE = re.compile(r"^(?:no\b|stop\b|wrong\b|don't\b|do not\b|actually\b|wait\b)", re.I)
+_QUESTION_OPEN_RE = re.compile(
+    r"^(?:can|could|would|will|is|are|do|does|did|how|what|which|where|when|should|puedes|podr[ií]as|podr[ií]a|"
+    r"es\s+verdad|c[oó]mo|qu[eé]|cu[aá]l|d[oó]nde|cu[aá]ndo|deber[ií]a)\b", re.I)
+_BLAME_QUESTION_RE = re.compile(r"\bwhy\s+did\s+you\b|\bpor\s+qu[eé]\s+hiciste\b", re.I)
+_PASTED_RE = re.compile(r"<pasted_content\b[^>]*>.*?</pasted_content>", re.S)
 _NOISE_PREFIXES = (
     "Created At:", "Completed At:", "Command output:", "Log: file:///",
     "<SYSTEM_MESSAGE>", "</SYSTEM_MESSAGE>", "YOU MUST TAKE ", "DO NOTHING ELSE.",
@@ -85,6 +90,13 @@ def failure_snippet(content: str) -> str:
     return " ".join(chosen.split())[:90]
 
 
+def is_plain_question(text: str) -> bool:
+    """True for genuine questions ("can you help me ...?"); blame/override openers still count as corrections."""
+    if _FIRST_OVERRIDE_RE.match(text) or _BLAME_QUESTION_RE.search(text):
+        return False
+    return text.rstrip().endswith("?") or bool(_QUESTION_OPEN_RE.match(text))
+
+
 def extract_user_correction(content: str, idx: int, acc: dict[str, Any], cues: dict[str, Any] | None = None) -> None:
     """Capture bug/code corrections into ``user_corrections`` and model/workflow switches into ``workflow_redirects``.
 
@@ -96,8 +108,11 @@ def extract_user_correction(content: str, idx: int, acc: dict[str, Any], cues: d
     is_first = not acc["seen_first_user"]
     acc["seen_first_user"] = True
     matches = _USER_REQ_RE.findall(content)
-    clean_req = " ".join(("\n".join(matches) if matches else content).split())
+    body = "\n".join(matches) if matches else content
+    clean_req = " ".join(_PASTED_RE.sub(" ", body).split())
     if not clean_req or (is_first and not _FIRST_OVERRIDE_RE.match(clean_req)):
+        return
+    if is_plain_question(clean_req):
         return
     is_redirect = flow.search(clean_req) and not bug.search(clean_req)
     if is_redirect and (corr.search(clean_req) or verb.search(clean_req)):

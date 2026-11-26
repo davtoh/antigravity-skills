@@ -28,6 +28,8 @@ def format_rows(rows: list[dict[str, Any]]) -> str:
         out.append(f"| {cid8} | {r.get('vendor', 'gemini')} | {r['steps']} | {r['total_failures']} | {len(r['subagents'])} "
                    f"| {r['reads_after_subagent']} | {r['suggested_grade_cap']} | {_tokens_cell(r)} |")
         append_row_notes(r, cid8, notes)
+        if r.get("masked_failures"):
+            notes.append(f"- NOTE {cid8}: fails is a floor; {r['masked_failures']} piped (| head/tail) command(s) hid a failing exit code")
         if r.get("token_note"):
             notes.append(f"- NOTE {cid8}: {r['token_note']} (informational, grade unchanged)")
     return "\n".join(out + ([""] + notes if notes else [""]))

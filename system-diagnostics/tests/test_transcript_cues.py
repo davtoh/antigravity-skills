@@ -64,6 +64,27 @@ class TestCues(unittest.TestCase):
         tc.extract_user_correction("en vez de eso hazlo simple", 5, spanish, load_cues())
         self.assertEqual(len(spanish["user_corrections"]), 1)
 
+    def test_plain_questions_are_not_corrections(self) -> None:
+        cases = ["can you help me checking why the build failed", "is it true this is the best approach?",
+                 "¿puedes revisar si esto está mal?", "cómo arreglo el error en el modelo", "what is wrong here?"]
+        for text in cases:
+            acc = _acc()
+            tc.extract_user_correction(text, 1, acc, load_cues(self.root))
+            self.assertEqual(acc["user_corrections"], [], text)
+            self.assertEqual(acc.get("workflow_redirects", []), [], text)
+
+    def test_pasted_content_and_hyphenated_words_do_not_trigger(self) -> None:
+        acc = _acc()
+        tc.extract_user_correction('based on this is it true this is best? <pasted_content id="b1">no, wrong, stop</pasted_content>', 1, acc, load_cues(self.root))
+        tc.extract_user_correction("keep the review-gate and no-brain guidance", 2, acc, load_cues(self.root))
+        self.assertEqual(acc["user_corrections"], [])
+
+    def test_blame_and_override_still_correct(self) -> None:
+        for text in ["why did you delete that?", "por qué hiciste eso?", "no, that is wrong", "stop doing that?"]:
+            acc = _acc()
+            tc.extract_user_correction(text, 1, acc, load_cues(self.root))
+            self.assertEqual(len(acc["user_corrections"]), 1, text)
+
 
 if __name__ == "__main__":
     unittest.main()

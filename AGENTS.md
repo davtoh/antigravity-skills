@@ -17,6 +17,7 @@ This document serves as persistent operational memory across conversations for A
 - **`refactor-monolith/`**: Zero-drift monolith decomposition engine enforcing $\Delta(\text{Observable Behavior}) \equiv 0$. Uses thin SSOT delegating shims for `scripts/css_inspector.py` and `scripts/surface_scanners.py`.
 - **`app-debugger/`**: Dedicated empirical bug hunter and symptom-to-root-cause debugger (`scripts/run_diagnose.py` delegates to `system-diagnostics`).
 - **In-Flight Tool Elevation Rule (SSOT)**: Always fix shared diagnostic bugs in `system-diagnostics/scripts/` and run `system-diagnostics/tests/`—never overwrite thin delegating shims with forked code copies.
+- **Transcript audit (Claude + Antigravity)**: `diagnose.py transcript-audit --vendor claude` reads `~/.claude/projects/`; cue calibration lives in `system-diagnostics/scripts/transcript_cues.py` / `transcript_checks.py` (questions and pasted content are not corrections; `fails` is a floor, see `masked_failures`).
 - **`.TODO/`**: Active implementation plans and architectural roadmaps.
 
 ---

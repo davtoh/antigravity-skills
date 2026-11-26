@@ -30,6 +30,9 @@ CANONICAL_TOOLS = {
 _EXIT_RE = re.compile(r"^Exit code (-?\d+)", re.M)
 _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>|<(command-[\w-]+|local-command-[\w-]+)>.*?</\1>", re.S)
 _CDP_NOISE_RE = re.compile(r"\b(?:unittest|pytest|Select-String|Get-Content|git\s+(?:diff|grep|show|log))\b", re.I)
+_CDP_RUN_RE = re.compile(r"(?:diagnose|cdp_inspect)\.py")
+_PIPE_TRIM_RE = re.compile(r"\|\s*(?:head|tail)\b")
+_FAIL_TEXT_RE = re.compile(r"Traceback \(most recent call last\)|^FAILED\b|\bFAILED \(|^(?:ERROR|FAIL):", re.M)
 _FAIL_BY_TOOL = {"edit_file": "edit_fail", "view_file": "read_fail"}
 
 
@@ -96,7 +99,9 @@ def _tokens(message: Any) -> dict[str, int] | None:
 
 def _result_markers(tool: str, cmd: str, text: str, fail: str | None) -> list[str]:
     marks: list[str] = []
-    noise = "Showing lines " in text[:220] or bool(_CDP_NOISE_RE.search(cmd))
+    # Only a real diagnose/cdp_inspect run counts: Read/Write results and heredoc edits merely quote the strings.
+    not_a_run = tool != "run_command" or not _CDP_RUN_RE.search(cmd) or "<<" in cmd
+    noise = not_a_run or "Showing lines " in text[:220] or bool(_CDP_NOISE_RE.search(cmd))
     live_no_fallback = ("diagnose.py" in cmd and "--live" in cmd and "--allow-headless-fallback" not in cmd) or "--no-fallback-headless" in cmd
     if not noise and ("[CDP] Falling back to isolated headless browser" in text or ("[CDP] Live connection failed" in text and not live_no_fallback)):
         marks.append("cdp_fallback")
@@ -104,6 +109,8 @@ def _result_markers(tool: str, cmd: str, text: str, fail: str | None) -> list[st
         marks.append("cdp_live_fail")
     if "changelog add" in cmd and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", cmd) and ("[changelog add] Added entry" in text or not fail):
         marks.append("changelog_add")
+    if tool == "run_command" and not fail and _PIPE_TRIM_RE.search(cmd) and _FAIL_TEXT_RE.search(text):
+        marks.append("masked_failure")
     if tool == "invoke_subagent" and "background" in text[:300].lower():
         marks.append("bg_launch")
     return marks

@@ -95,7 +95,8 @@ def marker_metrics(main: list[dict[str, Any]]) -> dict[str, Any]:
     marks = Counter(m for s in main for m in s["markers"])
     return {"has_debug_retro": marks["debug_retro"] > 0, "has_commit_hint": marks["commit_hint"] > 0,
             "has_learning_block": marks["learning_block"] > 0, "cdp_live_fallbacks": marks["cdp_fallback"],
-            "cdp_live_failures": marks["cdp_live_fail"], "changelog_adds": marks["changelog_add"]}
+            "cdp_live_failures": marks["cdp_live_fail"], "changelog_adds": marks["changelog_add"],
+            "masked_failures": marks["masked_failure"]}
 
 
 def cue_metrics(main: list[dict[str, Any]], cues: dict[str, Any]) -> dict[str, list[str]]:

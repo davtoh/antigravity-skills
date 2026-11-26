@@ -157,6 +157,21 @@ class TestPlanModeAndMarkers(_Base):
         ])
         self.assertEqual((row["cdp_live_fallbacks"], row["cdp_live_failures"]), (1, 1))
 
+    def test_piped_head_tail_failures_are_reported_as_masked(self) -> None:
+        row = self.row([
+            rec("assistant", bash("1", "python3 -m unittest | tail -5"), bash("2", "ls | head -3")),
+            rec("user", result("1", "Traceback (most recent call last):\nFAILED (failures=1)"), result("2", "a\nb")),
+        ])
+        self.assertEqual(row["masked_failures"], 1)
+
+    def test_quoted_cdp_strings_from_read_or_heredoc_are_not_counted(self) -> None:
+        quoted = "[CDP] Live connection failed\n[CDP] Falling back to isolated headless browser"
+        row = self.row([
+            rec("assistant", use("1", "Read", file_path="/x/cdp_inspect.py"), bash("2", "python3 - <<'EOF'\nopen('diagnose.py')\nEOF")),
+            rec("user", result("1", quoted), result("2", quoted)),
+        ])
+        self.assertEqual((row["cdp_live_fallbacks"], row["cdp_live_failures"]), (0, 0))
+
 
 class TestCuesAndShape(_Base):
     def test_english_and_spanish_corrections_and_redirects(self) -> None:
@@ -184,7 +199,7 @@ class TestCuesAndShape(_Base):
     def test_row_shape_is_antigravity_row_plus_documented_keys(self) -> None:
         row = self.row([rec("user", text("go")), rec("assistant", text("done"), model="m", usage={"input_tokens": 1, "output_tokens": 2})])
         self.assertEqual([k for k in GEMINI_KEYS if k not in row], [])
-        self.assertEqual(sorted(set(row) - set(GEMINI_KEYS)), ["session_id", "token_note", "tokens", "vendor"])
+        self.assertEqual(sorted(set(row) - set(GEMINI_KEYS)), ["masked_failures", "session_id", "token_note", "tokens", "vendor"])
 
     def test_heavy_token_totals_add_a_note_but_never_change_the_grade(self) -> None:
         row = self.row([rec("assistant", text("x"), usage={"cache_read_input_tokens": 6_000_000, "output_tokens": 300_000})])

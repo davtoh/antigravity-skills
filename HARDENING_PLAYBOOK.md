@@ -45,3 +45,10 @@ Process proven on `frontier-architect`. Apply it to `app-debugger`, `system-diag
 - Trigger recall is imperfect: Claude sometimes answers design questions directly without calling the skill.
 - Evals are small (1-2 runs per cell) and graded by reading outputs, not by a blinded judge.
 - Master-roadmap mode is a documented protocol on top of existing `--parent` plans, not new engine code.
+
+## 7. Transcript audit calibration (learned on real Claude sessions)
+
+- Gate cue matching: skip plain questions and `<pasted_content>` blocks; never match cue words inside hyphenated words.
+- Count tool-output markers (CDP fallback) only for the command that produces them, never for `Read`/heredoc results that quote the strings.
+- Treat `failures` as a floor when commands are piped to `head`/`tail`; surface `masked_failures` instead of guessing.
+- Verify a session's attribution by its first user message and plan-name mentions before logging it against a plan.

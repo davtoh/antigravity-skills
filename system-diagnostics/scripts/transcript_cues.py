@@ -37,7 +37,7 @@ _ES = {
 def _compile(words: list[str]) -> re.Pattern[str]:
     ordered = sorted({w.strip() for w in words if w.strip()}, key=lambda w: (-len(w), w))
     alt = "|".join(r"\s+".join(re.escape(part) for part in w.split()) for w in ordered)
-    return re.compile(rf"(?<!\w)(?:{alt})(?!\w)", re.I) if alt else re.compile(r"(?!x)x")
+    return re.compile(rf"(?<![\w-])(?:{alt})(?![\w-])", re.I) if alt else re.compile(r"(?!x)x")
 
 
 def _extras(workspace: Path | None) -> dict[str, list[str]]:
