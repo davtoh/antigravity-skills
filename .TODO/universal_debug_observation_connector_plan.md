@@ -217,7 +217,7 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 
 **Child Plan**: .TODO/step_1_observation_store_cli.md
 
-- [ ] **child plan .TODO/step_1_observation_store_cli.md**: execute the child plan (7 files: `observation_store.py`, `observation_correlate.py`, `observation_cli.py`, three test modules, three one-line edits in `diagnose.py`).
+- [x] **child plan .TODO/step_1_observation_store_cli.md**: execute the child plan (7 files: `observation_store.py`, `observation_correlate.py`, `observation_cli.py`, three test modules, three one-line edits in `diagnose.py`).
 
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation_*.py"` then the four suite commands in the Definition of Done.
 **Exit criteria:** all `list/show/add/triage/resolve/dismiss` rows pass in tests; default `list` hides CLOSED items; kinds incl. `idea`, `--kind`, `--missed-by/--guard` covered; dedup, reopen and corrupt-line cases covered; `diagnose.py` grew by 3 lines only; every new file <= 350 lines.
