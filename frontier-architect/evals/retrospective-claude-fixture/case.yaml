@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: retrospective-claude-fixture
+expected_outcome: |
+  Routes to the Claude recipe, audits the two synthetic Claude sessions with transcript-audit (never reading the .jsonl), writes a learning_proposal under .TODO/ with the five parts, makes no edits to skills or rules, and asks one decision at a time with AskUserQuestion.
