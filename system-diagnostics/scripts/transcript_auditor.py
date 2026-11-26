@@ -16,7 +16,7 @@ from typing import Any, Iterator
 
 from transcript_checks import (
     append_row_notes, classify_result, compute_grade_cap,
-    extract_user_correction, failure_snippet, is_cli_usage_error,
+    extract_user_correction, failure_snippet, is_cli_usage_error, is_user_rejected,
 )
 
 _MODEL_RE = re.compile(r"Model Selection` from [^\n]+? to ([^\n]+?)\. No need")
@@ -193,6 +193,9 @@ def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict
         acc["cdp_live_fallbacks"] += 1
     elif not is_cdp_noise and "[CDP] Live connection failed" in content:
         acc["cdp_live_failures"] += 1
+    if status not in ("", "DONE", "RUNNING") and is_user_rejected(content, status):
+        acc["user_rejected"] += 1
+        return
     fail = classify_result(content, status, call_cmd)
     is_bg_running = kind == "GENERIC" and status == "RUNNING"
     if "changelog add" in call_cmd and not is_bg_running and ("[changelog add] Added entry" in content or (kind != "SYSTEM_MESSAGE" and not fail)) and not re.search(r"(?:--help|\s-h\b|\bgit\s+grep\b)", call_cmd):
@@ -219,7 +222,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "tooling_cli_fails": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
         "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
-        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False, "observed_models": [],
+        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False, "observed_models": [], "user_rejected": 0,
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -263,6 +266,7 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],
         "suggested_grade_cap": compute_grade_cap(steps, total_failures),
+        **({"user_rejected": acc["user_rejected"]} if acc["user_rejected"] else {}),
     }
 
 

@@ -65,6 +65,7 @@ class TestRouting(unittest.TestCase):
     def test_skill_md_points_to_router_and_stays_small(self):
         skill = SKILL_DIR / "SKILL.md"
         self.assertIn("retrospective-recipe.md", _read(skill))
+        self.assertLess(len(skill.read_bytes().replace(b"\r\n", b"\n")), SKILL_MD_LIMIT)
         self.assertLess(len(skill.read_bytes()), SKILL_MD_LIMIT)
 
     def test_phase_protocols_points_to_router(self):

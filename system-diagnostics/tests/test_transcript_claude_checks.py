@@ -80,6 +80,18 @@ class TestFailures(_Base):
         ])
         self.assertEqual((row["user_rejected"], row["total_failures"], row["failure_samples"]), (1, 0, []))
 
+    def test_multiline_user_rejection_with_reason_still_excluded(self) -> None:
+        msg = (
+            "The user doesn't want to proceed with this tool use. The tool use was rejected.\n"
+            "The user provided the following reason for the rejection:\n"
+            "check git status before running git log"
+        )
+        row = self.row([
+            rec("assistant", bash("1", "git log --stat -2 | head")),
+            rec("user", result("1", msg, True)),
+        ])
+        self.assertEqual((row["user_rejected"], row["total_failures"], row["failure_samples"]), (1, 0, []))
+
     def test_subagent_failures_are_not_attributed_to_the_main_thread(self) -> None:
         row = self.row([rec("assistant", text("hi"))], subagents={"s1": [
             rec("assistant", bash("9", "false")), rec("user", result("9", "Exit code 1\nx", True))]})

@@ -44,7 +44,7 @@ def failure_metrics(main: list[dict[str, Any]]) -> dict[str, Any]:
         if s["fail"] == "audit_catch":
             catches += 1
             continue
-        if _REJECTED_RE.search(s["fail_note"]):  # user declined the call: not a failure, not a grade input
+        if "user_rejected" in s["markers"] or _REJECTED_RE.search(s["fail_note"]):  # user declined the call: not a failure, not a grade input
             rejected += 1
             continue
         fails[s["fail"]] += 1

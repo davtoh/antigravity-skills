@@ -20,6 +20,10 @@ BASELINE_SKILL_MD = WORKSPACE_DIR / "skill-snapshot" / "SKILL.md"
 
 # Ordered (trigger_terms_any, required_regexes_all, label)
 _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
+    (("scripts/py.sh", "scripts/py.cmd"), (r"scripts/py\.sh", r"py\.cmd", r"3\.10\+"), "Cross-OS Python 3.10+ launcher"),
+    (("checks $virtual_env first", "preserves script exit codes"), (r"VIRTUAL_ENV", r"preserves exit codes"), "Launcher VIRTUAL_ENV & exit code preservation"),
+    (("retrospective-recipe.md precedence",), (r"retrospective-recipe\.md", r"RETROSPECTIVE_RECIPE", r"CLAUDECODE=1"), "Retrospective recipe router precedence"),
+    (("learning_proposal*.md", "before editing skills"), (r"learning_proposal", r"no edits to skills"), "Retrospective proposal-only before decision"),
     (("tool-call ceiling", "<= 3-5"), (r"tool-call ceiling|3 to 5|3–5",), "Tool-call ceiling"),
     (("user override", "axiom 10"), (r"axiom 10|user override|just do it|skip the plan|no questions",), "Axiom 10 User Overrides"),
     (("working assumption", "states working assumption"), (r"state the assumptions|write the assumptions|assumptions in one or two lines|assumptions at the top|working assumptions",), "State assumptions"),

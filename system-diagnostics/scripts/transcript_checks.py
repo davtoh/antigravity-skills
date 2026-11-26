@@ -21,6 +21,20 @@ _NOISE_PREFIXES = (
     "Created At:", "Completed At:", "Command output:", "Log: file:///",
     "<SYSTEM_MESSAGE>", "</SYSTEM_MESSAGE>", "YOU MUST TAKE ", "DO NOTHING ELSE.",
 )
+_USER_REJECTED_RE = re.compile(
+    r"user doesn't want to proceed"
+    r"|tool (?:use|call|execution) was (?:rejected|cancel+ed|denied by (?:the )?user)"
+    r"|(?:rejected|cancel+ed|declined|aborted) by (?:the )?user"
+    r"|user (?:rejected|declined|cancel+ed) (?:the |this )?(?:tool|command|action|edit)",
+    re.I,
+)
+
+
+def is_user_rejected(content: str, status: str = "") -> bool:
+    """True when the user declined or cancelled a tool call (not an agent defect or grade input)."""
+    if status.upper() in ("REJECTED", "CANCELED", "CANCELLED"):
+        return True
+    return bool(_USER_REJECTED_RE.search(content))
 
 
 def compute_grade_cap(steps: int, total_failures: int) -> str:

@@ -52,9 +52,9 @@ Authoritative Plan: [`.TODO/latent_defect_and_smell_protocol_plan.md`](.TODO/lat
 6. **Cross-Platform Discipline:** Pure standard-library OS-agnostic code (`pathlib.Path`, forward slashes in relative paths, UTF-8 LF normalized).
 7. **Tests resolve temp paths:** build workspaces with `Path(tempfile.mkdtemp()).resolve()` (or `TemporaryDirectory().name` wrapped in `.resolve()`) and compare paths with `.resolve()` on both sides; macOS temp dirs are symlinks (`/var` -> `/private/var`). Tests needing `node` or Chrome must skip, not fail, when absent.
 
-8. **zsh globs:** quote glob patterns (`--include='*.py'`) or use `Glob`; unquoted globs abort with `no matches found`.
-9. **No sleep-waits:** never `sleep N; cat <log>`; use `run_in_background` or `Monitor` and read on completion.
-10. **Python launcher:** run frontier-architect scripts via `scripts/py.sh` (POSIX) / `py.cmd` (Windows), never a literal `python`.
+8. **zsh globs:** quote glob patterns (`--include='*.py'`) or use `Glob`; unquoted globs abort with `no matches found` on POSIX zsh.
+9. **No sleep-waits:** never `sleep N; cat <log>` or `Start-Sleep`; use reactive background execution (`WaitMsBeforeAsync` in Antigravity; `run_in_background` or `Monitor` in Claude) and read on completion.
+10. **Python launcher:** in repos with `.venv`, prefer `.venv\Scripts\python.exe` (Windows) / `.venv/bin/python` (POSIX); run skill CLI scripts via `sh "<skill_dir>/scripts/py.sh"` (POSIX) or `& "<skill_dir>/scripts/py.cmd"` (Windows PowerShell), never an unverified bare `python` or `python3`.
 
 ---
 

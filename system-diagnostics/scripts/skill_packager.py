@@ -65,6 +65,10 @@ def stage_standalone_skill(skill_dir: Path, staging_root: Path, ssot_scripts_dir
             if not src_file.is_file():
                 raise FileNotFoundError(f"Missing SSOT script required for bundling: {src_file}")
             shutil.copy2(src_file, dest_scripts / fname)
+    for sh_file in dest.rglob("*.sh"):
+        raw = sh_file.read_bytes()
+        if b"\r\n" in raw:
+            sh_file.write_bytes(raw.replace(b"\r\n", b"\n"))
     return dest
 
 

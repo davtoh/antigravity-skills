@@ -4,7 +4,7 @@ Loaded on demand from `SKILL.md`. Tool names are Antigravity vocabulary; transla
 
 ### Phase 0: Context Hygiene, Tool Auto-Pickup & Complexity Triage
 
-1. **Plan Ledger & Auto-Pickup**: Run `python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" discover --root .` and `status` first. Auto-dispatch: `diagnose.py arch-map --path .` + `research` (`flash`) for architecture; `diagnose.py surface --show-ids --show-routes` + `ui` for Web UI; `diagnose.py audit --path <targets>`, `scan`, `tests` for quality/tests; `diagnose.py probe list` for hardware/DB; `plan_engine.py digest <slug> --backfill --write-scaffold` + `diagnose.py transcript-audit --latest 1` post-task.
+1. **Plan Ledger & Auto-Pickup**: Run `sh "<config_dir>/skills/frontier-architect/scripts/py.sh" "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" discover --root .` (Windows PowerShell: `& "<config_dir>/skills/frontier-architect/scripts/py.cmd"`) and `status` first. Auto-dispatch: `diagnose.py arch-map --path .` + `research` (`flash`) for architecture; `diagnose.py surface --show-ids --show-routes` + `ui` for Web UI; `diagnose.py audit --path <targets>`, `scan`, `tests` for quality/tests; `diagnose.py probe list` for hardware/DB; `plan_engine.py digest <slug> --backfill --write-scaffold` + `diagnose.py transcript-audit --latest 1` post-task.
 2. **Triage Buckets**:
    - **Bucket A (Tactical)**: Isolated deterministic fix $\rightarrow$ Pre-Flight, edit, verify locally.
    - **Bucket B (Ambiguous)** $\rightarrow$ **Phase 1A**.

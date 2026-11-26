@@ -4,8 +4,8 @@ Consult this quick-reference sheet during **Phase 1B (Diagnostics)** and **Phase
 
 > `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside `<config_dir>`). Note: `<config_dir>` itself is **not** a git repo—run `git -C "<config_dir>/skills" ...` when inspecting skill git state.
 
-> **Launcher:** prefer `sh "<skill_dir>/scripts/py.sh" <script> ...` (Windows: `py.cmd`); it resolves `<py>` for you.
-> **Interpreter:** every `python` below means `<py>`, the first of `python3`, `python`, `py -3` that is Python 3.10+ (see [`claude-adapter.md`](./claude-adapter.md#python-interpreter-py)). Bare `python` can be Python 2 on macOS; `python3` may not exist on Windows.
+> **Launcher:** prefer `sh "<skill_dir>/scripts/py.sh" <script> ...` on POSIX or `& "<skill_dir>/scripts/py.cmd" <script> ...` on Windows PowerShell (`py.cmd` in `cmd.exe`); it resolves `$VIRTUAL_ENV` or the first Python 3.10+ (`py -3`, `python`, `python3`) and preserves exit codes.
+> **Interpreter:** every `python` below means `<py>`, the first of `VIRTUAL_ENV`, `python3`, `python`, `py -3` that is Python 3.10+ (see [`claude-adapter.md`](./claude-adapter.md#python-interpreter-py)). Bare `python` can be Python 2 on macOS; `python3` may not exist (or may be a Microsoft Store stub) on Windows.
 
 ---
 

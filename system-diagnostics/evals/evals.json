@@ -246,6 +246,17 @@
         "Supports --base, --plan, and --recent flags on diagnose.py changelog pr-description",
         "Generates structured Markdown PR summary output with Verification and Key Changes sections"
       ]
+    },
+    {
+      "id": 21,
+      "prompt": "We run sessions in both Antigravity (Gemini) and Claude Code, and sometimes a developer declines a tool prompt in the UI. How do we audit transcripts across both vendors and ensure user-rejected tool calls do not penalize failure counts or grade caps?",
+      "expected_output": "Executes diagnose.py transcript-audit --vendor auto|gemini|claude (with --list or --plan) across Antigravity brain and Claude projects directories, excluding user_rejected tool calls from total_failures and suggested_grade_cap and reporting them as informational - NOTE lines.",
+      "files": [],
+      "expectations": [
+        "Supports --vendor auto|gemini|claude alongside --list and --plan in diagnose.py transcript-audit to inspect Antigravity and Claude Code session logs",
+        "Excludes user_rejected tool calls from failure counts and suggested_grade_cap across vendors",
+        "Surfaces declined tool calls as informational - NOTE lines rather than - FAIL entries"
+      ]
     }
   ]
 }

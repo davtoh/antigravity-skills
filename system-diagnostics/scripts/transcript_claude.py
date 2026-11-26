@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterator
 
-from transcript_checks import classify_result, failure_snippet, is_cli_usage_error
+from transcript_checks import classify_result, failure_snippet, is_cli_usage_error, is_user_rejected
 
 SNIPPET_MAX = 120
 CANONICAL_TOOLS = {
@@ -113,6 +113,8 @@ def _result_markers(tool: str, cmd: str, text: str, fail: str | None) -> list[st
         marks.append("masked_failure")
     if tool == "invoke_subagent" and "background" in text[:300].lower():
         marks.append("bg_launch")
+    if fail and is_user_rejected(text):
+        marks.append("user_rejected")
     return marks
 
 
