@@ -243,9 +243,9 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation_*.py"`
 **Exit criteria:** every pull and conformance scenario row passes against stub servers; pull is atomic (failure writes nothing); loopback rule and `--allow-remote` enforced; the generated bridges from Milestone 3 pass `verify-connector` in a test that runs one in-process.
 
-## Milestone 5: Project Brief (`diagnose.py brief`) & Probe History *(Deferred to Next Turn / Milestone)*
+## Milestone 5: Project Brief (`diagnose.py brief`) & Probe History
 
-- [ ] **child plan .TODO/step_5_*.md**: created just in time (~6 files): `brief.py` (orchestration, rendering, caps, JSON), `brief_sections.py` (the seven collectors, each independent), `probe_history.py` (records last result per probe in `.diagnostics/probe_last_run.json`; one-line hook in `probe_runner.run_probe`), `diagnose.py` (three one-line edits), tests `test_brief.py` (caps, order, `UNAVAILABLE` isolation, JSON mode, `--pull` ordering) and `test_probe_history.py` (records and ages results; `--run-probes` path with a stub probe; `INFRA_UNAVAILABLE` never reported as pass).
+- [x] **child plan .TODO/step_5_*.md**: created just in time (~6 files): `brief.py` (orchestration, rendering, caps, JSON), `brief_sections.py` (the seven collectors, each independent), `probe_history.py` (records last result per probe in `.diagnostics/probe_last_run.json`; one-line hook in `probe_runner.run_probe`), `diagnose.py` (three one-line edits), tests `test_brief.py` (caps, order, `UNAVAILABLE` isolation, JSON mode, `--pull` ordering) and `test_probe_history.py` (records and ages results; `--run-probes` path with a stub probe; `INFRA_UNAVAILABLE` never reported as pass).
 
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_brief.py"` and `python -m unittest discover -s system-diagnostics/tests -p "test_probe_history.py"`, then the four suites.
 **Exit criteria:** all Brief Contract rows covered; `brief` edits nothing except `probe_last_run.json` under `--run-probes`; `probe_runner.py` stays <= 350 lines.
