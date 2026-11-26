@@ -97,6 +97,8 @@ def add_vendor_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--vendor", choices=("auto", "gemini", "claude"), default="auto", help="Source transcript format (default: auto-detect, else gemini)")
     parser.add_argument("--claude-dir", default=None, help="Claude projects dir (default: $CLAUDE_CONFIG_DIR/projects or ~/.claude/projects)")
     parser.add_argument("--project-dir", default=None, help="Restrict Claude lookup to this project slug folder")
+    from transcript_list import add_list_args  # lazy: it imports the auditor
+    add_list_args(parser)
 
 
 def audit_for_cli(args: argparse.Namespace, brain: Path, cids: list[str]) -> list[dict[str, Any]] | None:

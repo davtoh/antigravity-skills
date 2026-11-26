@@ -254,6 +254,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso, note=getattr(args, "note", None))
+    from plan_sessions import record_session; record_session(root, ps["slug"], target_idx, "advance")  # noqa: E702
     commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective

@@ -17,6 +17,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from plan_rollup import sync_and_rollup_plan
+from plan_transcripts import _dedupe_cids, _load_auditor, _resolve_one_cid, _transcript_rows, audit_single_cid, vendor_audit  # noqa: F401
 from plan_state import bootstrap_plan, get_frontier_dir, load_json, reconcile_pending_commits, resolve_plan_path, save_json
 
 _GRADE_ORDER = "ABCDF"
@@ -70,54 +71,6 @@ def _unresolved(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
 def _unresolved_skill_items(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     """Deduplicated skill /learn candidates and tooling gaps across entries."""
     return _clean_items(entries, "skill_learn_candidates"), _clean_items(entries, "tool_gaps")
-
-
-def _load_auditor(brain_dir: str | None = None) -> tuple[Any, Path] | None:
-    """Load transcript_auditor and resolved brain dir, else None in standalone mode."""
-    sibling = _SCRIPTS_DIR.parent.parent / "system-diagnostics" / "scripts"
-    for candidate in (_SCRIPTS_DIR, sibling):
-        if (candidate / "transcript_auditor.py").is_file():
-            if str(candidate) not in sys.path:
-                sys.path.insert(0, str(candidate))
-            import transcript_auditor
-            return transcript_auditor, (Path(brain_dir) if brain_dir else transcript_auditor.default_brain_dir())
-    return None
-
-
-def _resolve_one_cid(brain: Path, cid: str) -> str:
-    """Resolve an exact or unique 6+ char conversation ID prefix in ``brain``."""
-    rel = Path(".system_generated") / "logs" / "transcript.jsonl"
-    if (brain / cid / rel).is_file() or len(cid) < 6 or not brain.is_dir():
-        return cid
-    low = cid.lower()
-    hits = [d.name for d in brain.iterdir() if d.is_dir() and d.name.lower().startswith(low) and (d / rel).is_file()]
-    return hits[0] if len(hits) == 1 else cid
-
-
-def audit_single_cid(cid: str, brain_dir: str | None = None) -> dict[str, Any] | None:
-    """Audit one conversation ID (exact or unique prefix), or None if unavailable/missing."""
-    loaded = _load_auditor(brain_dir)
-    if not loaded:
-        return None
-    row = loaded[0].audit_conversation(loaded[1], _resolve_one_cid(loaded[1], cid))
-    return None if not row or row.get("missing") else row
-
-
-def _dedupe_cids(cids: list[str], brain: Path | None = None) -> list[str]:
-    """Resolve and deduplicate CIDs case-insensitively, dropping >=6-char prefixes of longer CIDs."""
-    res = [_resolve_one_cid(brain, str(c).strip()) if brain else str(c).strip() for c in cids if c and str(c).strip()]
-    kept = [c for c in res if not any(len(c) >= 6 and o.lower() != c.lower() and o.lower().startswith(c.lower()) for o in res)]
-    return list({c.lower(): c for c in reversed(kept)}.values())[::-1]
-
-
-def _transcript_rows(cids: list[str] | None, brain_dir: str | None) -> list[dict[str, Any]] | None:
-    """Optional telemetry; returns None when system-diagnostics is unavailable (standalone mode)."""
-    if not cids:
-        return []
-    loaded = _load_auditor(brain_dir)
-    if not loaded:
-        return None
-    return [loaded[0].audit_conversation(loaded[1], c) for c in _dedupe_cids(cids, loaded[1])]
 
 
 def _parse_iso(ts: str) -> datetime | None:
@@ -240,7 +193,7 @@ def backfill_retrospectives(root: Path, ps: dict[str, Any], cids: list[str] | No
                     pos += 1
             elif raw_cid and last_pos_for_cid.get(raw_cid.lower()) == idx_i:
                 full_cid = _resolve_one_cid(brain, raw_cid)
-                row = cache.setdefault(full_cid, ta.audit_conversation(brain, full_cid))
+                row = cache.setdefault(full_cid, vendor_audit(ta, brain, full_cid))
             if _apply_backfill_row(e, row) or refresh_stale_retro_entry(e, row, _grade_cap, _worse):
                 dirty, updated = True, updated + 1
         rows, dropped = _dedupe_retro_rows(rows)
