@@ -159,6 +159,12 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 
 - [ ] **child plan .TODO/step_5_*.md**: created at the gate. Run `transcript-audit --plan universal_debug_observation_connector_plan` (and the `intelligent-tracker` sessions with `--project-dir`) on the sessions you collected; review false positives by hand (cue lists, Spanish messages, token notes); tune the cue file and thresholds; run the Claude recipe end to end and compare its proposal against what actually happened; refresh `ARCHITECTURE.md`, `AGENTS.md` and `HARDENING_PLAYBOOK.md`; final sign-off.
 
+**Known calibration cases (from the first real audit, 2026-11-26, sessions `ada031af`, `48f3c30e`, `c38b1a90`):**
+- [ ] **Cue false positives:** user *questions* such as "can you help me checking ..." and "is it true this is the best approach?" were flagged as `CORRECTION`. Tighten the cues in `.diagnostics/retro_cues.json` / `transcript_cues.py` and add a fixture per case, English and Spanish.
+- [ ] **CDP fallback false positives (suspected, unverified):** `ada031af` (M1) and `48f3c30e` (M2) each reported one "CDP --live->headless fallback" although no browser work is remembered. Confirm by hand whether the text came from a command or a mention of `--live`, then fix the matcher (`_CDP_NOISE_RE` in `transcript_claude.py`) and add a fixture.
+- [ ] **Failure undercount:** failures behind `| head` / `| tail` hide the exit code, so `failures` is a floor (seen in `c38b1a90`: 1 reported, 3 real). Decide whether to note this in the output or infer failures from result text.
+- [ ] **Unattributed session:** `18774ef4` (269 steps, 7 retries) was logged for the Step 3 child plan but is not one of the three milestone sessions; identify it and correct the retrospective entry if needed.
+
 **Verifier**: the four suite commands, plus a recorded calibration table (sessions audited, metrics, false positives found and fixed).
 **Exit criteria:** zero unexplained flags on the calibration set; a retrospective run on real Claude sessions produced a usable `learning_proposal.md`; the **user has Antigravity check** the Gemini recipe and an Antigravity-only audit (compare against the golden output) and records the result in the child plan. Until that check is recorded the plan is "done except the Antigravity check" (the author cannot run Antigravity from here).
 
