@@ -329,7 +329,10 @@ def cmd_transcript_audit(args: argparse.Namespace) -> int:
     """Run the audit for the requested conversations; exit 1 if none could be read."""
     brain = Path(args.brain_dir) if args.brain_dir else default_brain_dir()
     cids = _resolve_cids(brain, args.cids, args.latest, getattr(args, "min_steps", 6), getattr(args, "workspace", None))
-    rows = [audit_conversation(brain, cid) for cid in cids]
+    from transcript_router import audit_for_cli  # lazy: the router imports this module
+    rows = audit_for_cli(args, brain, cids)
+    if rows is None:
+        return 2
     print(json.dumps(rows, indent=2) if args.json else format_markdown(rows))
     return 0 if any(not r.get("missing") for r in rows) else 1
 
@@ -343,3 +346,4 @@ def register_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--workspace", default=None, help="Filter --latest conversations to those referencing this workspace path")
     p.add_argument("--brain-dir", default=None, help="Override brain dir (default: AGY_BRAIN_DIR or ~/.gemini/antigravity/brain)")
     p.add_argument("--json", action="store_true", help="Emit JSON instead of markdown")
+    from transcript_router import add_vendor_args; add_vendor_args(p)  # noqa: E702
