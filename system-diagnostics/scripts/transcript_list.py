@@ -16,7 +16,7 @@ from typing import Any
 
 import transcript_auditor as ta
 import transcript_sources as src
-from transcript_claude import iter_records
+from transcript_claude import iter_records, read_session
 from transcript_summary import export_summary, read_summary
 
 PROMPT_MAX = 60
@@ -78,6 +78,8 @@ def session_info(vendor: str, sid: str, path: Path, slugs: list[str]) -> dict[st
         is_user = rec.get("type") in ("user", "USER_INPUT")
         if not info["prompt"] and is_user:
             info["prompt"] = _claude_prompt(rec) if vendor == "claude" else " ".join(str(rec.get("content", "")).split())
+    if vendor == "claude":  # same counting rule as the audit: tool calls + user text, main thread only
+        info["steps"] = sum(1 for s in read_session(path, include_subagents=False) if s["kind"] == "tool_call" or (s["kind"] == "text" and s["role"] == "user"))
     try:
         blob = path.read_text(encoding="utf-8", errors="replace")
     except OSError:

@@ -377,7 +377,7 @@ class TestPlanEngineCLI(unittest.TestCase):
 
         code, out = self._run_cli(["verify", "sample_plan"])
         self.assertEqual(code, 0)
-        self.assertIn("Running verifier: python -m unittest", out)
+        self.assertRegex(out, r"Running verifier: \S*python\S* -m unittest")  # bare python resolves to the running interpreter without a venv
 
         ws = load_json(get_frontier_dir(self.root) / "state.json")
         self.assertEqual(ws["verification_baseline"]["passed_tests"], 8)

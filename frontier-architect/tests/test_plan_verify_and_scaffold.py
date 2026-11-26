@@ -139,6 +139,14 @@ class TestPlanVerifyAndScaffold(unittest.TestCase):
             res = ps._build_workspace_digest_core(root, None, False, fake_digest)
             self.assertEqual(res["learn_candidates"], ["lesson-6", "lesson-5", "lesson-4", "lesson-3", "lesson-2"])
 
+    def test_bare_python_falls_back_to_running_interpreter_without_venv(self) -> None:
+        import plan_verify
+        root = Path(tempfile.mkdtemp()).resolve()
+        out = plan_verify._normalize_verify_cmd("python -m unittest discover -s x", root)
+        self.assertIn(" -m unittest discover -s x", out)
+        self.assertIn(Path(sys.executable).name, out)
+        self.assertFalse(out.startswith("python "))
+
     def test_cmd_verify_returns_124_on_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

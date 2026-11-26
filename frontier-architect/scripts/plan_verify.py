@@ -6,6 +6,7 @@ from pathlib import Path
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -42,6 +43,12 @@ def _resolve_venv_python(root: Path) -> str | None:
         if (root / rel.replace("\\", "/")).is_file():
             return rel
     return None
+
+
+def _host_python() -> str:
+    """Quoted path of the interpreter running plan_engine; used when no venv exists (bare ``python`` may be Python 2)."""
+    exe = sys.executable
+    return f'"{exe}"' if exe and os.name == "nt" else shlex.quote(exe) if exe else "python3"
 
 
 def _resolve_missing_skill_script(rest: str, root: Path) -> str:
@@ -99,7 +106,7 @@ def _normalize_verify_cmd(cmd: str, root: Path) -> str:
     rest = _resolve_missing_skill_script(rest, root)
     if first_token in ("python", "python3"):
         venv_py = _resolve_venv_python(root)
-        return f"{venv_py}{rest}" if venv_py else cmd
+        return f"{venv_py}{rest}" if venv_py else f"{_host_python()}{rest}"
     if first_token == "pytest":
         venv_py = _resolve_venv_python(root)
         return f"{venv_py} -m pytest{rest}" if venv_py else cmd

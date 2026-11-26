@@ -52,9 +52,14 @@ class TestListAndPlan(_Base):
         code, out = self._run(list=True)
         lines = out.strip().splitlines()
         self.assertEqual((code, len(lines)), (0, 2))
-        self.assertTrue(lines[1].startswith("aaaaaaaa | claude | 2026-11-20T10:00Z | 3 | feat/x | Continue my_plan"))
+        self.assertTrue(lines[1].startswith("aaaaaaaa | claude | 2026-11-20T10:00Z | 2 | feat/x | Continue my_plan"))
         self.assertTrue(lines[1].endswith("| my_plan"))
         self.assertLessEqual(len(lines[1].split(" | ")[5]), 60)
+
+    def test_list_steps_match_audit_steps(self) -> None:
+        _, listed = self._run(list=True)
+        _, audited = self._run(cids=[SID_A[:8]])
+        self.assertEqual(int(listed.splitlines()[1].split(" | ")[3]), json.loads(audited)[0]["steps"])
 
     def test_no_snippet_omits_prompt(self) -> None:
         _, out = self._run(list=True, no_snippet=True)

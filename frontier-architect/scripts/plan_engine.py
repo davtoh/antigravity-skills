@@ -157,7 +157,7 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
         else:
             print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
             if p := ps.get("parent_plan"):
-                print(f"[plan_engine] Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']}) -> Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then 'plan_engine.py next {p['slug']}'.")
+                from plan_handoff import parent_handoff; print("\n".join(parent_handoff(root, p)))  # noqa: E702
         return 0
     if args.json:
         print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, "prior_tool_gaps": prior_gaps}, indent=2))

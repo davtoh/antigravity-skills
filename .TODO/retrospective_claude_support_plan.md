@@ -152,6 +152,11 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 
 - [ ] **child plan .TODO/step_4_*.md**: created at the gate (~6 files): `frontier-architect/references/retrospective-recipe.md`, `retrospective-gemini.md`, `retrospective-claude.md`, `frontier-architect/SKILL.md` (**one short line**; the router must stay under 12,000 bytes), `references/phase-protocols.md` pointer, tests (`test_retrospective_recipes.py`: files exist, selection precedence table matches D3, adapter-gating and router-size tests still pass, the Gemini recipe still contains all five parts and `ask_question`), eval pressure case `retrospective-claude-fixture` (a fixture of two synthetic Claude sessions; new skill must produce a `learning_proposal` with the five parts and ask one decision at a time) plus one Antigravity-fixture case to prove no regression.
 
+**Decisions recorded 2026-11-26 (from `.TODO/learning_proposal_retro_m1_3_obs_m1.md`, confirmed by the user):**
+- **/learn handling:** the Claude recipe collects `/learn` candidates in the proposal file and promotes them to `AGENTS.md` or memory only after the user decides. It does not depend on `learn-from-review` (that skill learns from PR review comments only). The Gemini recipe keeps `/learn` as the user wrote it.
+- **Keyword:** `/frontier-architect retrospective [--plan SLUG | --cids ID...]`; the user's FOR RETROSPECTIVE prompt becomes `retrospective-gemini.md` in substance unchanged; the Claude recipe uses `AskUserQuestion` (one decision at a time), `Explore` agents, and a `.TODO/learning_proposal*.md` deliverable (an existing `learning_proposal.md` is never overwritten; use a suffixed name).
+- **Already fixed before M4 (outside this milestone's files):** `plan_verify` falls back to the running interpreter when no venv exists (bare `python` was Python 2.7 here); `plan_engine next` on a completed child now says the plan is complete and which `continue` to run; `--list` steps use the audit definition.
+
 **Verifier**: `python -m unittest discover -s frontier-architect/tests -p "test_*.py"`
 **Exit criteria:** recipe selection follows D3 in tests; both recipes keep the "no edits before the user decides" rule; the A/B pressure eval shows the new skill not worse than baseline; Gemini recipe text unchanged in substance.
 
