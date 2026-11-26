@@ -9,11 +9,13 @@ from typing import Any
 try:
     import observation_store as store
     import observation_correlate as correlate
+    import observation_cli_remote as remote
 except ImportError:  # pragma: no cover - package-style import
     from . import observation_store as store
     from . import observation_correlate as correlate
+    from . import observation_cli_remote as remote
 
-ACTIONS = ["list", "show", "add", "triage", "resolve", "dismiss"]
+ACTIONS = ["list", "show", "add", "triage", "resolve", "dismiss"] + remote.ACTIONS
 COMPACT_FIELDS = ("id", "fingerprint", "status", "kind", "page_path", "selector", "message", "occurrence_count", "last_seen")
 
 
@@ -39,6 +41,7 @@ def register_parser(sub: Any) -> None:
     p.add_argument("--resolution", default=None)
     p.add_argument("--commit", default=None)
     p.add_argument("--reason", default=None, help="dismiss: reason")
+    remote.add_flags(p)
 
 
 def _compact(entry: dict[str, Any]) -> dict[str, Any]:
@@ -175,5 +178,5 @@ def cmd_observations(args: Any) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     ws = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd().resolve()
-    handlers = {"list": _list, "show": _show, "add": _add, "triage": _triage, "resolve": _resolve, "dismiss": _dismiss}
+    handlers = {"list": _list, "show": _show, "add": _add, "triage": _triage, "resolve": _resolve, "dismiss": _dismiss, **remote.HANDLERS}
     return handlers[getattr(args, "action", None) or "list"](ws, args)
