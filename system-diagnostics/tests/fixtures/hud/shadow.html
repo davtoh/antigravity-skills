@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>shadow</title></head>
+<body><my-card id="card"></my-card>
+<script>
+var h = document.getElementById('card'), r = h.attachShadow({mode: 'open'});
+r.innerHTML = '<div class="wrap"><button class="inside" onclick="fetch(\'/api/ping?shadow=1\')">Shadow</button></div>';
+</script>
+<script src="/flag.js"></script><script src="/api/diagnostics/hud.js"></script></body></html>

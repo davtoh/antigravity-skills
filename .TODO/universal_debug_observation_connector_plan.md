@@ -222,9 +222,9 @@ Each milestone ends with: Pre-Flight Critic Gate -> sliced edits -> `diagnose.py
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation_*.py"` then the four suite commands in the Definition of Done.
 **Exit criteria:** all `list/show/add/triage/resolve/dismiss` rows pass in tests; default `list` hides CLOSED items; kinds incl. `idea`, `--kind`, `--missed-by/--guard` covered; dedup, reopen and corrupt-line cases covered; `diagnose.py` grew by 3 lines only; every new file <= 350 lines.
 
-## Milestone 2: DevTools Observation HUD *(Deferred to Next Turn / Milestone)*
+## Milestone 2: DevTools Observation HUD
 
-- [ ] **child plan .TODO/step_2_*.md**: created just in time (~7 files): SPIKE fixtures (`system-diagnostics/tests/fixtures/hud/*.html`), `system-diagnostics/assets/hud_core.js`, `hud_picker.js`, `hud_recorder.js`, `system-diagnostics/scripts/observation_assets.py` (bundle order and gate), `tests/test_observation_hud.py` (Node VM logic tests with a small fake DOM; skip without `node`), `tests/test_observation_hud_e2e.py` (Chrome-gated via `cdp_inspect`; skip without Chrome).
+- [x] **child plan .TODO/step_2_*.md**: created just in time (~7 files): SPIKE fixtures (`system-diagnostics/tests/fixtures/hud/*.html`), `system-diagnostics/assets/hud_core.js`, `hud_picker.js`, `hud_recorder.js`, `system-diagnostics/scripts/observation_assets.py` (bundle order and gate), `tests/test_observation_hud.py` (Node VM logic tests with a small fake DOM; skip without `node`), `tests/test_observation_hud_e2e.py` (Chrome-gated via `cdp_inspect`; skip without Chrome).
 
 **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation_hud*.py"`
 **Exit criteria:** SPIKE result recorded (pass or documented fallback); each HUD Contract row has a test; strict no-op when disabled; each JS file <= 300 lines.
