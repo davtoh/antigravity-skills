@@ -33,7 +33,7 @@ Combines **divergent SOTA innovation** with **disciplined execution** via the mo
 
 ### Phase 0: Context Hygiene, Tool Auto-Pickup & Complexity Triage
 
-Run `python "<skill_dir>/scripts/plan_engine.py" discover --root .` then `status [<plan_or_slug>]` first. Triage into buckets:
+Run `sh "<skill_dir>/scripts/py.sh" "<skill_dir>/scripts/plan_engine.py" discover --root .` (Windows: `py.cmd`; picks Python 3.10+, never a literal `python`) then `status [<plan_or_slug>]` first. Triage into buckets:
 **A (Tactical)** isolated fix → Pre-Flight, edit, verify, and if it grows (`> 2–3` files, API change, failed check) stop and re-triage · **B (Ambiguous)** → 1A · **C (Complex/SOTA)** → 2 & 3 · **D (Multi-symptom bug / UI regression / CPU)** → 1B, never A · **E (`continue`/plan handoff)** → 6.
 Execution intent (`implement`, `continue`, `execute`) hits the **Zero-Plan-Re-Read Gate**: `plan_engine.py status`/`next` before opening any plan; never manually edit checkboxes. Improvement intent (`improve`, `enhance`) means **deepen and detail**, preserving contracts. Co-invocation with `/app-debugger` or `/refactor-monolith`: act as **Orchestrator of Intent** under a 3 to 5 tool-call ceiling. Unattended/no interactive user → state assumptions in 1–2 lines, destructive actions stay proposals; read-only or review requests → report without editing. Full gates: `phase-protocols.md`, `triage-protocols.md`.
 

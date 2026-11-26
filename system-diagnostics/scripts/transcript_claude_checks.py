@@ -19,6 +19,7 @@ from transcript_auditor import _matches_any, _norm_path
 from transcript_checks import extract_user_correction
 
 _CAT_RE = re.compile(r"^\s*cat\s+(?:--\s+)?(\S+)\s*$")
+_REJECTED_RE = re.compile(r"user doesn't want to proceed|tool use was rejected", re.I)
 _DOC_TOKENS = ("/.todo/", "/.frontier/", "/docs/", "/brain/", "/agents.md", "/.agents/", "/claude.md")
 HEAVY_CACHE_READ, HEAVY_OUTPUT = 5_000_000, 200_000
 
@@ -37,18 +38,21 @@ def failure_metrics(main: list[dict[str, Any]]) -> dict[str, Any]:
     """``failures`` by class, ``total_failures``, ``audit_catches``, usage errors and up to 5 samples."""
     targets = {s["call_id"]: s["args"]["target"] for s in main if s["kind"] == "tool_call"}
     fails: Counter[str] = Counter()
-    catches = usage = 0
+    catches = usage = rejected = 0
     samples: list[str] = []
     for s in (s for s in main if s["kind"] == "tool_result" and s["fail"]):
         if s["fail"] == "audit_catch":
             catches += 1
+            continue
+        if _REJECTED_RE.search(s["fail_note"]):  # user declined the call: not a failure, not a grade input
+            rejected += 1
             continue
         fails[s["fail"]] += 1
         usage += s["usage_error"]
         if len(samples) < 5:
             samples.append(f"step {s['idx']} {s['fail']} ({targets.get(s['call_id']) or 'tool'}): {s['fail_note']}")
     return {"failures": dict(fails), "total_failures": sum(fails.values()), "audit_catches": catches,
-            "tooling_cli_fails": usage, "failure_samples": samples}
+            "tooling_cli_fails": usage, "failure_samples": samples, "user_rejected": rejected}
 
 
 def _walk_pending(main: list[dict[str, Any]]) -> tuple[int, int, list[str]]:

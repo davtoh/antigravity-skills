@@ -52,6 +52,10 @@ Authoritative Plan: [`.TODO/latent_defect_and_smell_protocol_plan.md`](.TODO/lat
 6. **Cross-Platform Discipline:** Pure standard-library OS-agnostic code (`pathlib.Path`, forward slashes in relative paths, UTF-8 LF normalized).
 7. **Tests resolve temp paths:** build workspaces with `Path(tempfile.mkdtemp()).resolve()` (or `TemporaryDirectory().name` wrapped in `.resolve()`) and compare paths with `.resolve()` on both sides; macOS temp dirs are symlinks (`/var` -> `/private/var`). Tests needing `node` or Chrome must skip, not fail, when absent.
 
+8. **zsh globs:** quote glob patterns (`--include='*.py'`) or use `Glob`; unquoted globs abort with `no matches found`.
+9. **No sleep-waits:** never `sleep N; cat <log>`; use `run_in_background` or `Monitor` and read on completion.
+10. **Python launcher:** run frontier-architect scripts via `scripts/py.sh` (POSIX) / `py.cmd` (Windows), never a literal `python`.
+
 ---
 
 ## 4. Verification Commands

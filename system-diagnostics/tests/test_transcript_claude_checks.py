@@ -72,6 +72,14 @@ class TestFailures(_Base):
         ])
         self.assertEqual((row["audit_catches"], row["total_failures"]), (1, 0))
 
+    def test_user_rejected_tool_call_is_not_a_failure(self) -> None:
+        msg = "The user doesn't want to proceed with this tool use. The tool use was rejected"
+        row = self.row([
+            rec("assistant", bash("1", "git log | head")),
+            rec("user", result("1", msg, True)),
+        ])
+        self.assertEqual((row["user_rejected"], row["total_failures"], row["failure_samples"]), (1, 0, []))
+
     def test_subagent_failures_are_not_attributed_to_the_main_thread(self) -> None:
         row = self.row([rec("assistant", text("hi"))], subagents={"s1": [
             rec("assistant", bash("9", "false")), rec("user", result("9", "Exit code 1\nx", True))]})
@@ -199,7 +207,7 @@ class TestCuesAndShape(_Base):
     def test_row_shape_is_antigravity_row_plus_documented_keys(self) -> None:
         row = self.row([rec("user", text("go")), rec("assistant", text("done"), model="m", usage={"input_tokens": 1, "output_tokens": 2})])
         self.assertEqual([k for k in GEMINI_KEYS if k not in row], [])
-        self.assertEqual(sorted(set(row) - set(GEMINI_KEYS)), ["masked_failures", "session_id", "token_note", "tokens", "vendor"])
+        self.assertEqual(sorted(set(row) - set(GEMINI_KEYS)), ["masked_failures", "session_id", "token_note", "tokens", "user_rejected", "vendor"])
 
     def test_heavy_token_totals_add_a_note_but_never_change_the_grade(self) -> None:
         row = self.row([rec("assistant", text("x"), usage={"cache_read_input_tokens": 6_000_000, "output_tokens": 300_000})])
