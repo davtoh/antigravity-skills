@@ -16,8 +16,9 @@ from typing import Any
 
 try:
     import defect_catalog
+    import observation_fields
 except ImportError:  # pragma: no cover - package-style import
-    from . import defect_catalog
+    from . import defect_catalog, observation_fields
 
 SCHEMA_VERSION = "1.0"
 ACTIVE_STATUSES = ("open", "triaged", "in_progress")
@@ -27,6 +28,8 @@ MISSED_BY = ("tests", "surface", "scan", "audit", "ui", "probes", "trace", "othe
 MAX_RECORD_BYTES = 65536
 MAX_MESSAGE = 500
 MAX_TIMELINE = 50
+MAX_ELEMENTS = observation_fields.MAX_ELEMENTS
+MAX_RELATED = observation_fields.MAX_RELATED
 ROTATE_BYTES = 5 * 1024 * 1024
 FORBIDDEN_KEYS = ("value", "password", "authorization", "cookie")
 TRANSITIONS = {
@@ -80,6 +83,16 @@ def sanitize_record(raw: dict[str, Any]) -> dict[str, Any]:
     rec["message"] = str(rec.get("message") or "")[:MAX_MESSAGE]
     timeline = rec.get("timeline")
     rec["timeline"] = list(timeline)[-MAX_TIMELINE:] if isinstance(timeline, list) else []
+    has_el = "elements" in rec
+    rec["elements"] = observation_fields.normalize_elements(
+        rec.get("elements") if has_el else None,
+        str(rec.get("selector") or ""),
+        rec.get("rect"),
+        rec.get("attrs"),
+    )
+    if has_el or rec["elements"]:
+        observation_fields.sync_primary_element(rec)
+    rec["related_ids"] = observation_fields.normalize_related_ids(rec.get("related_ids"))
     rec.setdefault("schema", 1)
     rec.setdefault("ts", _now())
     return rec
@@ -163,7 +176,9 @@ def _new_entry(rec: dict[str, Any], fp: str, entry_id: str) -> dict[str, Any]:
         "id": entry_id, "fingerprint": fp, "kind": rec["kind"], "status": "open",
         "first_seen": rec["ts"], "last_seen": rec["ts"], "occurrence_count": 1,
         "page_path": rec.get("page_path", ""), "selector": rec.get("selector", ""),
-        "rect": rec.get("rect"), "attrs": rec.get("attrs", {}), "message": rec["message"],
+        "rect": rec.get("rect"), "attrs": rec.get("attrs", {}),
+        "elements": rec.get("elements", []), "related_ids": rec.get("related_ids", []),
+        "message": rec["message"],
         "recording_id": rec.get("recording_id"), "window": rec.get("window"),
         "timeline": rec["timeline"], "correlated_traces": [], "root_cause": "", "missed_by": [],
         "proposed_guard": "", "resolution": "", "linked_plan": "", "linked_commit": "",
@@ -257,37 +272,6 @@ def list_observations(workspace: Path, status: str = "active", limit: int = 20, 
     return entries[:limit] if limit and limit > 0 else entries
 
 
-def _apply_patch_fields(entry: dict[str, Any], clean: dict[str, Any]) -> None:
-    """Apply validated editable fields onto an existing catalog observation entry."""
-    if "kind" in clean:
-        if clean["kind"] not in KINDS:
-            raise ValueError(f"invalid kind {clean['kind']!r}; expected one of {', '.join(KINDS)}")
-        entry["kind"] = clean["kind"]
-    if "message" in clean:
-        entry["message"] = str(clean["message"] or "")[:MAX_MESSAGE]
-    for str_key in ("page_path", "selector"):
-        if str_key in clean:
-            entry[str_key] = str(clean[str_key] or "")
-    if "rect" in clean:
-        if clean["rect"] is not None and not isinstance(clean["rect"], dict):
-            raise ValueError("rect must be an object or null")
-        entry["rect"] = clean["rect"]
-    if "attrs" in clean:
-        if not isinstance(clean["attrs"], dict):
-            raise ValueError("attrs must be an object")
-        entry["attrs"] = clean["attrs"]
-    if "recording_id" in clean:
-        entry["recording_id"] = str(clean["recording_id"]) if clean["recording_id"] else None
-    if "window" in clean:
-        if clean["window"] is not None and not isinstance(clean["window"], dict):
-            raise ValueError("window must be an object or null")
-        entry["window"] = clean["window"]
-    if "timeline" in clean:
-        if not isinstance(clean["timeline"], list):
-            raise ValueError("timeline must be an array")
-        entry["timeline"] = list(clean["timeline"])[-MAX_TIMELINE:]
-
-
 def patch_observation(workspace: Path, id_or_fp: str, updates: dict[str, Any]) -> dict[str, Any]:
     """Edit fields, attach element/trace data, or update status on an existing observation."""
     if not isinstance(updates, dict):
@@ -307,7 +291,7 @@ def patch_observation(workspace: Path, id_or_fp: str, updates: dict[str, Any]) -
         if new_status not in TRANSITIONS[old_status]:
             raise ValueError(f"illegal transition {old_status} -> {new_status}")
         entry["status"] = new_status
-    _apply_patch_fields(entry, clean)
+    observation_fields.apply_patch_fields(entry, clean, KINDS, MAX_MESSAGE, MAX_TIMELINE)
     entry["fingerprint"] = make_fingerprint(entry["kind"], entry.get("page_path", ""), _target(entry), entry["message"])
     now = _now()
     entry["last_seen"] = now

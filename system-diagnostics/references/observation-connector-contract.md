@@ -10,7 +10,7 @@ Run commands as `python "<skill_dir>/scripts/diagnose.py" ...` where `<skill_dir
 - Loopback clients only (`127.0.0.1`, `::1`); anything else gets `403`.
 - Every response carries `X-Diagnostics-Contract: 1`.
 - Errors are JSON `{"error": "<code>", "message": "..."}` with codes `invalid_json`, `invalid_record`, `payload_too_large`, `forbidden`, `not_found`, `unsupported_media_type`.
-- The server drops any field named `value`, `password`, `authorization` or `cookie`, caps a record at 64 KB, `message` at 500 chars and `timeline` at 50 events.
+- The server drops any field named `value`, `password`, `authorization` or `cookie`, caps a record at 64 KB, `message` at 500 chars, `timeline` at 50 events, `elements` at 20 selectors and `related_ids` at 30 `OBS-NNN` links.
 
 ## Routes
 
@@ -20,7 +20,7 @@ Run commands as `python "<skill_dir>/scripts/diagnose.py" ...` where `<skill_dir
 | `POST /observation` | `201` new, `200` deduplicated, `200` with `"dry_run":true` when `?dry_run=1` (nothing stored) | `400 invalid_json\|invalid_record`, `403`, `413`, `415` |
 | `GET /observations` | `200` list (`status` default `active`, `kind`, `limit` default 20, max 200) | `400 invalid_record`, `403` |
 | `GET /observations/{id_or_fingerprint}` | `200` full entry | `404`, `403` |
-| `PATCH /observations/{id_or_fingerprint}` | `200` updated full entry (edit message/kind, attach pick/trace, update status) | `400 invalid_json\|invalid_record`, `403`, `404`, `413`, `415` |
+| `PATCH /observations/{id_or_fingerprint}` | `200` updated full entry (edit message/kind, attach `elements`/pick/trace, link `related_ids`, update status) | `400 invalid_json\|invalid_record`, `403`, `404`, `413`, `415` |
 | `DELETE /observations/{id_or_fingerprint}` | `200 {"deleted":true,"id":"OBS-001"}` | `404`, `403` |
 | `GET /hud.js` | `200 application/javascript`, `Cache-Control: no-store` | `403` |
 

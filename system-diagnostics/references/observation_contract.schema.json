@@ -4,6 +4,15 @@
   "title": "Debug Observation Wire Contract v1",
   "$defs": {
     "kind": {"enum": ["element", "error", "network", "note", "idea"]},
+    "element_ref": {
+      "type": "object",
+      "required": ["selector"],
+      "properties": {
+        "selector": {"type": "string", "minLength": 1},
+        "rect": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}}},
+        "attrs": {"type": "object"}
+      }
+    },
     "record": {
       "type": "object",
       "required": ["kind"],
@@ -15,6 +24,8 @@
         "selector": {"type": "string"},
         "rect": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}}},
         "attrs": {"type": "object"},
+        "elements": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/element_ref"}},
+        "related_ids": {"type": "array", "maxItems": 30, "items": {"type": "string", "pattern": "^OBS-\\d+$"}},
         "message": {"type": "string", "maxLength": 500},
         "recording_id": {"type": "string"},
         "window": {"type": "object", "properties": {"started_at": {"type": "string"}, "stopped_at": {"type": "string"}}},

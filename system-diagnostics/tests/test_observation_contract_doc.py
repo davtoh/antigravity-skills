@@ -37,6 +37,8 @@ class TestContractDoc(unittest.TestCase):
         self.assertEqual(tuple(defs["error"]["properties"]["error"]["enum"]), R.ERROR_CODES)
         self.assertEqual(defs["record"]["properties"]["message"]["maxLength"], S.MAX_MESSAGE)
         self.assertEqual(defs["record"]["properties"]["timeline"]["maxItems"], S.MAX_TIMELINE)
+        self.assertEqual(defs["record"]["properties"]["elements"]["maxItems"], S.MAX_ELEMENTS)
+        self.assertEqual(defs["record"]["properties"]["related_ids"]["maxItems"], S.MAX_RELATED)
 
     def test_schema_record_example_passes_store_validation(self):
         S.sanitize_record({"kind": "element", "message": "x", "page_path": "/", "timeline": []})

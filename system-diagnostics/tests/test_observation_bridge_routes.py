@@ -151,6 +151,50 @@ class TestWireContract(unittest.TestCase):
         self.assertEqual(self.call("DELETE", f"/observations/{obs_id}")[0], 404)
         self.assertEqual(self.call("GET", f"/observations/{obs_id}")[0], 404)
 
+    def test_multi_elements_related_ids_and_reopen(self):
+        second = json.loads(self.post({"kind": "note", "message": "peer note"})[2])["id"]
+        created = json.loads(self.post({
+            "kind": "idea",
+            "page_path": "/#live",
+            "message": "pin multi elements to idea",
+            "elements": [
+                {"selector": "#btn-a", "rect": {"x": 1, "y": 2, "w": 10, "h": 10}, "attrs": {"password": "s3", "id": "btn-a"}},
+                {"selector": "#btn-b", "attrs": {"tag": "button"}},
+                {"selector": "#btn-a"},
+            ],
+        })[2])
+        obs_id = created["id"]
+        full = json.loads(self.call("GET", f"/observations/{obs_id}")[2])
+        self.assertEqual(full["kind"], "idea")
+        self.assertEqual(full["selector"], "#btn-a")
+        self.assertEqual(len(full["elements"]), 2)
+        self.assertNotIn("password", full["elements"][0]["attrs"])
+
+        patch_body = json.dumps({
+            "elements": full["elements"] + [{"selector": "#btn-c"}],
+            "related_ids": [second.lower(), second, obs_id],
+        }).encode("utf-8")
+        st, _, pbody = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=patch_body)
+        self.assertEqual(st, 200)
+        patched = json.loads(pbody)
+        self.assertEqual(len(patched["elements"]), 3)
+        self.assertEqual(patched["related_ids"], [second])
+
+        bad = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=json.dumps({"related_ids": ["BAD"]}).encode())
+        self.assertEqual((bad[0], json.loads(bad[2])["error"]), (400, "invalid_record"))
+
+        self.assertEqual(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b'{"status":"dismissed"}')[0], 200)
+        reopen = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b'{"status":"open"}')
+        self.assertEqual((reopen[0], json.loads(reopen[2])["status"]), (200, "open"))
+
+        listed = json.loads(self.call("GET", "/observations", "limit=10")[2])["observations"]
+        row = next(r for r in listed if r["id"] == obs_id)
+        self.assertEqual(len(row["elements"]), 3)
+        self.assertEqual(row["related_ids"], [second])
+
+        cleared = json.loads(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b'{"elements":[]}')[2])
+        self.assertEqual((cleared["elements"], cleared["selector"]), ([], ""))
+
     def test_hud_js(self):
         status, headers, body = self.call("GET", "/hud.js")
         self.assertEqual(status, 200)

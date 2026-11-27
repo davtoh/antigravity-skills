@@ -33,7 +33,22 @@ ROUTES = (
 )
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 20
-LIST_FIELDS = ("id", "fingerprint", "status", "kind", "page_path", "selector", "message", "occurrence_count", "last_seen")
+LIST_FIELDS = (
+    "id", "fingerprint", "status", "kind", "page_path", "selector", "elements",
+    "related_ids", "message", "occurrence_count", "last_seen",
+)
+
+
+def _list_row(e: dict[str, Any]) -> dict[str, Any]:
+    row = {k: e.get(k) for k in LIST_FIELDS}
+    if row.get("elements") is None:
+        sel = str(e.get("selector") or "").strip()
+        row["elements"] = (
+            [{"selector": sel, "rect": e.get("rect"), "attrs": e.get("attrs") or {}}] if sel else []
+        )
+    if row.get("related_ids") is None:
+        row["related_ids"] = []
+    return row
 
 Response = tuple[int, dict[str, str], bytes]
 
@@ -86,7 +101,7 @@ def _list(query: dict[str, list[str]], workspace: Path) -> Response:
         return _error(400, "invalid_record", "limit must be an integer")
     limit = min(max(limit, 1), MAX_LIMIT)
     entries = store.list_observations(workspace, status=status, limit=0, kind=kind)
-    shown = [{k: e.get(k) for k in LIST_FIELDS} for e in entries[:limit]]
+    shown = [_list_row(e) for e in entries[:limit]]
     return _json(200, {"schema": 1, "count": len(shown), "truncated": len(entries) > limit, "observations": shown})
 
 
