@@ -18,7 +18,10 @@ try:
     import defect_catalog
     import observation_fields
 except ImportError:  # pragma: no cover - package-style import
-    from . import defect_catalog, observation_fields
+    import importlib
+
+    defect_catalog = importlib.import_module(".defect_catalog", __package__)
+    observation_fields = importlib.import_module(".observation_fields", __package__)
 
 SCHEMA_VERSION = "1.0"
 ACTIVE_STATUSES = ("open", "triaged", "in_progress")
@@ -309,3 +312,28 @@ def delete_observation(workspace: Path, id_or_fp: str) -> dict[str, Any]:
     catalog["observations"] = [e for e in catalog["observations"] if e is not entry]
     save_catalog(workspace, catalog)
     return entry
+
+
+def export_observations(workspace: Path, status: str = "all", kind: str | None = None) -> dict[str, Any]:
+    """Return a deep-redacted JSON export bundle of observations."""
+    clean = [_strip_forbidden(e) for e in list_observations(workspace, status=status, limit=0, kind=kind)]
+    return {"schema": 1, "schema_version": SCHEMA_VERSION, "exported_at": _now(), "count": len(clean), "observations": clean}
+
+
+def _import_candidate(raw: dict[str, Any]) -> dict[str, Any]:
+    rec = sanitize_record(raw)
+    fp = make_fingerprint(rec["kind"], rec.get("page_path", ""), _target(rec), rec["message"])
+    cand = _new_entry(rec, fp, str(raw.get("id") or "").strip().upper())
+    observation_fields.apply_import_metadata(cand, raw, ACTIVE_STATUSES + CLOSED_STATUSES, _parse_missed_by)
+    return cand
+
+
+def import_observations(workspace: Path, payload: Any) -> dict[str, Any]:
+    """Validate and merge an exported JSON bundle into the local catalog."""
+    candidates = [_import_candidate(item) for item in observation_fields.validate_import_payload(payload)]
+    catalog = load_catalog(workspace)
+    entries = catalog["observations"]
+    imported, updated, skipped = observation_fields.apply_import_candidates(entries, candidates, _next_id, _now())
+    if imported or updated:
+        save_catalog(workspace, catalog)
+    return {"schema": 1, "imported": imported, "updated": updated, "skipped": skipped, "total": len(entries)}

@@ -2,7 +2,7 @@
 var doc = win.document;
 H.endpoint = win.__FRONTIER_OBS_ENDPOINT__ || '/api/diagnostics/observation';
 H.baseEndpoint = H.endpoint.replace(/\/observation$/, '');
-H.roots = [doc]; H.recordingId = null; H.finished = null; H.timeline = []; H.t0 = 0;
+H.roots = [doc]; H.recordingId = null; H.finished = null; H.traceCleared = false; H.timeline = []; H.t0 = 0;
 H.lastPick = null; H.picks = []; H.editingId = null; H.panelOpen = false; H.MAX_ELEMENTS = 20;
 var FORBIDDEN = { value: 1, password: 1, authorization: 1, cookie: 1 };
 
@@ -168,7 +168,8 @@ H.openInComposer = function (entry) {
   H.editingId = entry.id;
   H.picks = els.map(H.normalizePick).filter(Boolean).slice(0, H.MAX_ELEMENTS);
   H.lastPick = H.picks.length ? H.picks[0] : null;
-  H.finished = null;
+  var tl = Array.isArray(entry.timeline) ? entry.timeline.slice() : [], tc = typeof entry.trace_count === 'number' ? entry.trace_count : tl.length;
+  H.finished = (entry.recording_id || entry.window || tl.length || tc > 0) ? { id: entry.recording_id || 'trace', window: entry.window || {}, timeline: tl, count: tc, restored: true } : null; H.traceCleared = false;
   H.panelOpen = true;
   if (card) card.hidden = false;
   if (kindEl) kindEl.value = entry.kind || 'note';
@@ -180,7 +181,7 @@ H.cancelEdit = function () {
   var p = H.panelEl, msg = p && p.querySelector('[data-a=msg]'), kindEl = p && p.querySelector('[data-a=kind]');
   H.editingId = null;
   H.clearPicks();
-  H.finished = null;
+  H.finished = null; H.traceCleared = false;
   if (msg) msg.value = '';
   if (kindEl) kindEl.value = 'note';
   if (H.updateUi) H.updateUi('Edit cancelled');
@@ -191,10 +192,11 @@ H.logObservation = function (kind, message) {
   var resolvedKind = kind || (picks.length ? 'element' : 'note');
   if (H.editingId) {
     var editId = H.editingId, patch = { kind: resolvedKind, message: text.slice(0, 500), elements: picks };
-    if (H.finished) { patch.recording_id = H.finished.id; patch.window = H.finished.window || {}; patch.timeline = H.finished.timeline.slice(-50); }
+    if (H.finished && !H.finished.restored) { patch.recording_id = H.finished.id; patch.window = H.finished.window || {}; patch.timeline = H.finished.timeline.slice(-50); }
+    else if (!H.finished && H.traceCleared) { patch.recording_id = null; patch.window = null; patch.timeline = []; }
     return H.patchObservation(editId, patch).then(function (res) {
       if (res && res.http >= 200 && res.http < 300) {
-        H.editingId = null; H.finished = null; H.clearPicks();
+        H.editingId = null; H.finished = null; H.traceCleared = false; H.clearPicks();
         if (H.onSaved) H.onSaved(res);
         if (H.updateUi) H.updateUi('Saved ' + editId);
       } else if (H.updateUi) H.updateUi('Save failed (' + ((res && res.http) || '?') + '): ' + ((res && res.message) || 'error'), true);
@@ -245,7 +247,7 @@ H.buildPanel = function () {
   css += '.fh-chip-link{border-color:#60a5fa;color:#bfdbfe;cursor:pointer;}.fh-status{font-size:11px;color:#fcd34d;min-height:14px;}.fh-status.err{color:#fca5a5;}.fh-bar{display:flex;align-items:center;gap:6px;}';
   css += '.fh-drawer{position:fixed;top:0;right:0;bottom:0;width:360px;max-width:95vw;background:#111827;border-left:1px solid #f59e0b;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:-8px 0 28px rgba(0,0,0,.55);z-index:2147483647;}';
   css += '.fh-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}.fh-item{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px;}';
-  css += '.fh-item-head{display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer;}.fh-muted{color:#9ca3af;font-size:10px;word-break:break-word;}.fh-dot{width:8px;height:8px;border-radius:999px;background:#ef4444;display:inline-block;}';
+  css += '.fh-item-head{display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer;}.fh-muted{color:#9ca3af;font-size:10px;word-break:break-word;}.fh-dot{width:8px;height:8px;border-radius:999px;background:#ef4444;display:inline-block;}.fh-dirty{background:#78350f;border:1px solid #f59e0b;color:#fde68a;border-radius:999px;padding:1px 6px;font-size:10px;font-weight:600;}';
   var html = '<style>' + css + '</style><div class="fh-card" data-a="card" hidden>';
   html += '<div class="fh-row"><strong style="font-size:12px;color:#fbbf24" data-a="title">Debug Observation</strong><select class="fh-select" data-a="kind" style="width:auto;padding:3px 6px"><option value="note">note</option><option value="element">element</option><option value="idea">idea</option><option value="error">error</option><option value="network">network</option></select></div>';
   html += '<div class="fh-row"><button type="button" class="fh-btn" data-a="pick">Pick</button><button type="button" class="fh-btn" data-a="rec">Record</button><button type="button" class="fh-btn" data-a="stop">Stop</button><button type="button" class="fh-btn" data-a="drawer">History <span data-a="count"></span></button></div>';
@@ -269,7 +271,7 @@ H.buildPanel = function () {
         chtml += '<span class="fh-chip" title="' + H.htmlEsc(picks[i].selector) + '">Target: ' + H.htmlEsc(picks[i].selector) + ' <button type="button" class="fh-btn" style="padding:0 4px" data-a="remove-pick" data-idx="' + i + '">x</button></span>';
       }
       if (H.recordingId) chtml += '<span class="fh-chip"><span class="fh-dot"></span> ' + H.htmlEsc(H.recordingId) + ' (' + H.timeline.length + ')</span>';
-      else if (H.finished) chtml += '<span class="fh-chip">Trace: ' + H.htmlEsc(H.finished.id) + ' (' + H.finished.timeline.length + ') <button type="button" class="fh-btn" style="padding:0 4px" data-a="clear-trace">x</button></span>';
+      else if (H.finished) chtml += '<span class="fh-chip">Trace: ' + H.htmlEsc(H.finished.id) + ' (' + (typeof H.finished.count === 'number' ? H.finished.count : H.finished.timeline.length) + ') <button type="button" class="fh-btn" style="padding:0 4px" data-a="clear-trace">x</button></span>';
       chips.innerHTML = chtml;
     }
   };
@@ -284,7 +286,7 @@ H.buildPanel = function () {
     else if (a === 'cancel-edit') H.cancelEdit();
     else if (a === 'remove-pick') { H.removePick(parseInt(btn.getAttribute('data-idx'), 10)); H.updateUi('Removed picked element'); }
     else if (a === 'clear-pick') { H.clearPicks(); H.updateUi('Cleared picked elements'); }
-    else if (a === 'clear-trace') { H.finished = null; H.updateUi('Cleared recorded trace'); }
+    else if (a === 'clear-trace') { H.finished = null; if (H.editingId) H.traceCleared = true; H.updateUi('Cleared recorded trace'); }
     else if (a === 'drawer' || a === 'drawer-quick') { if (H.toggleDrawer) H.toggleDrawer(); }
     else if (a === 'log') {
       H.logObservation(kindEl ? kindEl.value : 'note', msg ? msg.value : '').then(function (res) {

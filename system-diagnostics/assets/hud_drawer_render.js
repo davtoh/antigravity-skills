@@ -35,6 +35,15 @@ H.drawerUi = {
     }
     return h + '</div>';
   },
+  renderTrace: function (it) {
+    var rid = it && it.recording_id, w = it && it.window;
+    var tl = (it && Array.isArray(it.timeline)) ? it.timeline : [];
+    var cnt = (it && typeof it.trace_count === 'number') ? it.trace_count : tl.length;
+    if (!rid && !w && !cnt) return '';
+    var label = rid || 'trace';
+    return '<div class="fh-chips"><span class="fh-chip" data-da="trace-chip" title="' +
+      H.htmlEsc(label + ' (' + cnt + ' events)') + '">Trace: ' + H.htmlEsc(label) + ' (' + cnt + ')</span></div>';
+  },
   renderRelated: function (it, open) {
     var rels = (it && Array.isArray(it.related_ids)) ? it.related_ids : [], i, h = '';
     if (rels.length) {
@@ -57,12 +66,13 @@ H.drawerUi = {
     var draft = state.drafts[it.id], curKind = draft ? draft.kind : it.kind, curMsg = draft ? draft.message : it.message;
     var dirty = !!(draft && (draft.kind !== it.kind || draft.message !== it.message));
     var closed = it.status === 'dismissed' || it.status === 'resolved';
-    var h = '<div class="fh-item" data-obs-id="' + idEsc + '">';
+    var h = '<div class="fh-item" data-obs-id="' + idEsc + '"' + (dirty ? ' data-dirty="true"' : '') + '>';
     h += '<div class="fh-item-head" data-da="select" data-id="' + idEsc + '">';
-    h += '<span><strong>' + idEsc + '</strong> [' + H.htmlEsc(it.kind) + ']' + (closed ? ' (' + H.htmlEsc(it.status) + ')' : '') + ' <span class="fh-muted">' + H.htmlEsc(it.page_path || '/') + '</span></span>';
+    h += '<span><strong>' + idEsc + '</strong> [' + H.htmlEsc(it.kind) + ']' + (closed ? ' (' + H.htmlEsc(it.status) + ')' : '') + (dirty ? ' <span class="fh-dirty" data-da="dirty-badge" title="Unsaved draft changes">* Unsaved</span>' : '') + ' <span class="fh-muted">' + H.htmlEsc(it.page_path || '/') + '</span></span>';
     h += '<span class="fh-muted">' + (open ? '▲' : '▼') + '</span></div>';
     h += '<div>' + H.htmlEsc(it.message) + '</div>';
     h += H.drawerUi.renderElements(it, open);
+    h += H.drawerUi.renderTrace(it);
     h += H.drawerUi.renderRelated(it, open);
     if (open) {
       h += '<select class="fh-select" data-da="kind">';

@@ -73,9 +73,64 @@ H.onPicked = function (pick) {
   });
   return true;
 };
+function triggerDownload(filename, text) {
+  if (!win.Blob || !win.URL || !win.URL.createObjectURL) return false;
+  var blob = new win.Blob([text], { type: 'application/json' }), url = win.URL.createObjectURL(blob), a = doc.createElement('a');
+  a.href = url; a.download = filename; a.style.display = 'none';
+  if (doc.body && doc.body.appendChild) doc.body.appendChild(a);
+  if (a.click) a.click();
+  if (doc.body && doc.body.removeChild && a.parentNode === doc.body) doc.body.removeChild(a);
+  if (win.URL.revokeObjectURL) win.URL.revokeObjectURL(url);
+  return true;
+}
+function exportObservations(d) {
+  return H.req(H.baseEndpoint + '/observations/export?status=all', 'GET').then(function (res) {
+    if (!res || res.http < 200 || res.http >= 300) { setStatus(d, 'Export failed: ' + ((res && res.message) || 'error')); return res; }
+    var copy = {}, k;
+    for (k in res) { if (Object.prototype.hasOwnProperty.call(res, k) && k !== 'http') copy[k] = res[k]; }
+    triggerDownload('observations-export.json', JSON.stringify(copy, null, 2));
+    setStatus(d, 'Exported ' + (copy.count || (Array.isArray(copy.observations) ? copy.observations.length : 0)) + ' observations');
+    return copy;
+  }, function () { setStatus(d, 'Export failed: network error'); return null; });
+}
+function importPayload(d, payload) {
+  return H.req(H.baseEndpoint + '/observations/import', 'POST', payload).then(function (res) {
+    if (!res || res.http < 200 || res.http >= 300) { setStatus(d, 'Import failed: ' + ((res && res.message) || 'error')); return res; }
+    setStatus(d, 'Imported ' + (res.imported || 0) + ', updated ' + (res.updated || 0) + ', skipped ' + (res.skipped || 0));
+    return H.refreshDrawer(true).then(function () { return res; });
+  }, function () { setStatus(d, 'Import failed: network error'); return null; });
+}
+function handleImportFile(d, inp) {
+  var file = inp && inp.files && inp.files[0];
+  if (!file) return Promise.resolve(null);
+  function parseAndSend(text) {
+    var parsed;
+    try { parsed = JSON.parse(String(text || '')); } catch (err) { setStatus(d, 'Import failed: invalid JSON'); return Promise.resolve(null); }
+    return importPayload(d, parsed);
+  }
+  if (typeof file.text === 'function') return file.text().then(parseAndSend);
+  if (win.FileReader) {
+    return new Promise(function (resolve) {
+      var fr = new win.FileReader();
+      fr.onload = function () { parseAndSend(fr.result).then(resolve); };
+      fr.onerror = function () { setStatus(d, 'Import failed: read error'); resolve(null); };
+      fr.readAsText(file);
+    });
+  }
+  setStatus(d, 'Import failed: unsupported file reader');
+  return Promise.resolve(null);
+}
+H.exportObservations = function () { return exportObservations(H.drawerEl); };
+H.importObservations = function (payload) { return importPayload(H.drawerEl, payload); };
 function handleDrawerAction(d, act, id, btn) {
   if (act === 'close') { H.toggleDrawer(false); return; }
   if (act === 'refresh') { H.refreshDrawer(); return; }
+  if (act === 'export') { exportObservations(d); return; }
+  if (act === 'import') {
+    var fi = d.querySelector('[data-da=import-file]');
+    if (fi) { fi.value = ''; if (fi.click) fi.click(); }
+    return;
+  }
   if (act === 'undo' && drawerState.lastUndo) {
     var u = drawerState.lastUndo;
     drawerState.lastUndo = null;
@@ -111,7 +166,11 @@ function handleDrawerAction(d, act, id, btn) {
     });
   } else if (act === 'open' && item) {
     var dr = drawerState.drafts[id];
-    H.openInComposer({ id: item.id, kind: dr ? dr.kind : item.kind, message: dr ? dr.message : item.message, elements: H.drawerUi.elementsFor(item), selector: item.selector, rect: item.rect, attrs: item.attrs });
+    H.openInComposer({
+      id: item.id, kind: dr ? dr.kind : item.kind, message: dr ? dr.message : item.message,
+      elements: H.drawerUi.elementsFor(item), selector: item.selector, rect: item.rect, attrs: item.attrs,
+      recording_id: item.recording_id, window: item.window, timeline: item.timeline, trace_count: item.trace_count
+    });
   } else if (act === 'attach-pick') {
     var picks = H.activePicks();
     if (picks.length) {
@@ -193,6 +252,9 @@ H.buildDrawer = function () {
   d.hidden = true;
   d.innerHTML = '<div class="fh-row"><strong style="color:#fbbf24;font-size:13px">Registered Observations</strong>' +
     '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="dismissed">Dismissed</option><option value="all">All</option></select>' +
+    '<button type="button" class="fh-btn" data-da="export">Export</button>' +
+    '<button type="button" class="fh-btn" data-da="import">Import</button>' +
+    '<input type="file" data-da="import-file" accept="application/json,.json" hidden>' +
     '<button type="button" class="fh-btn" data-da="refresh">Refresh</button>' +
     '<button type="button" class="fh-btn" data-da="close">Close</button></div></div>' +
     '<div class="fh-status" data-da="dstatus" data-a="dstatus"></div><div class="fh-list" data-a="list"></div>';
@@ -200,6 +262,7 @@ H.buildDrawer = function () {
     var da = e.target && e.target.getAttribute ? e.target.getAttribute('data-da') : null;
     if (da === 'filter') { drawerState.filter = e.target.value; H.refreshDrawer(); }
     else if (da === 'kind') syncDraft(d, e.target.closest ? e.target.closest('[data-obs-id]') : null);
+    else if (da === 'import-file') handleImportFile(d, e.target);
   });
   d.addEventListener('input', function (e) {
     var da = e.target && e.target.getAttribute ? e.target.getAttribute('data-da') : null;

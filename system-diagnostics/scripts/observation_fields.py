@@ -10,7 +10,13 @@ from typing import Any
 
 MAX_ELEMENTS = 20
 MAX_RELATED = 30
+MAX_IMPORT_ITEMS = 200
 OBS_ID_RE = re.compile(r"^OBS-\d+$")
+TRIAGE_FIELDS = ("root_cause", "linked_plan", "resolution", "linked_commit", "proposed_guard")
+MUTABLE_IMPORT_FIELDS = (
+    "kind", "message", "page_path", "selector", "rect", "attrs", "elements",
+    "related_ids", "recording_id", "window", "timeline", "status", "missed_by",
+) + TRIAGE_FIELDS
 
 
 def _normalize_one_element(item: Any) -> dict[str, Any]:
@@ -148,3 +154,80 @@ def apply_patch_fields(
         if not isinstance(clean["timeline"], list):
             raise ValueError("timeline must be an array")
         entry["timeline"] = list(clean["timeline"])[-max_timeline:]
+
+
+def validate_import_payload(payload: Any) -> list[dict[str, Any]]:
+    """Validate an observation import bundle and return its object items."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("observations"), list):
+        raise ValueError("import payload must be an object with an 'observations' array")
+    items = payload["observations"]
+    if len(items) > MAX_IMPORT_ITEMS:
+        raise ValueError(f"import exceeds {MAX_IMPORT_ITEMS} observations")
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"observation at index {idx} must be an object")
+    return items
+
+
+def apply_import_metadata(
+    entry: dict[str, Any], raw: dict[str, Any], valid_statuses: tuple[str, ...], parse_missed: Any
+) -> None:
+    """Copy validated optional lifecycle and triage metadata onto an import candidate."""
+    if "status" in raw and raw["status"] is not None:
+        if raw["status"] not in valid_statuses:
+            raise ValueError(f"invalid status {raw['status']!r}")
+        entry["status"] = raw["status"]
+    for key in ("first_seen", "last_seen"):
+        if isinstance(raw.get(key), str) and raw[key].strip():
+            entry[key] = raw[key].strip()
+    if "occurrence_count" in raw and raw["occurrence_count"] is not None:
+        if isinstance(raw["occurrence_count"], bool):
+            raise ValueError("occurrence_count must be an integer")
+        try:
+            entry["occurrence_count"] = max(1, int(raw["occurrence_count"]))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("occurrence_count must be an integer") from exc
+    for field in TRIAGE_FIELDS + ("source_url",):
+        if isinstance(raw.get(field), str) and raw[field]:
+            entry[field] = raw[field]
+    if "missed_by" in raw and raw["missed_by"] is not None:
+        entry["missed_by"] = parse_missed(raw["missed_by"])
+
+
+def merge_imported_entry(existing: dict[str, Any], candidate: dict[str, Any], now: str) -> bool:
+    """Update *existing* in place from *candidate*; return False if nothing changed."""
+    if all(existing.get(k) == candidate.get(k) for k in MUTABLE_IMPORT_FIELDS):
+        return False
+    old_status = str(existing.get("status") or "open")
+    for field in MUTABLE_IMPORT_FIELDS:
+        existing[field] = candidate[field]
+    existing["fingerprint"] = candidate["fingerprint"]
+    existing["last_seen"] = now
+    existing["occurrence_count"] = max(
+        int(existing.get("occurrence_count") or 1), int(candidate.get("occurrence_count") or 1)
+    )
+    existing.setdefault("history", []).append({"ts": now, "from": old_status, "to": existing["status"], "note": "imported"})
+    return True
+
+
+def apply_import_candidates(
+    entries: list[dict[str, Any]], candidates: list[dict[str, Any]], next_id: Any, now: str
+) -> tuple[int, int, int]:
+    """Match and merge or append import candidates; return (imported, updated, skipped)."""
+    imported = updated = skipped = 0
+    claimed: set[int] = set()
+    for cand in candidates:
+        idx = next((i for i, e in enumerate(entries) if e.get("fingerprint") == cand["fingerprint"] and i not in claimed), None)
+        if idx is None and OBS_ID_RE.fullmatch(cand["id"]):
+            idx = next((i for i, e in enumerate(entries) if e.get("id", "").upper() == cand["id"] and i not in claimed), None)
+        if idx is not None:
+            claimed.add(idx)
+            if merge_imported_entry(entries[idx], cand, now):
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            cand["id"] = next_id(entries)
+            entries.append(cand)
+            imported += 1
+    return imported, updated, skipped

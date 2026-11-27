@@ -26,6 +26,8 @@ ROUTES = (
     "GET /health",
     "POST /observation",
     "GET /observations",
+    "GET /observations/export",
+    "POST /observations/import",
     "GET /observations/{id_or_fingerprint}",
     "PATCH /observations/{id_or_fingerprint}",
     "DELETE /observations/{id_or_fingerprint}",
@@ -35,7 +37,7 @@ MAX_LIMIT = 200
 DEFAULT_LIMIT = 20
 LIST_FIELDS = (
     "id", "fingerprint", "status", "kind", "page_path", "selector", "elements",
-    "related_ids", "message", "occurrence_count", "last_seen",
+    "related_ids", "message", "occurrence_count", "last_seen", "recording_id", "window",
 )
 
 
@@ -48,6 +50,13 @@ def _list_row(e: dict[str, Any]) -> dict[str, Any]:
         )
     if row.get("related_ids") is None:
         row["related_ids"] = []
+    raw_tl = e.get("timeline")
+    tl: list[Any] = raw_tl if isinstance(raw_tl, list) else []
+    row["trace_count"] = len(tl)
+    row["timeline"] = [
+        {"t": ev.get("t"), "type": ev.get("type"), "target": ev.get("target")} if isinstance(ev, dict) else ev
+        for ev in tl[-5:]
+    ]
     return row
 
 Response = tuple[int, dict[str, str], bytes]
@@ -131,6 +140,44 @@ def _delete(id_or_fp: str, workspace: Path) -> Response:
     return _json(200, {"deleted": True, "id": removed["id"]})
 
 
+def _export(query: dict[str, list[str]], workspace: Path) -> Response:
+    status = query.get("status", ["all"])[0]
+    valid = ("active", "all") + store.ACTIVE_STATUSES + store.CLOSED_STATUSES
+    kind = query.get("kind", [""])[0] or None
+    if status not in valid or (kind and kind not in store.KINDS):
+        return _error(400, "invalid_record", "invalid status or kind filter")
+    bundle = store.export_observations(workspace, status=status, kind=kind)
+    extra = {"Content-Disposition": 'attachment; filename="observations-export.json"', "Cache-Control": "no-store"}
+    return _json(200, bundle, extra)
+
+
+def _import(body: bytes, headers: dict[str, str], workspace: Path) -> Response:
+    if not headers.get("content-type", "").lower().startswith("application/json"):
+        return _error(415, "unsupported_media_type", "Content-Type must be application/json")
+    if len(body) > store.MAX_RECORD_BYTES:
+        return _error(413, "payload_too_large", f"body exceeds {store.MAX_RECORD_BYTES} bytes")
+    try:
+        raw = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return _error(400, "invalid_json", "body is not valid JSON")
+    try:
+        res = store.import_observations(workspace, raw)
+    except ValueError as exc:
+        return _error(400, "invalid_record", str(exc))
+    return _json(200, res)
+
+
+def _dispatch_one(method: str, key: str, body: bytes, hdrs: dict[str, str], ws: Path) -> Response:
+    if method == "GET":
+        entry = store.get_observation(ws, key)
+        return _json(200, entry) if entry else _error(404, "not_found", "no such observation")
+    if method == "PATCH":
+        return _patch(key, body, hdrs, ws)
+    if method == "DELETE":
+        return _delete(key, ws)
+    return _error(404, "not_found", "unknown route")
+
+
 def handle(
     method: str,
     rel_path: str,
@@ -156,15 +203,12 @@ def handle(
         return _post(body, hdrs, qs, ws)
     if method == "GET" and path == "/observations":
         return _list(qs, ws)
+    if method == "GET" and path == "/observations/export":
+        return _export(qs, ws)
+    if method == "POST" and path == "/observations/import":
+        return _import(body, hdrs, ws)
     if path.startswith("/observations/"):
-        key = path[len("/observations/"):]
-        if method == "GET":
-            entry = store.get_observation(ws, key)
-            return _json(200, entry) if entry else _error(404, "not_found", "no such observation")
-        if method == "PATCH":
-            return _patch(key, body, hdrs, ws)
-        if method == "DELETE":
-            return _delete(key, ws)
+        return _dispatch_one(method, path[len("/observations/"):], body, hdrs, ws)
     if method == "GET" and path == "/hud.js":
         js = observation_assets.hud_bundle().encode("utf-8")
         return 200, {"Content-Type": "application/javascript", "Cache-Control": "no-store",
