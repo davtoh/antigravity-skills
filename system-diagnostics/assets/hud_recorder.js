@@ -1,18 +1,18 @@
-/* Frontier debug HUD, part 3 of 3: Record / Stop, request tagging, timeline, install. */
+/* Frontier debug HUD, part 3 of 4: Record / Stop, request tagging, timeline. */
 var rec = { on: false, origFetch: null, origOpen: null, origSend: null, origErr: null, origPush: null, origReplace: null };
 
 function clickLog(e) {
   var el = (e.composedPath && e.composedPath()[0]) || e.target;
   if (el && el.nodeType === 1 && !H.isHud(el) && !H.isPicking() && !H.isSecret(el)) H.log('click', H.selectorFor(el));
 }
-function navLog() { H.log('nav', win.location.pathname); }
+function navLog() { H.log('nav', H.pagePath ? H.pagePath() : win.location.pathname); }
 function errLog(e) { H.log('error', (e && e.message) || 'error'); }
 function wrapFetch() {
   rec.origFetch = win.fetch;
   H.rawFetch = rec.origFetch;
   win.fetch = function (input, init) {
     var url = (input && input.url) || input, started = Date.now(), headers, opts = init || {};
-    if (String(url).indexOf(H.endpoint) !== 0 && H.recordingId && H.sameOrigin(url)) {
+    if (String(url).indexOf(H.endpoint) !== 0 && String(url).indexOf(H.baseEndpoint + '/observations') !== 0 && H.recordingId && H.sameOrigin(url)) {
       headers = new win.Headers(opts.headers || (input && input.headers) || undefined);
       headers.set('X-Debug-Recording-Id', H.recordingId);
       opts = Object.assign({}, opts, { headers: headers });
@@ -56,6 +56,7 @@ H.record = function () {
   H.roots.forEach(function (r) { r.addEventListener('click', clickLog, true); });
   win.addEventListener('error', errLog); win.addEventListener('popstate', navLog); win.addEventListener('hashchange', navLog);
   wrapFetch(); wrapXhr(); wrapConsole(); wrapHistory();
+  if (H.updateUi) H.updateUi('Recording ' + H.recordingId + '...');
   return H.recordingId;
 };
 H.stop = function () {
@@ -70,9 +71,7 @@ H.stop = function () {
   if (win.XMLHttpRequest) { win.XMLHttpRequest.prototype.open = rec.origOpen; win.XMLHttpRequest.prototype.send = rec.origSend; }
   var id = H.recordingId;
   H.recordingId = null;
+  if (H.updateUi) H.updateUi('Stopped ' + id + ' (' + H.finished.timeline.length + ' events)');
   return id;
 };
 H.isRecording = function () { return rec.on; };
-
-H.buildPanel();
-win.__FRONTIER_HUD__ = H;

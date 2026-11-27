@@ -7,7 +7,7 @@ touches nothing (no listeners, DOM or timers). Python standard library only.
 
 from pathlib import Path
 
-HUD_FILES = ("hud_core.js", "hud_picker.js", "hud_recorder.js")
+HUD_FILES = ("hud_core.js", "hud_picker.js", "hud_recorder.js", "hud_drawer.js")
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 _HEAD = (

@@ -45,7 +45,7 @@ def register_observation_routes(app, workspace_root=None):
     from fastapi import Request
     from fastapi.responses import Response
 
-    @app.api_route(DIAGNOSTICS_BASE_PATH + "/{rest:path}", methods=["GET", "POST"], include_in_schema=False)
+    @app.api_route(DIAGNOSTICS_BASE_PATH + "/{rest:path}", methods=["GET", "POST", "PATCH", "DELETE"], include_in_schema=False)
     async def _frontier_diagnostics(rest: str, request: Request):
         host = request.client.host if request.client else ""
         body = b""
@@ -80,7 +80,7 @@ def register_observation_routes(app, workspace_root=None):
         return flask.Response(payload, status=status, headers=headers)
 
     app.add_url_rule(DIAGNOSTICS_BASE_PATH + "/<path:rest>", "frontier_diagnostics",
-                     _frontier_diagnostics, methods=["GET", "POST"])
+                     _frontier_diagnostics, methods=["GET", "POST", "PATCH", "DELETE"])
     return True
 ''',
     "generic": '''

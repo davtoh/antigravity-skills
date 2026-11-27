@@ -255,3 +255,73 @@ def list_observations(workspace: Path, status: str = "active", limit: int = 20, 
         entries = [e for e in entries if e["kind"] == kind]
     entries = sorted(entries, key=lambda e: e.get("last_seen", ""), reverse=True)
     return entries[:limit] if limit and limit > 0 else entries
+
+
+def _apply_patch_fields(entry: dict[str, Any], clean: dict[str, Any]) -> None:
+    """Apply validated editable fields onto an existing catalog observation entry."""
+    if "kind" in clean:
+        if clean["kind"] not in KINDS:
+            raise ValueError(f"invalid kind {clean['kind']!r}; expected one of {', '.join(KINDS)}")
+        entry["kind"] = clean["kind"]
+    if "message" in clean:
+        entry["message"] = str(clean["message"] or "")[:MAX_MESSAGE]
+    for str_key in ("page_path", "selector"):
+        if str_key in clean:
+            entry[str_key] = str(clean[str_key] or "")
+    if "rect" in clean:
+        if clean["rect"] is not None and not isinstance(clean["rect"], dict):
+            raise ValueError("rect must be an object or null")
+        entry["rect"] = clean["rect"]
+    if "attrs" in clean:
+        if not isinstance(clean["attrs"], dict):
+            raise ValueError("attrs must be an object")
+        entry["attrs"] = clean["attrs"]
+    if "recording_id" in clean:
+        entry["recording_id"] = str(clean["recording_id"]) if clean["recording_id"] else None
+    if "window" in clean:
+        if clean["window"] is not None and not isinstance(clean["window"], dict):
+            raise ValueError("window must be an object or null")
+        entry["window"] = clean["window"]
+    if "timeline" in clean:
+        if not isinstance(clean["timeline"], list):
+            raise ValueError("timeline must be an array")
+        entry["timeline"] = list(clean["timeline"])[-MAX_TIMELINE:]
+
+
+def patch_observation(workspace: Path, id_or_fp: str, updates: dict[str, Any]) -> dict[str, Any]:
+    """Edit fields, attach element/trace data, or update status on an existing observation."""
+    if not isinstance(updates, dict):
+        raise ValueError("patch payload must be a JSON object")
+    if len(json.dumps(updates, ensure_ascii=False).encode("utf-8")) > MAX_RECORD_BYTES:
+        raise ValueError(f"patch exceeds {MAX_RECORD_BYTES} bytes")
+    clean = _strip_forbidden(updates)
+    catalog = load_catalog(workspace)
+    entry = _find(catalog, id_or_fp)
+    if entry is None:
+        raise KeyError(id_or_fp)
+    old_status = entry["status"]
+    if "status" in clean and clean["status"] != old_status:
+        new_status = clean["status"]
+        if new_status not in TRANSITIONS:
+            raise ValueError(f"unknown status {new_status!r}")
+        if new_status not in TRANSITIONS[old_status]:
+            raise ValueError(f"illegal transition {old_status} -> {new_status}")
+        entry["status"] = new_status
+    _apply_patch_fields(entry, clean)
+    entry["fingerprint"] = make_fingerprint(entry["kind"], entry.get("page_path", ""), _target(entry), entry["message"])
+    now = _now()
+    entry["last_seen"] = now
+    entry.setdefault("history", []).append({"ts": now, "from": old_status, "to": entry["status"], "note": "edited"})
+    save_catalog(workspace, catalog)
+    return entry
+
+
+def delete_observation(workspace: Path, id_or_fp: str) -> dict[str, Any]:
+    """Remove an observation from the catalog by id or fingerprint."""
+    catalog = load_catalog(workspace)
+    entry = _find(catalog, id_or_fp)
+    if entry is None:
+        raise KeyError(id_or_fp)
+    catalog["observations"] = [e for e in catalog["observations"] if e is not entry]
+    save_catalog(workspace, catalog)
+    return entry

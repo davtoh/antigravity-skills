@@ -20,6 +20,8 @@ Run commands as `python "<skill_dir>/scripts/diagnose.py" ...` where `<skill_dir
 | `POST /observation` | `201` new, `200` deduplicated, `200` with `"dry_run":true` when `?dry_run=1` (nothing stored) | `400 invalid_json\|invalid_record`, `403`, `413`, `415` |
 | `GET /observations` | `200` list (`status` default `active`, `kind`, `limit` default 20, max 200) | `400 invalid_record`, `403` |
 | `GET /observations/{id_or_fingerprint}` | `200` full entry | `404`, `403` |
+| `PATCH /observations/{id_or_fingerprint}` | `200` updated full entry (edit message/kind, attach pick/trace, update status) | `400 invalid_json\|invalid_record`, `403`, `404`, `413`, `415` |
+| `DELETE /observations/{id_or_fingerprint}` | `200 {"deleted":true,"id":"OBS-001"}` | `404`, `403` |
 | `GET /hud.js` | `200 application/javascript`, `Cache-Control: no-store` | `403` |
 
 The HUD sends `X-Debug-Recording-Id: rec-<6hex>` on every same-origin fetch/XHR while recording. An app that wants exact correlation stamps that value into its exception traces.

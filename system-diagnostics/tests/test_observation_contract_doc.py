@@ -21,7 +21,7 @@ SCHEMA = json.loads((REFS / "observation_contract.schema.json").read_text(encodi
 
 class TestContractDoc(unittest.TestCase):
     def test_doc_route_table_matches_implementation(self):
-        documented = re.findall(r"^\| `((?:GET|POST) [^`]+)`", DOC, re.M)
+        documented = re.findall(r"^\| `((?:GET|POST|PATCH|DELETE) [^`]+)`", DOC, re.M)
         self.assertEqual(tuple(documented), R.ROUTES)
 
     def test_doc_lists_every_error_code_and_header(self):

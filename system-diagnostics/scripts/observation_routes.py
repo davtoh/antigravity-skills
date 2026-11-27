@@ -27,6 +27,8 @@ ROUTES = (
     "POST /observation",
     "GET /observations",
     "GET /observations/{id_or_fingerprint}",
+    "PATCH /observations/{id_or_fingerprint}",
+    "DELETE /observations/{id_or_fingerprint}",
     "GET /hud.js",
 )
 MAX_LIMIT = 200
@@ -88,6 +90,32 @@ def _list(query: dict[str, list[str]], workspace: Path) -> Response:
     return _json(200, {"schema": 1, "count": len(shown), "truncated": len(entries) > limit, "observations": shown})
 
 
+def _patch(id_or_fp: str, body: bytes, headers: dict[str, str], workspace: Path) -> Response:
+    if not headers.get("content-type", "").lower().startswith("application/json"):
+        return _error(415, "unsupported_media_type", "Content-Type must be application/json")
+    if len(body) > store.MAX_RECORD_BYTES:
+        return _error(413, "payload_too_large", f"body exceeds {store.MAX_RECORD_BYTES} bytes")
+    try:
+        raw = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return _error(400, "invalid_json", "body is not valid JSON")
+    try:
+        entry = store.patch_observation(workspace, id_or_fp, raw)
+    except KeyError:
+        return _error(404, "not_found", "no such observation")
+    except ValueError as exc:
+        return _error(400, "invalid_record", str(exc))
+    return _json(200, entry)
+
+
+def _delete(id_or_fp: str, workspace: Path) -> Response:
+    try:
+        removed = store.delete_observation(workspace, id_or_fp)
+    except KeyError:
+        return _error(404, "not_found", "no such observation")
+    return _json(200, {"deleted": True, "id": removed["id"]})
+
+
 def handle(
     method: str,
     rel_path: str,
@@ -113,9 +141,15 @@ def handle(
         return _post(body, hdrs, qs, ws)
     if method == "GET" and path == "/observations":
         return _list(qs, ws)
-    if method == "GET" and path.startswith("/observations/"):
-        entry = store.get_observation(ws, path[len("/observations/"):])
-        return _json(200, entry) if entry else _error(404, "not_found", "no such observation")
+    if path.startswith("/observations/"):
+        key = path[len("/observations/"):]
+        if method == "GET":
+            entry = store.get_observation(ws, key)
+            return _json(200, entry) if entry else _error(404, "not_found", "no such observation")
+        if method == "PATCH":
+            return _patch(key, body, hdrs, ws)
+        if method == "DELETE":
+            return _delete(key, ws)
     if method == "GET" and path == "/hud.js":
         js = observation_assets.hud_bundle().encode("utf-8")
         return 200, {"Content-Type": "application/javascript", "Cache-Control": "no-store",

@@ -110,6 +110,47 @@ class TestWireContract(unittest.TestCase):
         self.assertEqual(self.call("GET", f"/observations/{fp}")[0], 200)
         self.assertEqual(self.call("GET", "/observations/OBS-999")[0], 404)
 
+    def test_patch_and_delete_routes_and_gates(self):
+        created = json.loads(self.post({"kind": "note", "page_path": "/#live", "message": "initial note"})[2])
+        obs_id = created["id"]
+
+        # Edit message, kind, attach pick + trace, and strip forbidden keys
+        patch_body = json.dumps({
+            "kind": "element",
+            "message": "updated message",
+            "selector": "#studio-drawing-canvas",
+            "rect": {"x": 10, "y": 20, "w": 300, "h": 200},
+            "attrs": {"tag": "canvas", "password": "secret"},
+            "recording_id": "rec-abc123",
+            "window": {"started_at": "2026-11-26T00:00:00Z"},
+            "timeline": [{"t": 10, "type": "click", "target": "#btn"}],
+        }).encode("utf-8")
+        st, _, body = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=patch_body)
+        self.assertEqual(st, 200)
+        entry = json.loads(body)
+        self.assertEqual(entry["kind"], "element")
+        self.assertEqual(entry["message"], "updated message")
+        self.assertEqual(entry["selector"], "#studio-drawing-canvas")
+        self.assertEqual(entry["recording_id"], "rec-abc123")
+        self.assertNotIn("password", entry["attrs"])
+        self.assertEqual(entry["history"][-1]["note"], "edited")
+
+        # Patch validation & gating
+        self.assertEqual(self.call("PATCH", f"/observations/{obs_id}", "", {"Content-Type": "text/plain"}, body=b"{}")[0], 415)
+        self.assertEqual(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b"{bad")[0], 400)
+        self.assertEqual(self.call("PATCH", "/observations/OBS-999", "", JSON_H, body=b"{}")[0], 404)
+        self.assertEqual(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, host="8.8.8.8", body=b"{}")[0], 403)
+        self.assertEqual(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, env={}, body=b"{}")[0], 404)
+
+        # Delete
+        self.assertEqual(self.call("DELETE", f"/observations/{obs_id}", host="8.8.8.8")[0], 403)
+        self.assertEqual(self.call("DELETE", f"/observations/{obs_id}", env={})[0], 404)
+        ds, _, dbody = self.call("DELETE", f"/observations/{obs_id}")
+        self.assertEqual(ds, 200)
+        self.assertTrue(json.loads(dbody)["deleted"])
+        self.assertEqual(self.call("DELETE", f"/observations/{obs_id}")[0], 404)
+        self.assertEqual(self.call("GET", f"/observations/{obs_id}")[0], 404)
+
     def test_hud_js(self):
         status, headers, body = self.call("GET", "/hud.js")
         self.assertEqual(status, 200)
@@ -163,7 +204,7 @@ class TestGeneratedBridges(unittest.TestCase):
         with mock.patch.dict("os.environ", ENV_ON), mock.patch.dict(sys.modules, {"fastapi": fake, "fastapi.responses": resp}):
             self.assertTrue(mod.register_observation_routes(App(), self.root))
             fn, kw = routes["/api/diagnostics/{rest:path}"]
-            self.assertEqual(kw["methods"], ["GET", "POST"])
+            self.assertEqual(kw["methods"], ["GET", "POST", "PATCH", "DELETE"])
             status, headers, _ = asyncio.run(fn("health", req))
         self.assertEqual((status, headers["X-Diagnostics-Contract"]), (200, "1"))
 
@@ -208,7 +249,7 @@ class TestGeneratedBridges(unittest.TestCase):
             self.assertTrue(mod.register_observation_routes(App(), self.root))
             rule, view, methods = rules[0]
             status, headers, _ = view("health")
-        self.assertEqual((rule, methods, status), ("/api/diagnostics/<path:rest>", ["GET", "POST"], 200))
+        self.assertEqual((rule, methods, status), ("/api/diagnostics/<path:rest>", ["GET", "POST", "PATCH", "DELETE"], 200))
 
 
 if __name__ == "__main__":

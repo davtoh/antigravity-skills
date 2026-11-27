@@ -202,10 +202,67 @@ class HudLogicTests(unittest.TestCase):
         self.assertIsNone(o["second"])    # and only that one
         self.assertEqual(o["postUrl"], "/custom/obs")
 
+    def test_log_autostops_recording_allows_pick_or_trace_only_and_clears_pick(self):
+        driver = """
+const vm = require('vm'), fs = require('fs');
+const bundle = fs.readFileSync(process.argv[2], 'utf8');
+function stubEl(tag) {
+  return { tagName: tag.toUpperCase(), children: [], style: {}, nodeType: 1, value: '', parentNode: null,
+    getAttribute: () => null, setAttribute() {}, addEventListener() {}, removeEventListener() {},
+    appendChild(c) { this.children.push(c); c.parentNode = this; return c; }, querySelector() { return null; },
+    querySelectorAll() { return []; }, getRootNode() { return fakeDoc; }, getBoundingClientRect: () => ({x: 0, y: 0, width: 10, height: 10}) };
+}
+const fakeDoc = { documentElement: stubEl('html'), body: stubEl('body'), createElement: t => stubEl(t),
+  querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() {}, removeEventListener() {}, defaultView: null };
+const calls = [];
+class FakeHeaders { constructor(i) { this.m = Object.assign({}, i || {}); } set(k, v) { this.m[k] = v; } }
+const win = { __FRONTIER_DEBUG__: true, document: fakeDoc,
+  location: { pathname: '/', hash: '#tab-studio', href: 'http://x.test/#tab-studio', origin: 'http://x.test' },
+  console: { error() {} }, history: { pushState() {}, replaceState() {} }, Headers: FakeHeaders, URL, CSS: { escape: s => s },
+  addEventListener() {}, removeEventListener() {}, crypto: require('crypto').webcrypto, requestAnimationFrame: () => 1,
+  fetch: (u, o) => { calls.push([String(u), o]); return Promise.resolve({ status: 201, json: () => Promise.resolve({ id: 'OBS-010' }) }); } };
+vm.runInNewContext(bundle, { window: win });
+const H = win.__FRONTIER_HUD__;
+(async () => {
+  const emptyRes = await H.logObservation('note', '   ');
+  H.record();
+  H.log('click', '#btn-a');
+  const traceOnly = await H.logObservation('note', '');
+  const recordingAfterLog = H.isRecording();
+  const tracePost = JSON.parse(calls[calls.length - 1][1].body);
+  H.lastPick = { selector: '#studio-drawing-canvas', rect: {x: 1, y: 2, w: 3, h: 4}, attrs: { tag: 'canvas' } };
+  await H.logObservation('element', '');
+  const pickPost = JSON.parse(calls[calls.length - 1][1].body);
+  await H.patchObservation('OBS-010', { message: 'edited' });
+  await H.deleteObservation('OBS-010');
+  const methods = calls.map(c => c[0] + ':' + ((c[1] && c[1].method) || 'GET'));
+  console.log(JSON.stringify({ emptyErr: emptyRes.error, recordingAfterLog, tracePage: tracePost.page_path,
+    traceMsg: tracePost.message, traceRid: tracePost.recording_id, pickMsg: pickPost.message,
+    lastPickCleared: H.lastPick === null, methods }));
+})();
+"""
+        (self.tmp / "extra_driver.js").write_text(driver, encoding="utf-8")
+        p = subprocess.run(
+            ["node", str(self.tmp / "extra_driver.js"), str(self.tmp / "bundle.js")],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        )
+        self.assertEqual(p.returncode, 0, p.stderr)
+        o = json.loads(p.stdout)
+        self.assertEqual(o["emptyErr"], "empty")
+        self.assertFalse(o["recordingAfterLog"])
+        self.assertEqual(o["tracePage"], "/#tab-studio")
+        self.assertTrue(o["traceMsg"].startswith("[trace] rec-"))
+        self.assertRegex(o["traceRid"], r"^rec-[0-9a-f]{6}$")
+        self.assertEqual(o["pickMsg"], "[element] #studio-drawing-canvas")
+        self.assertTrue(o["lastPickCleared"])
+        self.assertIn("/api/diagnostics/observations/OBS-010:PATCH", o["methods"])
+        self.assertIn("/api/diagnostics/observations/OBS-010:DELETE", o["methods"])
+
     def test_bundle_order_and_size(self):
         text = observation_assets.hud_bundle()
-        self.assertLess(text.index("part 1 of 3"), text.index("part 2 of 3"))
-        self.assertLess(text.index("part 2 of 3"), text.index("part 3 of 3"))
+        self.assertLess(text.index("part 1 of 4"), text.index("part 2 of 4"))
+        self.assertLess(text.index("part 2 of 4"), text.index("part 3 of 4"))
+        self.assertLess(text.index("part 3 of 4"), text.index("part 4 of 4"))
         for name in observation_assets.HUD_FILES:
             lines = (observation_assets.ASSETS_DIR / name).read_text(encoding="utf-8").count("\n")
             self.assertLessEqual(lines, 300, name)
