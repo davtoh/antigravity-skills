@@ -107,10 +107,21 @@ def format_workspace_digest(d: dict[str, Any]) -> str:
     return "\n".join(lines[:78])
 
 
+def _is_already_codified(raw: str, doc_lines: list[set[str]]) -> bool:
+    """Return True if a candidate's identifiers or signal words already appear in a doc line."""
+    import re
+    ids = {t.lower() for t in re.findall(r"`([A-Za-z_][A-Za-z0-9_]{3,})(?:\(\))?`", raw)}
+    ids |= {t.lower() for t in re.findall(r"\b([A-Za-z][a-z]+[A-Z][A-Za-z0-9]*|[a-z]+_[a-z0-9_]{3,})\b", raw)}
+    stop = {"with", "from", "that", "this", "when", "into", "only", "must", "never", "always", "before", "after", "instead", "rather", "than", "also", "keep", "stay", "under", "files"}
+    sig = {t for t in re.findall(r"[a-z_][a-z0-9_]{3,}", raw.lower()) if t not in stop}
+    return (len(ids) >= 2 and any(len(ids & lt) >= 2 for lt in doc_lines)) or (
+        len(sig) >= 4 and any(len(sig & lt) * 5 >= len(sig) * 3 for lt in doc_lines)
+    )
+
+
 def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
     """Deduplicate near-identical /learn candidates and filter out items already codified on a line of AGENTS.md/SKILL.md."""
     import re
-    stop = {"with", "from", "that", "this", "when", "into", "only", "must", "never", "always", "before", "after", "instead", "rather", "than", "also", "keep", "stay", "under", "files"}
     doc_lines = [
         set(re.findall(r"[a-z_][a-z0-9_]{3,}", ln.lower()))
         for p in doc_paths if p.is_file()
@@ -123,12 +134,8 @@ def _triage_candidates(items: list[str], doc_paths: list[Path]) -> list[str]:
         if not norm or norm in seen_norm:
             continue
         seen_norm.add(norm)
-        ids = {t.lower() for t in re.findall(r"`([A-Za-z_][A-Za-z0-9_]{3,})(?:\(\))?`", raw)}
-        ids |= {t.lower() for t in re.findall(r"\b([A-Za-z][a-z]+[A-Z][A-Za-z0-9]*|[a-z]+_[a-z0-9_]{3,})\b", raw)}
-        sig = {t for t in re.findall(r"[a-z_][a-z0-9_]{3,}", raw.lower()) if t not in stop}
-        if (len(ids) >= 2 and any(len(ids & lt) >= 2 for lt in doc_lines)) or (len(sig) >= 4 and any(len(sig & lt) * 5 >= len(sig) * 3 for lt in doc_lines)):
-            continue
-        kept.append(raw)
+        if not _is_already_codified(raw, doc_lines):
+            kept.append(raw)
     return kept
 
 

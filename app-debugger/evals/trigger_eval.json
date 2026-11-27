@@ -1,10 +1,20 @@
 [
   {"query": "the app is running with FRONTIER_DEBUG_OBSERVATIONS=1 and I logged three HUD findings; reproduce and fix the bug they describe", "should_trigger": true},
   {"query": "my camera stream fails with a DirectShow hardware lock on Windows, diagnose and fix the leak", "should_trigger": true},
-  {"query": "the Docker container is serving stale code even though I edited app.py on the host, check container sync drift", "should_trigger": true},
+  {"query": "the Docker container is serving stale code even though I edited app.py on the host, check container sync drift and fix it", "should_trigger": true},
   {"query": "TypeError: Cannot read properties of undefined (reading 'map') at Gallery.jsx:42 when the list is empty, find the root cause and fix it", "should_trigger": true},
+  {"query": "the video player overflows its container horizontally on resize and clicking the model filter throws a ReferenceError, debug both", "should_trigger": true},
+  {"query": "I'm running uvicorn --reload and users can't submit payments; debug this without triggering constant server restarts", "should_trigger": true},
+  {"query": "our carousel isn't snapping to index 0 after scrolling and previous edit_file calls failed due to CRLF line endings on Windows", "should_trigger": true},
+  {"query": "unlock quarantined defect DEFECT-001 in .diagnostics/defect_catalog.json, verify the Red test fails, and apply the surgical fix", "should_trigger": true},
+  {"query": "we were escalated from /frontier-architect Phase 6.5 after 2 failed attempts on a time.monotonic() vs time.time() TTL bug", "should_trigger": true},
   {"query": "design a 3-tier architecture for offline sync comparing CRDTs vs op-logs", "should_trigger": false},
   {"query": "split this 1,800-line worker.py monolith into smaller modules without changing behavior", "should_trigger": false},
   {"query": "write a SQL query for top 10 customers by revenue", "should_trigger": false},
-  {"query": "create a new skill for reviewing Terraform plans", "should_trigger": false}
+  {"query": "create a new skill for reviewing Terraform plans", "should_trigger": false},
+  {"query": "run a retrospective on plan offline_sync and propose skill improvements from the transcripts", "should_trigger": false},
+  {"query": "list all HTML element IDs and backend routes in src/ without modifying any code", "should_trigger": false},
+  {"query": "review my PR diff for the invoice export feature and tell me if it's safe to merge", "should_trigger": false},
+  {"query": "write a new greenfield onboarding wizard with 5 steps and plan it out first", "should_trigger": false},
+  {"query": "explain what a race condition is in Python asyncio with a short example", "should_trigger": false}
 ]

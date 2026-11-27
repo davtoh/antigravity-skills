@@ -239,6 +239,18 @@ class TestAppDebuggerEvals(unittest.TestCase):
             self.assertIn("expected_output", e)
             self.assertGreaterEqual(len(e.get("expectations", [])), 3)
 
+    def test_trigger_evals_json_structure(self):
+        """Verify trigger_eval.json exists and has balanced positive/negative queries."""
+        tf = SKILL_DIR / "evals" / "trigger_eval.json"
+        self.assertTrue(tf.is_file(), f"Missing trigger_eval.json at {tf}")
+        items = json.loads(tf.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(items), 16)
+        pos = [x for x in items if x.get("should_trigger") is True]
+        neg = [x for x in items if x.get("should_trigger") is False]
+        self.assertGreaterEqual(len(pos), 8)
+        self.assertGreaterEqual(len(neg), 8)
+        self.assertTrue(all(isinstance(x.get("query"), str) and x["query"].strip() for x in items))
+
     def test_skill_satisfies_all_eval_expectations(self):
         """Assert current SKILL.md satisfies 100% of expectations across all scenarios."""
         failures = []

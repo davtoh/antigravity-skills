@@ -48,7 +48,7 @@ For the HUD observation workflow (`observations`, `brief`, audit hand-off, priva
 ## Pre-Run Verification & Scenario Combinations Matrix
 
 ```bash
-# Run the comprehensive diagnostic test suite (233+ unit & integration tests)
+# Run the comprehensive diagnostic test suite (460+ unit & integration tests)
 python -m unittest discover -s skills/system-diagnostics/tests -p "test_*.py"
 ```
 

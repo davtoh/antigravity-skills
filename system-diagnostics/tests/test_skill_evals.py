@@ -95,6 +95,10 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("changelog pr-description", "pr summary"), (r"pr-description", r"changelog"), "changelog pr-description command"),
     (("--base, --plan, and --recent",), (r"--base\s+--plan\s+--recent", r"pr-description"), "changelog pr-description flags"),
     (("structured markdown pr summary",), (r"pr-description", r"PR summary"), "changelog pr-description Markdown summary"),
+    (("observations list", "observations pull"), (r"observations list", r"observations pull"), "observations list & pull"),
+    (("brief --run-probes",), (r"brief --run-probes",), "brief --run-probes"),
+    (("observations triage --missed-by", "observations resolve --commit"), (r"observations triage", r"--missed-by", r"observations resolve", r"--commit"), "observations triage & resolve"),
+    (("--timeout guard",), (r"--timeout", r"180s", r"124"), "tests --timeout 180s / 124"),
 ]
 
 
@@ -122,7 +126,10 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
         cls.assertTrue(SKILL_MD.exists(), f"Missing SKILL.md at {SKILL_MD}")
         with open(EVALS_FILE, "r", encoding="utf-8") as f:
             cls.evals = json.load(f).get("evals", [])
-        cls.skill_text = SKILL_MD.read_text(encoding="utf-8")
+        cls.router_text = SKILL_MD.read_text(encoding="utf-8")
+        obs_md = SKILL_DIR / "references" / "observations.md"
+        extra = [obs_md.read_text(encoding="utf-8")] if obs_md.is_file() else []
+        cls.skill_text = "\n".join([cls.router_text, *extra])
 
     def test_evals_json_structure(self):
         """Verify evals.json contains valid evaluation scenarios."""
@@ -132,6 +139,18 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
             self.assertIn("prompt", e)
             self.assertIn("expected_output", e)
             self.assertGreaterEqual(len(e.get("expectations", [])), 3)
+
+    def test_trigger_evals_json_structure(self):
+        """Verify trigger_eval.json exists and has balanced positive/negative queries."""
+        tf = SKILL_DIR / "evals" / "trigger_eval.json"
+        self.assertTrue(tf.is_file(), f"Missing trigger_eval.json at {tf}")
+        items = json.loads(tf.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(items), 16)
+        pos = [x for x in items if x.get("should_trigger") is True]
+        neg = [x for x in items if x.get("should_trigger") is False]
+        self.assertGreaterEqual(len(pos), 8)
+        self.assertGreaterEqual(len(neg), 8)
+        self.assertTrue(all(isinstance(x.get("query"), str) and x["query"].strip() for x in items))
 
     def test_skill_satisfies_all_eval_expectations(self):
         """Assert current SKILL.md satisfies 100% of expectations across all scenarios."""
@@ -146,7 +165,7 @@ class TestSystemDiagnosticsEvals(unittest.TestCase):
 
     def test_line_count_modularity_budget(self):
         """Assert SKILL.md is under the 350-line target (500 hard ceiling)."""
-        lines = len(self.skill_text.splitlines())
+        lines = len(self.router_text.splitlines())
         self.assertLessEqual(lines, 350, f"SKILL.md exceeds 350-line soft ceiling: {lines} lines")
 
     def test_zero_unmapped_generic_fallback_expectations(self):
