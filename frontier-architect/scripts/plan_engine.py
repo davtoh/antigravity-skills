@@ -261,11 +261,12 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     rollup_child_retrospective(root, ps, target_idx)
 
     missing_prior_retro = None
-    if target_idx > 1:
-        retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
-        logged = {r.get("milestone_index") for r in retros if isinstance(r, dict)}
-        if (target_idx - 1) not in logged:
-            missing_prior_retro = target_idx - 1
+    retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
+    logged = {r.get("milestone_index") for r in retros if isinstance(r, dict)}
+    if target_idx > 1 and (target_idx - 1) not in logged:
+        missing_prior_retro = target_idx - 1
+    if ps.get("status") == "completed" and target_idx not in logged and not ps.get("child_plans"):
+        print(f"[plan_engine] Reminder: run `plan_engine.py retrospective {ps['slug']} --milestone {target_idx} --cid <cid> --tri ...` before final handoff.")
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
     parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))

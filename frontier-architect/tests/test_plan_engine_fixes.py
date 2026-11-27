@@ -121,6 +121,48 @@ class TestPlanEngineFixes(unittest.TestCase):
         a_args = parser.parse_args(["advance", "demo_plan", "--milestone", "2", "--note", "Milestone 2 summary"])
         self.assertEqual(a_args.note, "Milestone 2 summary")
 
+    def test_advance_single_milestone_reminds_when_retrospective_missing(self):
+        import io
+        from contextlib import redirect_stdout
+        import plan_engine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_p = root / ".TODO" / "single_m_plan.md"
+            plan_p.parent.mkdir(parents=True, exist_ok=True)
+            plan_p.write_text("# Single\n\n## Milestone 1: Do work\n- [ ] **a.py**: task\n", encoding="utf-8")
+            parser = plan_engine.build_parser()
+            self.assertEqual(plan_engine.cmd_init(root, parser.parse_args(["init", str(plan_p)])), 0)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = plan_engine.cmd_advance(root, parser.parse_args(["advance", "single_m_plan", "--milestone", "1"]))
+            self.assertEqual(rc, 0)
+            self.assertIn("Reminder: run `plan_engine.py retrospective single_m_plan --milestone 1", buf.getvalue())
+
+    def test_retrospective_warns_when_tri_steps_or_retries_missing(self):
+        import io
+        from contextlib import redirect_stdout
+        import plan_engine
+        import plan_telemetry
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_p = root / ".TODO" / "retro_warn_plan.md"
+            plan_p.parent.mkdir(parents=True, exist_ok=True)
+            plan_p.write_text("# Warn\n\n## Milestone 1: Do work\n- [x] **a.py**: task\n", encoding="utf-8")
+            parser = plan_engine.build_parser()
+            self.assertEqual(plan_engine.cmd_init(root, parser.parse_args(["init", str(plan_p)])), 0)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = plan_telemetry.cmd_retrospective(
+                    root,
+                    parser.parse_args(["retrospective", "retro_warn_plan", "--milestone", "1", "--grade", "A"]),
+                )
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("Warning: --tri omitted", out)
+            self.assertIn("Warning: --steps/--retries unresolved", out)
+
 
 if __name__ == "__main__":
     unittest.main()
