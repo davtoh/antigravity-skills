@@ -29,7 +29,7 @@ function onPickKey(e) {
   }
 }
 function onPickClick(e) {
-  var el = pickTarget(e), r;
+  var el = pickTarget(e), r, pick, handled;
   if (H.isHud(el)) return;
   e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation();
   if (H.isSecret(el)) {
@@ -39,10 +39,14 @@ function onPickClick(e) {
     return;
   }
   r = el.getBoundingClientRect();
-  H.lastPick = { selector: H.selectorFor(el), rect: { x: r.x, y: r.y, w: r.width, h: r.height }, attrs: H.attrsFor(el), element: el };
+  pick = { selector: H.selectorFor(el), rect: { x: r.x, y: r.y, w: r.width, h: r.height }, attrs: H.attrsFor(el), element: el };
   H.exitPick();
-  if (H.onPicked) H.onPicked(H.lastPick);
-  if (H.updateUi) H.updateUi('Picked: ' + H.lastPick.selector);
+  handled = H.onPicked ? H.onPicked(pick) : false;
+  if (!handled) {
+    if (H.addPick) H.addPick(pick);
+    else H.lastPick = pick;
+    if (H.updateUi) H.updateUi('Picked (' + H.activePicks().length + '): ' + pick.selector);
+  }
 }
 function softPause() {
   var media = doc.querySelectorAll('video,audio'), i;

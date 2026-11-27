@@ -1,59 +1,53 @@
 /* Frontier debug HUD, part 4 of 4: Right-side observation drawer + install. */
-var drawerState = { open: false, filter: 'active', selectedId: null, items: [], pendingPickObsId: null };
+var drawerState = { open: false, filter: 'active', selectedId: null, items: [], pendingPickObsId: null, drafts: {}, confirmDeleteId: null, lastUndo: null };
+H.drawerState = drawerState;
 
-function updateCounts(n) {
-  if (!H.panelEl) return;
-  var txt = typeof n === 'number' ? '(' + n + ')' : '';
-  var c1 = H.panelEl.querySelector('[data-a=count]'), c2 = H.panelEl.querySelector('[data-a=qcount]');
-  if (c1) c1.textContent = txt;
-  if (c2) c2.textContent = txt;
+function findItem(id) {
+  var i;
+  for (i = 0; i < drawerState.items.length; i++) if (drawerState.items[i].id === id) return drawerState.items[i];
+  return null;
 }
-function renderDrawerItems(drawer) {
-  var list = drawer.querySelector('[data-a=list]'), st = drawer.querySelector('[data-a=dstatus]');
-  if (!list) return;
-  if (!drawerState.items.length) {
-    list.innerHTML = '<div class="fh-muted">No observations in this view.</div>';
-    return;
+function setStatus(drawer, text, html) {
+  var st = drawer && drawer.querySelector('[data-a=dstatus]');
+  if (!st) return;
+  if (html !== undefined) st.innerHTML = html;
+  else st.textContent = text;
+}
+function syncDraft(drawer, card) {
+  var id = card && card.getAttribute ? card.getAttribute('data-obs-id') : null, orig = id && findItem(id);
+  if (!id || !orig) return;
+  var kEl = card.querySelector('[data-da=kind]'), mEl = card.querySelector('[data-da=msg]'), sBtn = card.querySelector('[data-da=save]');
+  var k = kEl ? kEl.value : orig.kind, m = mEl ? mEl.value : orig.message;
+  var dirty = k !== orig.kind || m !== orig.message;
+  if (dirty) drawerState.drafts[id] = { kind: k, message: m };
+  else delete drawerState.drafts[id];
+  if (sBtn) { sBtn.textContent = dirty ? 'Save *' : 'Save'; sBtn.className = dirty ? 'fh-btn active' : 'fh-btn'; }
+}
+H.refreshCounts = function () {
+  if (!H.panelEl || (!H.panelEl.querySelector('[data-a=count]') && !H.panelEl.querySelector('[data-a=qcount]'))) {
+    return Promise.resolve(null);
   }
-  list.innerHTML = drawerState.items.map(function (it) {
-    var open = drawerState.selectedId === it.id, sel = it.selector || 'No element';
-    var h = '<div class="fh-item" data-obs-id="' + H.htmlEsc(it.id) + '">';
-    h += '<div class="fh-item-head" data-da="select" data-id="' + H.htmlEsc(it.id) + '">';
-    h += '<span><strong>' + H.htmlEsc(it.id) + '</strong> [' + H.htmlEsc(it.kind) + '] <span class="fh-muted">' + H.htmlEsc(it.page_path || '/') + '</span></span>';
-    h += '<span class="fh-muted">' + (open ? '▲' : '▼') + '</span></div>';
-    h += '<div>' + H.htmlEsc(it.message) + '</div>';
-    h += '<div class="fh-muted">Target: ' + H.htmlEsc(sel) + '</div>';
-    if (open) {
-      h += '<select class="fh-select" data-da="kind">';
-      ['note', 'element', 'idea', 'error', 'network'].forEach(function (k) {
-        h += '<option value="' + k + '"' + (it.kind === k ? ' selected' : '') + '>' + k + '</option>';
-      });
-      h += '</select>';
-      h += '<textarea class="fh-input" data-da="msg" style="min-height:54px">' + H.htmlEsc(it.message) + '</textarea>';
-      h += '<div class="fh-row">';
-      h += '<button type="button" class="fh-btn" data-da="save" data-id="' + H.htmlEsc(it.id) + '">Save</button>';
-      h += '<button type="button" class="fh-btn" data-da="attach-pick" data-id="' + H.htmlEsc(it.id) + '">' + (H.lastPick ? 'Attach Pick' : 'Pick & Attach') + '</button>';
-      h += '<button type="button" class="fh-btn" data-da="attach-trace" data-id="' + H.htmlEsc(it.id) + '">Attach Trace</button>';
-      h += '<button type="button" class="fh-btn" data-da="dismiss" data-id="' + H.htmlEsc(it.id) + '">Dismiss</button>';
-      h += '<button type="button" class="fh-btn danger" data-da="delete" data-id="' + H.htmlEsc(it.id) + '">Delete</button>';
-      h += '</div>';
+  return H.listObservations('active', 200).then(function (res) {
+    if (res && res.http >= 200 && res.http < 300) {
+      var n = typeof res.count === 'number' ? res.count : (Array.isArray(res.observations) ? res.observations.length : 0);
+      H.drawerUi.updateCounts(n);
+      return n;
     }
-    return h + '</div>';
-  }).join('');
-  if (st && !st.textContent) st.textContent = drawerState.items.length + ' loaded';
-}
-H.refreshDrawer = function () {
+    return null;
+  }, function () { return null; });
+};
+H.refreshDrawer = function (keepStatus) {
   var drawer = H.drawerEl;
   if (!drawer) return Promise.resolve([]);
-  var st = drawer.querySelector('[data-a=dstatus]');
   return H.listObservations(drawerState.filter, 50).then(function (res) {
     drawerState.items = (res && Array.isArray(res.observations)) ? res.observations : [];
-    if (drawerState.filter === 'active') updateCounts(drawerState.items.length);
-    if (st) st.textContent = drawerState.items.length + ' ' + drawerState.filter;
-    renderDrawerItems(drawer);
+    if (drawerState.filter === 'active') H.drawerUi.updateCounts(drawerState.items.length);
+    else H.refreshCounts();
+    if (!keepStatus) setStatus(drawer, drawerState.items.length + ' ' + drawerState.filter);
+    H.drawerUi.renderList(drawer, drawerState);
     return drawerState.items;
   }, function () {
-    if (st) st.textContent = 'Failed to load observations';
+    setStatus(drawer, 'Failed to load observations');
     return [];
   });
 };
@@ -63,86 +57,159 @@ H.toggleDrawer = function (forceOpen) {
   H.drawerEl.hidden = !drawerState.open;
   if (drawerState.open) H.refreshDrawer();
 };
-H.onSaved = function () {
+H.onSaved = function (res) {
+  if (res && res.id) delete drawerState.drafts[res.id];
   if (drawerState.open) H.refreshDrawer();
+  else H.refreshCounts();
 };
 H.onPicked = function (pick) {
-  if (!drawerState.pendingPickObsId || !pick) return;
-  var obsId = drawerState.pendingPickObsId;
+  if (!drawerState.pendingPickObsId || !pick) return false;
+  var obsId = drawerState.pendingPickObsId, item = findItem(obsId);
   drawerState.pendingPickObsId = null;
-  H.patchObservation(obsId, { selector: pick.selector, rect: pick.rect, attrs: pick.attrs, kind: 'element' }).then(function () {
-    H.lastPick = null;
+  var merged = H.drawerUi.mergeElements(H.drawerUi.elementsFor(item), [pick]);
+  H.patchObservation(obsId, { elements: merged }).then(function () {
     if (H.updateUi) H.updateUi('Attached element to ' + obsId);
     H.toggleDrawer(true);
   });
+  return true;
 };
+function handleDrawerAction(d, act, id, btn) {
+  if (act === 'close') { H.toggleDrawer(false); return; }
+  if (act === 'refresh') { H.refreshDrawer(); return; }
+  if (act === 'undo' && drawerState.lastUndo) {
+    var u = drawerState.lastUndo;
+    drawerState.lastUndo = null;
+    H.patchObservation(u.id, { status: u.prevStatus || 'open' }).then(function () {
+      setStatus(d, 'Reopened ' + u.id);
+      H.refreshDrawer(true);
+    });
+    return;
+  }
+  if (act === 'jump-rel' && id) {
+    drawerState.selectedId = id;
+    if (findItem(id)) { H.drawerUi.renderList(d, drawerState); return; }
+    drawerState.filter = 'all';
+    var fEl = d.querySelector('[data-da=filter]');
+    if (fEl) fEl.value = 'all';
+    H.refreshDrawer();
+    return;
+  }
+  if (act === 'select' && id) {
+    drawerState.selectedId = drawerState.selectedId === id ? null : id;
+    drawerState.confirmDeleteId = null;
+    H.drawerUi.renderList(d, drawerState);
+    return;
+  }
+  if (!id) return;
+  var card = d.querySelector('[data-obs-id="' + id + '"]'), item = findItem(id);
+  if (act === 'save' && card) {
+    var kEl = card.querySelector('[data-da=kind]'), mEl = card.querySelector('[data-da=msg]');
+    H.patchObservation(id, { kind: kEl ? kEl.value : 'note', message: mEl ? mEl.value : '' }).then(function () {
+      delete drawerState.drafts[id];
+      setStatus(d, 'Updated ' + id);
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'open' && item) {
+    var dr = drawerState.drafts[id];
+    H.openInComposer({ id: item.id, kind: dr ? dr.kind : item.kind, message: dr ? dr.message : item.message, elements: H.drawerUi.elementsFor(item), selector: item.selector, rect: item.rect, attrs: item.attrs });
+  } else if (act === 'attach-pick') {
+    var picks = H.activePicks();
+    if (picks.length) {
+      var nextEls = H.drawerUi.mergeElements(H.drawerUi.elementsFor(item), picks);
+      H.patchObservation(id, { elements: nextEls }).then(function () {
+        H.clearPicks();
+        setStatus(d, 'Attached element to ' + id);
+        if (H.updateUi) H.updateUi();
+        H.refreshDrawer(true);
+      });
+    } else {
+      drawerState.pendingPickObsId = id;
+      H.toggleDrawer(false);
+      H.pick();
+    }
+  } else if (act === 'remove-el' && item) {
+    var idx = parseInt(btn.getAttribute('data-idx'), 10), curEls = H.drawerUi.elementsFor(item).slice();
+    if (idx >= 0 && idx < curEls.length) curEls.splice(idx, 1);
+    H.patchObservation(id, { elements: curEls }).then(function () {
+      setStatus(d, 'Removed element from ' + id);
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'link-rel' && card && item) {
+    var inp = card.querySelector('[data-da=rel-input]'), val = String((inp && inp.value) || '').replace(/^\s+|\s+$/g, '').toUpperCase();
+    if (!/^OBS-\d+$/.test(val) || val === id.toUpperCase()) { setStatus(d, val === id.toUpperCase() ? 'Cannot link observation to itself' : 'Enter a valid ID like OBS-001'); return; }
+    var nextRels = (Array.isArray(item.related_ids) ? item.related_ids.slice() : []);
+    if (nextRels.indexOf(val) < 0) nextRels.push(val);
+    H.patchObservation(id, { related_ids: nextRels }).then(function () {
+      setStatus(d, 'Linked ' + val + ' to ' + id);
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'unlink-rel' && item) {
+    var rel = btn.getAttribute('data-rel'), kept = (item.related_ids || []).filter(function (r) { return r !== rel; });
+    H.patchObservation(id, { related_ids: kept }).then(function () {
+      setStatus(d, 'Unlinked ' + rel);
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'attach-trace') {
+    if (H.isRecording && H.isRecording() && H.stop) H.stop();
+    if (!H.finished) { setStatus(d, 'Record a trace first, then click Attach Trace'); return; }
+    H.patchObservation(id, { recording_id: H.finished.id, window: H.finished.window, timeline: H.finished.timeline }).then(function () {
+      H.finished = null;
+      setStatus(d, 'Attached trace to ' + id);
+      if (H.updateUi) H.updateUi();
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'dismiss') {
+    drawerState.lastUndo = { id: id, prevStatus: (item && item.status) || 'open' };
+    H.patchObservation(id, { status: 'dismissed' }).then(function () {
+      setStatus(d, '', 'Dismissed ' + H.htmlEsc(id) + ' <button type="button" class="fh-btn" style="padding:1px 6px;margin-left:6px" data-da="undo">Undo</button>');
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'reopen') {
+    drawerState.lastUndo = null;
+    H.patchObservation(id, { status: 'open' }).then(function () {
+      setStatus(d, 'Reopened ' + id);
+      H.refreshDrawer(true);
+    });
+  } else if (act === 'delete') {
+    drawerState.confirmDeleteId = id;
+    H.drawerUi.renderList(d, drawerState);
+  } else if (act === 'delete-cancel') {
+    drawerState.confirmDeleteId = null;
+    H.drawerUi.renderList(d, drawerState);
+  } else if (act === 'delete-confirm') {
+    drawerState.confirmDeleteId = null;
+    H.deleteObservation(id).then(function () {
+      delete drawerState.drafts[id];
+      if (drawerState.selectedId === id) drawerState.selectedId = null;
+      setStatus(d, 'Deleted ' + id);
+      H.refreshDrawer(true);
+    });
+  }
+}
 H.buildDrawer = function () {
   if (!H.panelEl) return null;
   var d = doc.createElement('div');
   d.className = 'fh-drawer';
   d.hidden = true;
   d.innerHTML = '<div class="fh-row"><strong style="color:#fbbf24;font-size:13px">Registered Observations</strong>' +
-    '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="all">All</option></select>' +
+    '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="dismissed">Dismissed</option><option value="all">All</option></select>' +
     '<button type="button" class="fh-btn" data-da="refresh">Refresh</button>' +
     '<button type="button" class="fh-btn" data-da="close">Close</button></div></div>' +
     '<div class="fh-status" data-da="dstatus" data-a="dstatus"></div><div class="fh-list" data-a="list"></div>';
   d.addEventListener('change', function (e) {
-    if (e.target && e.target.getAttribute && e.target.getAttribute('data-da') === 'filter') {
-      drawerState.filter = e.target.value;
-      H.refreshDrawer();
-    }
+    var da = e.target && e.target.getAttribute ? e.target.getAttribute('data-da') : null;
+    if (da === 'filter') { drawerState.filter = e.target.value; H.refreshDrawer(); }
+    else if (da === 'kind') syncDraft(d, e.target.closest ? e.target.closest('[data-obs-id]') : null);
+  });
+  d.addEventListener('input', function (e) {
+    var da = e.target && e.target.getAttribute ? e.target.getAttribute('data-da') : null;
+    if (da === 'msg') syncDraft(d, e.target.closest ? e.target.closest('[data-obs-id]') : null);
   });
   d.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('[data-da]') : e.target;
     var act = btn && btn.getAttribute ? btn.getAttribute('data-da') : null;
     var id = btn && btn.getAttribute ? btn.getAttribute('data-id') : null;
-    var st = d.querySelector('[data-a=dstatus]');
-    if (!act) return;
-    if (act === 'close') { H.toggleDrawer(false); return; }
-    if (act === 'refresh') { H.refreshDrawer(); return; }
-    if (act === 'select' && id) { drawerState.selectedId = drawerState.selectedId === id ? null : id; renderDrawerItems(d); return; }
-    if (!id) return;
-    var card = d.querySelector('[data-obs-id="' + id + '"]');
-    if (act === 'save' && card) {
-      var kEl = card.querySelector('[data-da=kind]'), mEl = card.querySelector('[data-da=msg]');
-      H.patchObservation(id, { kind: kEl ? kEl.value : 'note', message: mEl ? mEl.value : '' }).then(function () {
-        if (st) st.textContent = 'Updated ' + id;
-        H.refreshDrawer();
-      });
-    } else if (act === 'attach-pick') {
-      if (H.lastPick) {
-        H.patchObservation(id, { selector: H.lastPick.selector, rect: H.lastPick.rect, attrs: H.lastPick.attrs, kind: 'element' }).then(function () {
-          H.lastPick = null;
-          if (st) st.textContent = 'Attached picked element to ' + id;
-          if (H.updateUi) H.updateUi();
-          H.refreshDrawer();
-        });
-      } else {
-        drawerState.pendingPickObsId = id;
-        H.toggleDrawer(false);
-        H.pick();
-      }
-    } else if (act === 'attach-trace') {
-      if (H.isRecording && H.isRecording() && H.stop) H.stop();
-      if (!H.finished) { if (st) st.textContent = 'Record a trace first, then click Attach Trace'; return; }
-      H.patchObservation(id, { recording_id: H.finished.id, window: H.finished.window, timeline: H.finished.timeline }).then(function () {
-        H.finished = null;
-        if (st) st.textContent = 'Attached trace to ' + id;
-        if (H.updateUi) H.updateUi();
-        H.refreshDrawer();
-      });
-    } else if (act === 'dismiss') {
-      H.patchObservation(id, { status: 'dismissed' }).then(function () {
-        if (st) st.textContent = 'Dismissed ' + id;
-        H.refreshDrawer();
-      });
-    } else if (act === 'delete') {
-      H.deleteObservation(id).then(function () {
-        if (drawerState.selectedId === id) drawerState.selectedId = null;
-        if (st) st.textContent = 'Deleted ' + id;
-        H.refreshDrawer();
-      });
-    }
+    if (act) handleDrawerAction(d, act, id, btn);
   });
   H.panelEl.appendChild(d);
   H.drawerEl = d;
@@ -151,4 +218,5 @@ H.buildDrawer = function () {
 
 H.buildPanel();
 H.buildDrawer();
+H.refreshCounts();
 win.__FRONTIER_HUD__ = H;

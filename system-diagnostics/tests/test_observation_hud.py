@@ -131,6 +131,47 @@ if (mode === 'pick') {
 """
 
 
+AUTOSTOP_DRIVER = r"""
+const vm = require('vm'), fs = require('fs');
+const bundle = fs.readFileSync(process.argv[2], 'utf8');
+function stubEl(tag) {
+  return { tagName: tag.toUpperCase(), children: [], style: {}, nodeType: 1, value: '', parentNode: null,
+    getAttribute: () => null, setAttribute() {}, addEventListener() {}, removeEventListener() {},
+    appendChild(c) { this.children.push(c); c.parentNode = this; return c; }, querySelector() { return null; },
+    querySelectorAll() { return []; }, getRootNode() { return fakeDoc; }, getBoundingClientRect: () => ({x: 0, y: 0, width: 10, height: 10}) };
+}
+const fakeDoc = { documentElement: stubEl('html'), body: stubEl('body'), createElement: t => stubEl(t),
+  querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() {}, removeEventListener() {}, defaultView: null };
+const calls = [];
+class FakeHeaders { constructor(i) { this.m = Object.assign({}, i || {}); } set(k, v) { this.m[k] = v; } }
+const win = { __FRONTIER_DEBUG__: true, document: fakeDoc,
+  location: { pathname: '/', hash: '#tab-studio', href: 'http://x.test/#tab-studio', origin: 'http://x.test' },
+  console: { error() {} }, history: { pushState() {}, replaceState() {} }, Headers: FakeHeaders, URL, CSS: { escape: s => s },
+  addEventListener() {}, removeEventListener() {}, crypto: require('crypto').webcrypto, requestAnimationFrame: () => 1,
+  fetch: (u, o) => { calls.push([String(u), o]); return Promise.resolve({ status: 201, json: () => Promise.resolve({ id: 'OBS-010' }) }); } };
+vm.runInNewContext(bundle, { window: win });
+const H = win.__FRONTIER_HUD__;
+(async () => {
+  const emptyRes = await H.logObservation('note', '   ');
+  H.record();
+  H.log('click', '#btn-a');
+  const traceOnly = await H.logObservation('note', '');
+  const recordingAfterLog = H.isRecording();
+  const tracePost = JSON.parse(calls[calls.length - 1][1].body);
+  H.lastPick = { selector: '#studio-drawing-canvas', rect: {x: 1, y: 2, w: 3, h: 4}, attrs: { tag: 'canvas' } };
+  await H.logObservation('element', '');
+  const pickPost = JSON.parse(calls[calls.length - 1][1].body);
+  await H.patchObservation('OBS-010', { message: 'edited' });
+  await H.deleteObservation('OBS-010');
+  const methods = calls.map(c => c[0] + ':' + ((c[1] && c[1].method) || 'GET'));
+  console.log(JSON.stringify({ emptyErr: emptyRes.error, recordingAfterLog, tracePage: tracePost.page_path,
+    traceMsg: tracePost.message, traceRid: tracePost.recording_id, pickMsg: pickPost.message,
+    lastPickCleared: H.lastPick === null, methods }));
+})();
+"""
+UX_DRIVER = ROOT / "tests" / "fixtures" / "hud" / "ux_driver.js"
+
+
 @unittest.skipUnless(shutil.which("node"), "Node.js required")
 class HudLogicTests(unittest.TestCase):
     def setUp(self):
@@ -203,45 +244,7 @@ class HudLogicTests(unittest.TestCase):
         self.assertEqual(o["postUrl"], "/custom/obs")
 
     def test_log_autostops_recording_allows_pick_or_trace_only_and_clears_pick(self):
-        driver = """
-const vm = require('vm'), fs = require('fs');
-const bundle = fs.readFileSync(process.argv[2], 'utf8');
-function stubEl(tag) {
-  return { tagName: tag.toUpperCase(), children: [], style: {}, nodeType: 1, value: '', parentNode: null,
-    getAttribute: () => null, setAttribute() {}, addEventListener() {}, removeEventListener() {},
-    appendChild(c) { this.children.push(c); c.parentNode = this; return c; }, querySelector() { return null; },
-    querySelectorAll() { return []; }, getRootNode() { return fakeDoc; }, getBoundingClientRect: () => ({x: 0, y: 0, width: 10, height: 10}) };
-}
-const fakeDoc = { documentElement: stubEl('html'), body: stubEl('body'), createElement: t => stubEl(t),
-  querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() {}, removeEventListener() {}, defaultView: null };
-const calls = [];
-class FakeHeaders { constructor(i) { this.m = Object.assign({}, i || {}); } set(k, v) { this.m[k] = v; } }
-const win = { __FRONTIER_DEBUG__: true, document: fakeDoc,
-  location: { pathname: '/', hash: '#tab-studio', href: 'http://x.test/#tab-studio', origin: 'http://x.test' },
-  console: { error() {} }, history: { pushState() {}, replaceState() {} }, Headers: FakeHeaders, URL, CSS: { escape: s => s },
-  addEventListener() {}, removeEventListener() {}, crypto: require('crypto').webcrypto, requestAnimationFrame: () => 1,
-  fetch: (u, o) => { calls.push([String(u), o]); return Promise.resolve({ status: 201, json: () => Promise.resolve({ id: 'OBS-010' }) }); } };
-vm.runInNewContext(bundle, { window: win });
-const H = win.__FRONTIER_HUD__;
-(async () => {
-  const emptyRes = await H.logObservation('note', '   ');
-  H.record();
-  H.log('click', '#btn-a');
-  const traceOnly = await H.logObservation('note', '');
-  const recordingAfterLog = H.isRecording();
-  const tracePost = JSON.parse(calls[calls.length - 1][1].body);
-  H.lastPick = { selector: '#studio-drawing-canvas', rect: {x: 1, y: 2, w: 3, h: 4}, attrs: { tag: 'canvas' } };
-  await H.logObservation('element', '');
-  const pickPost = JSON.parse(calls[calls.length - 1][1].body);
-  await H.patchObservation('OBS-010', { message: 'edited' });
-  await H.deleteObservation('OBS-010');
-  const methods = calls.map(c => c[0] + ':' + ((c[1] && c[1].method) || 'GET'));
-  console.log(JSON.stringify({ emptyErr: emptyRes.error, recordingAfterLog, tracePage: tracePost.page_path,
-    traceMsg: tracePost.message, traceRid: tracePost.recording_id, pickMsg: pickPost.message,
-    lastPickCleared: H.lastPick === null, methods }));
-})();
-"""
-        (self.tmp / "extra_driver.js").write_text(driver, encoding="utf-8")
+        (self.tmp / "extra_driver.js").write_text(AUTOSTOP_DRIVER, encoding="utf-8")
         p = subprocess.run(
             ["node", str(self.tmp / "extra_driver.js"), str(self.tmp / "bundle.js")],
             capture_output=True, text=True, encoding="utf-8", timeout=30,
@@ -257,6 +260,33 @@ const H = win.__FRONTIER_HUD__;
         self.assertTrue(o["lastPickCleared"])
         self.assertIn("/api/diagnostics/observations/OBS-010:PATCH", o["methods"])
         self.assertIn("/api/diagnostics/observations/OBS-010:DELETE", o["methods"])
+
+    def test_hud_v1_1_ux_u1_to_u7(self):
+        p = subprocess.run(
+            ["node", str(UX_DRIVER), str(self.tmp / "bundle.js")],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        )
+        self.assertEqual(p.returncode, 0, p.stderr)
+        o = json.loads(p.stdout)
+        self.assertEqual(o["u6InitCount"], ["(1)", "(1)"])
+        self.assertEqual(o["u3KindAfterPick"], "note")
+        self.assertEqual(o["u3PickCount"], 2)
+        self.assertEqual((o["u3PostKind"], o["u3PostElements"]), ("note", ["#btn-1", "#btn-2"]))
+        self.assertEqual(o["u6CountAfterPost"], "(2)")
+        self.assertEqual(o["u2DirtyBtn"], "Save *")
+        self.assertTrue(o["u2PreservedHtml"])
+        self.assertFalse(o["u3DrawerAttachHasKind"])
+        self.assertEqual(o["u3DrawerAttachEls"], ["#a1", "#a2"])
+        self.assertEqual(o["u4Linked"], ["OBS-002"])
+        self.assertTrue(o["u4SelfRejected"])
+        self.assertEqual(o["u4JumpFilterAndSel"], ["all", "OBS-002"])
+        self.assertEqual(o["u4Unlinked"], [])
+        self.assertEqual(o["u1EditState"], {"id": "OBS-001", "open": True, "drawerOpen": False, "btn": "Save", "cancelHidden": False, "msg": "draft text"})
+        self.assertEqual(o["u1Patch"], {"url": "/api/diagnostics/observations/OBS-001", "kind": "idea", "msg": "edited via composer", "editingAfter": None})
+        self.assertTrue(o["u5HasDismissedFilter"])
+        self.assertTrue(o["u5UndoRendered"])
+        self.assertEqual((o["u5AfterUndo"], o["u5AfterReopen"]), ("open", "open"))
+        self.assertEqual((o["u7FirstClickDeletes"], o["u7ConfirmVisible"], o["u7CancelCleared"], o["u7ConfirmedDeletes"]), (0, True, True, 1))
 
     def test_bundle_order_and_size(self):
         text = observation_assets.hud_bundle()

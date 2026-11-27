@@ -31,10 +31,10 @@ Resolve the 7 verified UX and schema gaps (`U1`–`U7`) discovered during real u
 
 ---
 
-## Milestone 2: HUD Composer & Drawer UX Fixes (`U1`–`U7`) — *Deferred to Next Turn / Milestone*
+## Milestone 2: HUD Composer & Drawer UX Fixes (`U1`–`U7`)
 
-- [ ] **system-diagnostics/assets/hud_core.js**: *Deferred to Next Turn / Milestone* — Add `H.picks[]` multi-element composer state (without forcing `note -> element`), `H.openInComposer(entry)` (`H.editingId` mode with Pick/Record/Stop + `Save`/`Cancel`).
-- [ ] **system-diagnostics/assets/hud_picker.js**: *Deferred to Next Turn / Milestone* — Append picked elements cleanly for composer and drawer attach modes.
-- [ ] **system-diagnostics/assets/hud_drawer.js**: *Deferred to Next Turn / Milestone* — Add `Open` (`U1`), `drawerState.drafts` + `Save *` (`U2`), multi-element chips without kind overwrite (`U3`), clickable `related_ids` chips & linker (`U4`), `Reopen` + `Dismissed` filter + inline `Undo` (`U5`), `H.refreshCounts()` (`U6`), and inline 2-step `Delete` confirmation (`U7`).
-- [ ] **system-diagnostics/scripts/observation_assets.py**: *Deferred to Next Turn / Milestone* — Include any split drawer helper asset in `hud_bundle()` if `hud_drawer.js` approaches 300L.
-- [ ] **system-diagnostics/tests/test_observation_hud.py**: *Deferred to Next Turn / Milestone* — Node VM tests covering `U1`–`U7` end-to-end.
+- [x] **system-diagnostics/assets/hud_core.js**: *Deferred to Next Turn / Milestone* — Add `H.picks[]` multi-element composer state (without forcing `note -> element`), `H.openInComposer(entry)` (`H.editingId` mode with Pick/Record/Stop + `Save`/`Cancel`).
+- [x] **system-diagnostics/assets/hud_picker.js**: *Deferred to Next Turn / Milestone* — Append picked elements cleanly for composer and drawer attach modes.
+- [x] **system-diagnostics/assets/hud_drawer.js**: *Deferred to Next Turn / Milestone* — Add `Open` (`U1`), `drawerState.drafts` + `Save *` (`U2`), multi-element chips without kind overwrite (`U3`), clickable `related_ids` chips & linker (`U4`), `Reopen` + `Dismissed` filter + inline `Undo` (`U5`), `H.refreshCounts()` (`U6`), and inline 2-step `Delete` confirmation (`U7`).
+- [x] **system-diagnostics/scripts/observation_assets.py**: *Deferred to Next Turn / Milestone* — Include any split drawer helper asset in `hud_bundle()` if `hud_drawer.js` approaches 300L.
+- [x] **system-diagnostics/tests/test_observation_hud.py**: *Deferred to Next Turn / Milestone* — Node VM tests covering `U1`–`U7` end-to-end.
