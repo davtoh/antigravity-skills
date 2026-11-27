@@ -18,32 +18,24 @@ from typing import Any, Optional
 
 try:
     from cross_module_rules import check_mixed_clock_domains, scan_cross_module_defects
-    from defect_catalog import (
-        ACTIVE_STATUSES, IGNORED_WORKSPACE_DIRS as IGNORED_DIRS,
-        cmd_scaffold_defect, cmd_status_transition, load_catalog, save_catalog,
-    )
+    from defect_catalog import ACTIVE_STATUSES, IGNORED_WORKSPACE_DIRS as IGNORED_DIRS, cmd_scaffold_defect, cmd_status_transition, load_catalog, save_catalog  # noqa: F401
+    from js_guard_rules import scan_js_runtime_guards
 except ImportError:
-    from .cross_module_rules import check_mixed_clock_domains, scan_cross_module_defects
-    from .defect_catalog import (
-        ACTIVE_STATUSES, IGNORED_WORKSPACE_DIRS as IGNORED_DIRS,
-        cmd_scaffold_defect, cmd_status_transition, load_catalog, save_catalog,
-    )
+    from .cross_module_rules import check_mixed_clock_domains, scan_cross_module_defects  # type: ignore[no-redef]
+    from .defect_catalog import ACTIVE_STATUSES, IGNORED_WORKSPACE_DIRS as IGNORED_DIRS, cmd_scaffold_defect, cmd_status_transition, load_catalog, save_catalog  # type: ignore[no-redef]  # noqa: F401
+    from .js_guard_rules import scan_js_runtime_guards  # type: ignore[no-redef]
 
 SECRET_REGEX = re.compile(r"""(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password)\s*[:=]\s*['"][a-zA-Z0-9_\-\.]{16,}['"]""")
 DUMMY_SECRET_WORDS = frozenset({"test", "fake", "dummy", "example", "placeholder", "xxx", "sample"})
 SKIP_ARITY_DECORATORS = frozenset({"property", "setter", "deleter", "overload", "abstractmethod"})
 TIMING_MODULE_RE = re.compile(r"(?:worker|scheduler|timing|capture|replay|heartbeat|watchdog)", re.IGNORECASE)
 
-
 @dataclass
 class DefectFinding:
     """Authoritative representation of a discovered latent defect."""
     id: str; fingerprint: str; rule_id: str; category: str; severity: str
-    track: str; file: str; line: int; symbol: str; message: str; suggested_fix: str
-    status: str = "quarantined"
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    track: str; file: str; line: int; symbol: str; message: str; suggested_fix: str; status: str = "quarantined"
+    def to_dict(self) -> dict[str, Any]: return asdict(self)
 
 
 def compute_fingerprint(rule_id: str, symbol: str, normalized_code: str) -> str:
@@ -245,6 +237,9 @@ def audit_polyglot_lexer(file_path: Path, rel_path: str, text: str, deep: bool =
             _add("CSS_IMPORTANT_OVERRUN", "RESOURCE_LEAK", "MEDIUM", "architectural", ln, f"'!important' declared at line {ln} breaches specificity budgets.", "Remove '!important' and use structured CSS specificity per Rule 6.")
         elif suffix == ".dart" and re.search(r"\bcatch\s*\([^)]*\)\s*\{\s*\}", line):
             _add("SILENT_BARE_EXCEPT", "EXCEPTION_SMELL", "MEDIUM", "tactical", ln, f"Empty catch block at line {ln} suppresses Dart exceptions silently.", "Log the caught object/StackTrace or narrow error handling.")
+    if suffix in (".js", ".ts", ".jsx", ".tsx"):
+        for g in scan_js_runtime_guards(rel_path, text):
+            _add(g["rule_id"], g["category"], g["severity"], g["track"], g["line"], g["message"], g["suggested_fix"])
     return findings
 
 
