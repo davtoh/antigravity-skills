@@ -110,14 +110,18 @@ def _record_special_call(name: str, args: dict[str, Any], idx: int, acc: dict[st
         acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
     elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
         acc["schedule_while_subagent"] += 1
+    elif name == "ask_question":
+        acc["awaiting_user_answer"] = True
 
 
 def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
     """Accumulate per-call statistics and FIFO pending_calls for one planner step."""
     acc["pending_calls"].clear()
+    acc["awaiting_user_answer"] = False
     same_step_edits: Counter[str] = Counter()
     for call in step.get("tool_calls") or []:
         name, args = call.get("name", ""), _tool_args(call)
+        if name: acc["last_tool"] = name
         acc["tools"][name] += 1
         p_str = str(args.get("Path", ""))
         target, cmd_line = (Path(p_str).name if p_str else (name or "tool")), ""
@@ -166,7 +170,7 @@ def _track_subagent_events(kind: str, content: str, cid: str, acc: dict[str, Any
                 acc["pending_unnamed"] -= 1
 
 
-def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[str, str]:
+def _resolve_step_call(content: str, kind: str, acc: dict[str, Any], status: str = "") -> tuple[str, str]:
     """Match a tool-result or SYSTEM_MESSAGE step back to its originating target and command."""
     if kind == "SYSTEM_MESSAGE":
         for sender in _SENDER_RE.findall(content):
@@ -174,6 +178,7 @@ def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[st
                 return acc["bg_tasks"].pop(m.group(1), (f"bg:{m.group(1)}", ""))
         return ("", "")
     name, target, cmd = acc["pending_calls"].pop(0) if acc["pending_calls"] else ("", acc["last_target"], acc["last_cmd"])
+    if name == "ask_question" and status.upper() not in ("RUNNING", "WAITING", "PENDING"): acc["awaiting_user_answer"] = False
     if name == "run_command" and (m := _TASK_ID_RE.search(content[:400])):
         acc["bg_tasks"][m.group(1)] = (target, cmd)
     return (target, cmd)
@@ -181,7 +186,7 @@ def _resolve_step_call(content: str, kind: str, acc: dict[str, Any]) -> tuple[st
 
 def _apply_result_step(content: str, status: str, kind: str, idx: int, acc: dict[str, Any]) -> None:
     """Classify one tool-result step against FIFO pending_calls or bg_tasks and record failures."""
-    call_target, call_cmd = _resolve_step_call(content, kind, acc)
+    call_target, call_cmd = _resolve_step_call(content, kind, acc, status)
     is_live_no_fallback = (
         ("diagnose.py" in call_cmd and "--live" in call_cmd and "--allow-headless-fallback" not in call_cmd)
         or ("--no-fallback-headless" in call_cmd)
@@ -221,7 +226,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "post_dispatch_reads": [], "edited_paths": set(), "parallel_same_file_edits": [],
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "tooling_cli_fails": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
-        "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
+        "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "last_tool": "", "awaiting_user_answer": False, "models": [],
         "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False, "observed_models": [], "user_rejected": 0,
     }
     steps = planner = 0
@@ -235,6 +240,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             if "Continuous Learning & Introspective Options" in content: acc["has_learning_block"] = True
             _record_calls(step, idx, acc)
         elif kind == "USER_INPUT":
+            acc["awaiting_user_answer"] = False
             if "/app-debugger" in content.lower(): acc["has_debug_retro"] = True
             acc["models"].extend(_extract_models(content))
             extract_user_correction(content, idx, acc)
@@ -267,19 +273,15 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],
         "suggested_grade_cap": compute_grade_cap(steps, total_failures),
         **({"user_rejected": acc["user_rejected"]} if acc["user_rejected"] else {}),
+        **({"last_tool": acc["last_tool"]} if acc["last_tool"] else {}),
+        **({"awaiting_user_answer": True} if acc["awaiting_user_answer"] else {}),
     }
 
 
 def _has_min_steps(log_path: Path, min_steps: int) -> bool:
     """Return True when ``log_path`` contains at least ``min_steps`` non-empty lines."""
-    count = 0
     with log_path.open("r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            if line.strip():
-                count += 1
-                if count >= min_steps:
-                    return True
-    return False
+        return sum(1 for _ in zip(range(min_steps), (ln for ln in handle if ln.strip()))) >= min_steps
 
 
 def _resolve_cid_token(brain_dir: Path, token: str, dirs: list[Path]) -> str:

@@ -130,4 +130,11 @@ def plan_mode_calls(tools: Counter[str]) -> int:
 def derive(steps: list[dict[str, Any]], cues: dict[str, Any]) -> dict[str, Any]:
     """All Milestone 2 row fields for one session (main thread + subagent reads)."""
     main = [s for s in steps if s["agent_id"] is None]
-    return {**failure_metrics(main), **subagent_metrics(steps), **marker_metrics(main), **cue_metrics(main, cues)}
+    calls = [s for s in main if s["kind"] == "tool_call" and s.get("tool")]
+    last_tool = calls[-1]["tool"] if calls else ""
+    extra: dict[str, Any] = {"last_tool": last_tool} if last_tool else {}
+    if last_tool in ("ask_question", "AskUserQuestion") and not any(
+        s["idx"] > calls[-1]["idx"] and (s["kind"] == "tool_result" or s["role"] == "user") for s in main
+    ):
+        extra["awaiting_user_answer"] = True
+    return {**failure_metrics(main), **subagent_metrics(steps), **marker_metrics(main), **cue_metrics(main, cues), **extra}

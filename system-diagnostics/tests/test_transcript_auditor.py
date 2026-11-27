@@ -471,6 +471,28 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["audit_catches"], 2)
         self.assertEqual(row["total_failures"], 1)
 
+    def test_awaiting_user_answer_and_last_tool_tracking(self) -> None:
+        _write(self.brain, "paused-ask", [
+            _planner(("read_file", {"Path": "a.py"})),
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+            _planner(("ask_question", {"questions": [{"question": "Proceed?", "options": ["Yes"]}]})),
+        ])
+        row = ta.audit_conversation(self.brain, "paused-ask")
+        self.assertTrue(row["awaiting_user_answer"])
+        self.assertEqual(row["last_tool"], "ask_question")
+        self.assertIn("PAUSED paused-a: awaiting user answer on ask_question", ta.format_markdown([row]))
+
+        _write(self.brain, "answered-ask", [
+            _planner(("ask_question", {"questions": [{"question": "Proceed?", "options": ["Yes"]}]})),
+            {"type": "GENERIC", "content": "A1: Yes", "status": "DONE"},
+            _planner(("write_file", {"Path": ".TODO/plan.md"})),
+            {"type": "GENERIC", "content": "Created file.", "status": "DONE"},
+        ])
+        row2 = ta.audit_conversation(self.brain, "answered-ask")
+        self.assertFalse(row2.get("awaiting_user_answer"))
+        self.assertEqual(row2["last_tool"], "write_file")
+        self.assertNotIn("PAUSED ", ta.format_markdown([row2]))
+
 
 if __name__ == "__main__":
     unittest.main()

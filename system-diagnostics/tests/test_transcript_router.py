@@ -35,7 +35,7 @@ GOLDEN_KEYS = (
     "cid steps planner_turns models observed_models tool_calls failures total_failures audit_catches tooling_cli_fails "
     "failure_samples user_corrections workflow_redirects subagents reads_after_subagent reads_while_pending "
     "subagent_overlap_reads repeated_reads parallel_same_file_edits plan_mode_calls schedule_while_subagent has_debug_retro "
-    "has_commit_hint has_learning_block cdp_live_fallbacks cdp_live_failures changelog_adds suggested_grade_cap"
+    "has_commit_hint has_learning_block cdp_live_fallbacks cdp_live_failures changelog_adds suggested_grade_cap last_tool"
 ).split()
 
 

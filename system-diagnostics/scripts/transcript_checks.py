@@ -140,6 +140,8 @@ def extract_user_correction(content: str, idx: int, acc: dict[str, Any], cues: d
 
 def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     """Append waste flags, failure samples, repeated reads, and user corrections for one row."""
+    if r.get("awaiting_user_answer"):
+        notes.append(f"- PAUSED {cid8}: awaiting user answer on {r.get('last_tool') or 'ask_question'}")
     if r.get("user_rejected", 0) >= 1:
         notes.append(f"- NOTE {cid8}: {r['user_rejected']} tool call(s) rejected by the user (not counted as failures)")
     if r["subagents"] and r["reads_after_subagent"] > 4:
