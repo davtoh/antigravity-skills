@@ -202,7 +202,7 @@ async def attach_and_run(browser_ws_url: str, args, viewport: tuple[int, int] | 
                     pass
         return await run_against_target(cdp, session_id, args)
 
-async def read_port_file(profile_dir: Path, timeout_s: float = 10.0) -> tuple[int, str] | None:
+async def read_port_file(profile_dir: Path, timeout_s: float = 25.0) -> tuple[int, str] | None:
     """Wait for Chrome to write DevToolsActivePort into an isolated profile dir."""
     port_file = profile_dir / "DevToolsActivePort"
     deadline = asyncio.get_running_loop().time() + timeout_s
@@ -259,7 +259,7 @@ async def run_headless(args) -> int:
             # Port 0 = OS picks a free port (avoids clashing with Node's 9229 or a user's 9222).
             f"--remote-debugging-port={args.port}",
             f"--user-data-dir={tmp_profile}", f"--window-size={width},{height}",
-            "--autoplay-policy=no-user-gesture-required", "--disable-gpu", "--no-sandbox",
+            "--autoplay-policy=no-user-gesture-required", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox",
             "--no-first-run", "--no-default-browser-check", "about:blank",
         ]
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

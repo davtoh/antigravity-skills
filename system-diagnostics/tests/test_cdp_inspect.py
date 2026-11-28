@@ -37,20 +37,21 @@ class TestCDPDiscoveryAndHelpers(unittest.TestCase):
                 os.remove(mock_chrome)
 
     def test_find_chrome_executable_platforms(self):
-        with patch("platform.system", return_value="Windows"), \
-             patch("os.path.exists", side_effect=lambda p: "chrome.exe" in str(p)):
-            res_win = cdp_inspect.find_chrome_executable()
-            self.assertIn("chrome.exe", res_win)
+        with patch.dict(os.environ, {"CHROME_BIN": "", "CHROME_PATH": ""}):
+            with patch("platform.system", return_value="Windows"), \
+                 patch("os.path.exists", side_effect=lambda p: "chrome.exe" in str(p)):
+                res_win = cdp_inspect.find_chrome_executable()
+                self.assertIn("chrome.exe", res_win)
 
-        with patch("platform.system", return_value="Darwin"), \
-             patch("os.path.exists", side_effect=lambda p: "Google Chrome.app" in str(p)):
-            res_mac = cdp_inspect.find_chrome_executable()
-            self.assertIn("Google Chrome", res_mac)
+            with patch("platform.system", return_value="Darwin"), \
+                 patch("os.path.exists", side_effect=lambda p: "Google Chrome.app" in str(p)):
+                res_mac = cdp_inspect.find_chrome_executable()
+                self.assertIn("Google Chrome", res_mac)
 
-        with patch("platform.system", return_value="Linux"), \
-             patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name == "chromium" else None):
-            res_linux = cdp_inspect.find_chrome_executable()
-            self.assertEqual(res_linux, "/usr/bin/chromium")
+            with patch("platform.system", return_value="Linux"), \
+                 patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name == "chromium" else None):
+                res_linux = cdp_inspect.find_chrome_executable()
+                self.assertEqual(res_linux, "/usr/bin/chromium")
 
     def test_find_devtools_active_port_file(self):
         with tempfile.TemporaryDirectory() as td:
