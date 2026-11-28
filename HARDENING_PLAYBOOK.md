@@ -14,6 +14,7 @@ Process proven on `frontier-architect`. Apply it to `app-debugger`, `system-diag
 3. Find Gemini-only terms and hard-coded paths: `grep -rnE "ask_question|run_command|view_file|RequestFeedback|appDataDir|\.gemini|python skills/"`.
 
 ## 2. Changes, in this order
+0. **Fix baseline test failures first, cross-platform.** The usual cause is comparing unresolved temp paths (macOS `/var` vs `/private/var`): wrap temp dirs in `.resolve()` and compare with `.resolve()` on both sides. Never special-case macOS; the same change is a no-op on Windows.
 1. **Portability**: Python 3.10-compatible syntax; resolve scripts relative to the skill folder; shims also search `.claude/skills/` and `~/.claude/skills/`.
 2. **Adapter**: `references/claude-adapter.md` with a mapping table (every Gemini term used anywhere gets a row) and a "script paths" section.
 3. **Router `SKILL.md`**: target under 12 KB; keep phase headings and gate names; move detail verbatim into `references/`; description under ~700 characters, pushy about triggers, with explicit exclusions.
@@ -44,3 +45,10 @@ Process proven on `frontier-architect`. Apply it to `app-debugger`, `system-diag
 - Trigger recall is imperfect: Claude sometimes answers design questions directly without calling the skill.
 - Evals are small (1-2 runs per cell) and graded by reading outputs, not by a blinded judge.
 - Master-roadmap mode is a documented protocol on top of existing `--parent` plans, not new engine code.
+
+## 7. Transcript audit calibration (learned on real Claude sessions)
+
+- Gate cue matching: skip plain questions and `<pasted_content>` blocks; never match cue words inside hyphenated words.
+- Count tool-output markers (CDP fallback) only for the command that produces them, never for `Read`/heredoc results that quote the strings.
+- Treat `failures` as a floor when commands are piped to `head`/`tail`; surface `masked_failures` instead of guessing.
+- Verify a session's attribution by its first user message and plan-name mentions before logging it against a plan.

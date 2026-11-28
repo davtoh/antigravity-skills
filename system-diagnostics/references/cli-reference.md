@@ -152,6 +152,16 @@ python skills/system-diagnostics/scripts/diagnose.py package-skill [<SKILL_OR_AL
 
 ---
 
+### Subcommands: `observations` & `brief`
+```bash
+python "<skill_dir>/scripts/diagnose.py" observations [list|show|add|triage|resolve|dismiss|pull|verify-connector] [OPTIONS]
+python "<skill_dir>/scripts/diagnose.py" brief [--run-probes] [--pull URL] [--max-lines N] [--json]
+```
+- `list`: `--status active|all|<status>` (default `active`), `--kind element|error|network|note|idea`, `--limit`, `--json`. `show`: `--id`, `--full`.
+- `add`: `--kind`, `--page`, `--selector`, `--message`, `--recording-id`. `triage`: `--id`, `--status triaged|in_progress`, `--root-cause`, `--missed-by`, `--guard`, `--plan`. `resolve`: `--id`, `--resolution`, `--commit`. `dismiss`: `--id`, `--reason`.
+- `pull`/`verify-connector`: `--url`, `--allow-remote`, `--timeout`. Workflow and privacy: [`observations.md`](./observations.md).
+- `brief`: `--run-probes` (fresh probes, 60 s each), `--pull URL`, `--max-lines` (default 120).
+
 ## 2. Architecture & Bundled Scripts
 
 ```text

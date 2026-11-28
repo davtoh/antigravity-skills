@@ -1,0 +1,22 @@
+[
+  {"query": "check why the video player is overflowing the right edge on my live Chrome tab on localhost:8000", "should_trigger": true},
+  {"query": "our Docker container seems to be running stale app.py code and spiking CPU; check container stats and host-vs-container MD5 sync", "should_trigger": true},
+  {"query": "list all HTML element IDs, window.* globals, and FastAPI routes in src/ and verify there are no broken selectors or fetch mismatches", "should_trigger": true},
+  {"query": "run our pytest suite using the project's .venv with a 120s timeout so a hung test doesn't block CI", "should_trigger": true},
+  {"query": "scan src/ and tests/ for latent defects, CSS !important leaks, and platform import ladders, and save them to .diagnostics/defect_catalog.json", "should_trigger": true},
+  {"query": "audit the last 5 Antigravity and Claude Code transcripts to count tool failures, duplicate reads, and parallel same-file edits", "should_trigger": true},
+  {"query": "pull HUD observations from http://127.0.0.1:8000 and print a single brief with fresh probes before we start triage", "should_trigger": true},
+  {"query": "migrate our 400-line MIGRATION_LOG.md into a bounded CHANGELOG.md under 150 lines and generate a PR description against main", "should_trigger": true},
+  {"query": "package all our skills into standalone .skill archives in dist/ with SSOT shims materialized and tests/ stripped", "should_trigger": true},
+  {"query": "generate a compact JSON architecture and import-coupling map of backend/ and frontend/ before we plan a refactor", "should_trigger": true},
+  {"query": "design a 3-tier offline sync architecture comparing CRDTs vs op-logs and write a multi-milestone implementation plan", "should_trigger": false},
+  {"query": "split our 1,600-line worker_service.py monolith into smaller domain modules without breaking public imports", "should_trigger": false},
+  {"query": "write a SQL query to find the top 10 customers by monthly recurring revenue in Postgres", "should_trigger": false},
+  {"query": "create a new Antigravity skill for reviewing Terraform plans and add evals for it", "should_trigger": false},
+  {"query": "explain how CSS flexbox min-width: 0 prevents text overflow in plain English", "should_trigger": false},
+  {"query": "debug this TypeError in Gallery.jsx, find the root cause, and fix the component end-to-end", "should_trigger": false},
+  {"query": "commit and push my staged changes to origin/feature-auth", "should_trigger": false},
+  {"query": "install numpy and pandas into a new conda environment for my data science notebook", "should_trigger": false},
+  {"query": "summarize the meeting notes from yesterday's sprint planning into action items", "should_trigger": false},
+  {"query": "rename the UserAccount class to AccountProfile across the repository", "should_trigger": false}
+]

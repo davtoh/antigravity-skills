@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"sess-a1","timestamp":"2026-11-26T10:00:00Z","message":{"role":"user","content":"continue the plan"}}
+{"type":"assistant","sessionId":"sess-a1","timestamp":"2026-11-26T10:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"python plan_engine.py status x"}}]}}
+{"type":"user","sessionId":"sess-a1","timestamp":"2026-11-26T10:00:06Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"SyntaxError: invalid syntax"}]}}

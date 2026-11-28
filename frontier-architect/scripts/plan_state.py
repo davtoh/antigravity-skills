@@ -123,12 +123,12 @@ def save_json(path: Path, data: Any) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(payload)
-        for attempt in range(3):
+        for attempt in range(6):
             try:
                 os.replace(tmp_p, path)
                 return
             except PermissionError:
-                if attempt == 2:
+                if attempt == 5:
                     raise
                 time.sleep(0.02 * (attempt + 1))
     finally:

@@ -60,6 +60,8 @@ def discover_plans(root: Path) -> list[Path]:
     unique: list[Path] = []
     for p in sorted(candidates, key=lambda x: x.stat().st_mtime if x.exists() else 0, reverse=True):
         resolved = p.resolve()
+        if p.name.startswith("learning_proposal"):
+            continue  # retrospective deliverables, not executable plans
         if resolved not in seen and p.is_file():
             seen.add(resolved)
             unique.append(p)

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: retrospective-antigravity-fixture
+expected_outcome: |
+  With the Antigravity runtime forced (RETROSPECTIVE_RECIPE=gemini), the Gemini recipe is followed unchanged: five parts, ask_question for decisions, learning_proposal.md deliverable, and no edits before the user decides. Proves the Claude work did not regress the Antigravity path.

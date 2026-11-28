@@ -157,7 +157,7 @@ def cmd_next(root: Path, args: argparse.Namespace) -> int:
         else:
             print(f"[plan_engine] All milestones in '{ps['title']}' are completed! Run final sign-off.")
             if p := ps.get("parent_plan"):
-                print(f"[plan_engine] Parent Master Plan: {p['slug']} (Step/Milestone {p['milestone']}) -> Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then 'plan_engine.py next {p['slug']}'.")
+                from plan_handoff import parent_handoff; print("\n".join(parent_handoff(root, p)))  # noqa: E702
         return 0
     if args.json:
         print(json.dumps({"milestone": target_m, "verifiers": parsed["verification_commands"], "prior_learn_candidates": prior_learns, "prior_tool_gaps": prior_gaps}, indent=2))
@@ -254,17 +254,19 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
     ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso, note=getattr(args, "note", None))
+    from plan_sessions import record_session; record_session(root, ps["slug"], target_idx, "advance")  # noqa: E702
     commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective
     rollup_child_retrospective(root, ps, target_idx)
 
     missing_prior_retro = None
-    if target_idx > 1:
-        retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
-        logged = {r.get("milestone_index") for r in retros if isinstance(r, dict)}
-        if (target_idx - 1) not in logged:
-            missing_prior_retro = target_idx - 1
+    retros = load_json(fdir / "plans" / ps["slug"] / "retrospectives.json", [])
+    logged = {r.get("milestone_index") for r in retros if isinstance(r, dict)}
+    if target_idx > 1 and (target_idx - 1) not in logged:
+        missing_prior_retro = target_idx - 1
+    if ps.get("status") == "completed" and target_idx not in logged and not ps.get("child_plans"):
+        print(f"[plan_engine] Reminder: run `plan_engine.py retrospective {ps['slug']} --milestone {target_idx} --cid <cid> --tri ...` before final handoff.")
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
     parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))

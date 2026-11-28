@@ -2,7 +2,9 @@
 """Standalone debug retrospective logger (works with or without .frontier/)."""
 
 import argparse
+import contextlib
 import datetime
+import os
 from pathlib import Path
 from typing import Any
 
@@ -18,20 +20,42 @@ def _resolve_retro_path(root: Path) -> Path:
 
 
 def _audit_metrics(cid: str | None, brain_dir: str | None) -> str:
-    """Summarize transcript steps/failures/fallbacks when --cid is supplied."""
+    """Summarize transcript steps/failures/fallbacks when --cid is supplied (either vendor; D2 precedence)."""
     if not cid:
         return "steps=? | fails=?"
     brain = Path(brain_dir) if brain_dir else ta.default_brain_dir()
-    resolved = ta._resolve_cids(brain, [cid], None)
-    if not resolved:
-        return f"cid={cid[:8]} (missing)"
-    row = ta.audit_conversation(brain, resolved[0])
+    from transcript_router import audit  # lazy: the router imports transcript_auditor
+    try:
+        row = audit(cid, "auto", brain) if os.getenv("TRANSCRIPT_VENDOR") != "gemini" else None
+    except ValueError as exc:
+        return f"cid={cid[:8]} ({exc})"
+    if row is None or row.get("vendor") != "claude":
+        resolved = ta._resolve_cids(brain, [cid], None)
+        if not resolved:
+            return f"cid={cid[:8]} (missing)"
+        row = ta.audit_conversation(brain, resolved[0])
     if row.get("missing"):
-        return f"cid={resolved[0][:8]} (missing)"
+        return f"cid={cid[:8]} (missing)"
+    tok = f" tokens={sum((row['tokens'] or {}).values()):,}" if row.get("tokens") else ""
     return (
         f"cid={row['cid'][:8]} steps={row['steps']} fails={row['total_failures']} "
-        f"cap={row['suggested_grade_cap']} cdp_fallbacks={row.get('cdp_live_fallbacks', 0)}"
+        f"cap={row['suggested_grade_cap']} cdp_fallbacks={row.get('cdp_live_fallbacks', 0)}{tok}"
     )
+
+
+@contextlib.contextmanager
+def _vendor_env(vendor: str | None):
+    """Apply ``--vendor`` through ``TRANSCRIPT_VENDOR`` (D2) for this call, including in-process digest code."""
+    old = os.environ.get("TRANSCRIPT_VENDOR")
+    if vendor and vendor != "auto":
+        os.environ["TRANSCRIPT_VENDOR"] = vendor
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop("TRANSCRIPT_VENDOR", None)
+        else:
+            os.environ["TRANSCRIPT_VENDOR"] = old
 
 
 def _merge_bounded_retro(retro_path: Path, entry: str, max_lines: int = 120) -> str:
@@ -136,6 +160,11 @@ def _print_turn_end_echo(scaffold_rel: str, symptom: str, cause: str, learn: str
 
 def cmd_debug_retro(args: argparse.Namespace) -> int:
     """CLI handler for `diagnose.py debug-retro`."""
+    with _vendor_env(getattr(args, "vendor", None)):
+        return _run_debug_retro(args)
+
+
+def _run_debug_retro(args: argparse.Namespace) -> int:
     root = Path(args.path or ".").resolve()
     out = record_debug_retro(
         root=root,
@@ -165,5 +194,6 @@ def register_parser(subparsers: Any) -> None:
     p.add_argument("--cid", default=None, help="Conversation ID for transcript telemetry")
     p.add_argument("--plan", default=None, help="Optional active .frontier plan slug to refresh LEARNING_SCAFFOLD.md")
     p.add_argument("--brain-dir", default=None, help="Optional brain dir override")
+    p.add_argument("--vendor", choices=("auto", "gemini", "claude"), default="auto", help="Transcript format of --cid (default: auto-detect, else gemini)")
     p.add_argument("--learn", default=None, help="Project-level /learn candidate")
     p.add_argument("--skill-learn", default=None, help="Skill/tooling /learn candidate")

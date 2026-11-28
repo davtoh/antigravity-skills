@@ -32,6 +32,8 @@ import skill_packager
 import arch_mapper
 import transcript_auditor
 import debug_retro
+import observation_cli
+import brief
 import diagnose_cli
 
 # Configure UTF-8 stdout/stderr across all platforms
@@ -126,6 +128,19 @@ def cmd_surface(args: argparse.Namespace) -> int:
     """Delegate directory surface scanning to surface_scanners.cmd_surface."""
     return surface_scanners.cmd_surface(args)
 
+def _resolve_unittest_args(raw_args: list[str], target_path: Path, start_dir: str) -> tuple[list[str], Path]:
+    """Convert a directory or .py file argument into unittest discover args."""
+    if not raw_args:
+        return ["discover", "-s", start_dir, "-p", "test_*.py"], target_path
+    if len(raw_args) == 1 and not raw_args[0].startswith("-"):
+        candidate = (target_path / raw_args[0]) if not Path(raw_args[0]).is_absolute() else Path(raw_args[0])
+        if candidate.is_dir():
+            return ["discover", "-s", str(candidate), "-p", "test_*.py"], target_path
+        if candidate.is_file() and candidate.suffix == ".py":
+            return ["discover", "-s", str(candidate.parent), "-p", candidate.name], target_path
+    return raw_args, target_path
+
+
 def cmd_tests(args: argparse.Namespace) -> int:
     """Execute automated test runner using virtualenv Python if available."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
@@ -138,7 +153,7 @@ def cmd_tests(args: argparse.Namespace) -> int:
     else:
         start_dir = "tests" if (target_path / "tests").is_dir() else "."
     py_bin = find_virtualenv_python(target_path)
-    test_args = args.args if args.args else ["discover", "-s", start_dir, "-p", "test_*.py"]
+    test_args, target_path = _resolve_unittest_args(list(args.args or []), target_path, start_dir)
     cmd = [py_bin, "-m", "unittest", *test_args]
     raw_timeout = getattr(args, "timeout", 180.0)
     timeout = raw_timeout if (raw_timeout is not None and raw_timeout > 0) else None
@@ -266,7 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose_cli.register_core_parsers(sub)
     for mod in (
         probe_runner, static_auditor, shadow_prober, changelog_manager,
-        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor, debug_retro,
+        trace_recorder, runtime_runner, skill_packager, arch_mapper, transcript_auditor, debug_retro, observation_cli, brief,
     ):
         reg = getattr(mod, "register_parsers", None) or getattr(mod, "register_parser")
         reg(sub)
@@ -298,6 +313,8 @@ def main() -> int:
         "arch-map": arch_mapper.cmd_arch_map,
         "transcript-audit": transcript_auditor.cmd_transcript_audit,
         "debug-retro": debug_retro.cmd_debug_retro,
+        "observations": observation_cli.cmd_observations,
+        "brief": brief.cmd_brief,
     }
     handler = dispatch.get(args.subcommand)
     if not handler:

@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import probe_history  # noqa: E402
+
 DEFAULT_GLOBAL_PROBES = SCRIPTS_DIR.parent / "probes"
 INFRA_UNAVAILABLE = "INFRA_UNAVAILABLE"
 VALID_PROBE_STATUSES = frozenset({"ok", "warning", "error", INFRA_UNAVAILABLE})
@@ -144,6 +149,20 @@ def run_probe(
     python_bin: str | None = None,
     workspace_root: Path | None = None,
     timeout: float = 60.0,
+) -> dict[str, Any]:
+    """Execute a probe and record its last result for `diagnose.py brief` (when a workspace is given)."""
+    result = _execute_probe(name_or_path, probe_args, python_bin, workspace_root, timeout)
+    if workspace_root is not None and "searched_dirs" not in (result.get("details") or {}):
+        probe_history.record(workspace_root, result)
+    return result
+
+
+def _execute_probe(
+    name_or_path: str,
+    probe_args: list[str] | None,
+    python_bin: str | None,
+    workspace_root: Path | None,
+    timeout: float,
 ) -> dict[str, Any]:
     """Execute a probe in an isolated subprocess and return structured telemetry."""
     probe_file = find_probe(name_or_path, workspace_root)

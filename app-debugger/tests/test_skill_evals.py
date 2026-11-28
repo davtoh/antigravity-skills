@@ -198,6 +198,18 @@ def evaluate_expectation(text: str, expectation: str) -> tuple[bool, str]:
         ok = bool(re.search(r"Test-Path\s+\.frontier/DEBUG_RETRO\.md", text)) and bool(re.search(r"read_fail", text))
         return ok, f"Check Test-Path before read_file on DEBUG_RETRO.md: {ok}"
 
+    if "observations list" in exp_lower:
+        ok = bool(re.search(r"observations list --json", text)) and bool(re.search(r"reproduction evidence", text, re.I))
+        return ok, f"Read active observations first: {ok}"
+
+    if "observations pull" in exp_lower:
+        ok = bool(re.search(r"observations pull --url http://127\.0\.0\.1", text)) and bool(re.search(r"remote or containerized", text, re.I))
+        return ok, f"Pull remote observations first: {ok}"
+
+    if "observations resolve" in exp_lower:
+        ok = bool(re.search(r"observations resolve --id", text)) and bool(re.search(r"never resolve on an unverified", text, re.I))
+        return ok, f"Resolve observations only after verification: {ok}"
+
     # Generic keyword match
     words = [w for w in re.findall(r"\b[a-zA-Z_]{4,}\b", exp_lower) if w not in {"with", "that", "from", "this", "then", "have"}]
     found_cnt = sum(1 for w in words if w in text.lower())
@@ -226,6 +238,18 @@ class TestAppDebuggerEvals(unittest.TestCase):
             self.assertIn("prompt", e)
             self.assertIn("expected_output", e)
             self.assertGreaterEqual(len(e.get("expectations", [])), 3)
+
+    def test_trigger_evals_json_structure(self):
+        """Verify trigger_eval.json exists and has balanced positive/negative queries."""
+        tf = SKILL_DIR / "evals" / "trigger_eval.json"
+        self.assertTrue(tf.is_file(), f"Missing trigger_eval.json at {tf}")
+        items = json.loads(tf.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(items), 16)
+        pos = [x for x in items if x.get("should_trigger") is True]
+        neg = [x for x in items if x.get("should_trigger") is False]
+        self.assertGreaterEqual(len(pos), 8)
+        self.assertGreaterEqual(len(neg), 8)
+        self.assertTrue(all(isinstance(x.get("query"), str) and x["query"].strip() for x in items))
 
     def test_skill_satisfies_all_eval_expectations(self):
         """Assert current SKILL.md satisfies 100% of expectations across all scenarios."""

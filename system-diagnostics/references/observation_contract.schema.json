@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "observation_contract.schema.json",
+  "title": "Debug Observation Wire Contract v1",
+  "$defs": {
+    "kind": {"enum": ["element", "error", "network", "note", "idea"]},
+    "element_ref": {
+      "type": "object",
+      "required": ["selector"],
+      "properties": {
+        "selector": {"type": "string", "minLength": 1},
+        "rect": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}}},
+        "attrs": {"type": "object"}
+      }
+    },
+    "record": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "schema": {"const": 1},
+        "ts": {"type": "string"},
+        "kind": {"$ref": "#/$defs/kind"},
+        "page_path": {"type": "string"},
+        "selector": {"type": "string"},
+        "rect": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}}},
+        "attrs": {"type": "object"},
+        "elements": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/element_ref"}},
+        "related_ids": {"type": "array", "maxItems": 30, "items": {"type": "string", "pattern": "^OBS-\\d+$"}},
+        "message": {"type": "string", "maxLength": 500},
+        "recording_id": {"type": "string"},
+        "window": {"type": "object", "properties": {"started_at": {"type": "string"}, "stopped_at": {"type": "string"}}},
+        "timeline": {"type": "array", "maxItems": 50, "items": {"type": "object", "required": ["t", "type"],
+          "properties": {"t": {"type": "number"}, "type": {"enum": ["click", "input", "nav", "fetch", "console", "error"]}, "target": {"type": "string"}, "status": {"type": "number"}, "ms": {"type": "number"}}}}
+      }
+    },
+    "list_response": {
+      "type": "object",
+      "required": ["schema", "count", "truncated", "observations"],
+      "properties": {
+        "schema": {"const": 1},
+        "count": {"type": "integer"},
+        "truncated": {"type": "boolean"},
+        "observations": {"type": "array", "items": {"type": "object",
+          "required": ["id", "fingerprint", "status", "kind", "occurrence_count", "last_seen"]}}
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["error", "message"],
+      "properties": {
+        "error": {"enum": ["invalid_json", "invalid_record", "payload_too_large", "forbidden", "not_found", "unsupported_media_type"]},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}

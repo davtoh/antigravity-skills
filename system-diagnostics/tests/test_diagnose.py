@@ -284,6 +284,25 @@ class TestSubcommandsExecution(unittest.TestCase):
                 cmd_sub = mock_run.call_args[0][0]
                 self.assertEqual(cmd_sub[-4:], ["-s", ".", "-p", "test_*.py"])
 
+    def test_cmd_tests_converts_positional_dir_and_file_to_discover(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            sub_tests = root / "skills" / "demo" / "tests"
+            sub_tests.mkdir(parents=True)
+            test_file = sub_tests / "test_sample.py"
+            test_file.write_text("import unittest\n", encoding="utf-8")
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                rc_dir = diagnose.cmd_tests(argparse.Namespace(path=str(root), args=["skills/demo/tests"]))
+                self.assertEqual(rc_dir, 0)
+                cmd_dir = mock_run.call_args[0][0]
+                self.assertEqual(cmd_dir[-4:], ["-s", str(sub_tests), "-p", "test_*.py"])
+
+                rc_file = diagnose.cmd_tests(argparse.Namespace(path=str(root), args=["skills/demo/tests/test_sample.py"]))
+                self.assertEqual(rc_file, 0)
+                cmd_file = mock_run.call_args[0][0]
+                self.assertEqual(cmd_file[-4:], ["-s", str(sub_tests), "-p", "test_sample.py"])
+
     def test_cmd_scan_and_scaffold_execution(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -332,7 +351,7 @@ class TestSubcommandsExecution(unittest.TestCase):
             f = sub / "a.py"
             f.write_text("def f(x=[]):\n    pass\n", encoding="utf-8")
             _, json_path, _ = shadow_prober.scan_and_save(f)
-            self.assertEqual(json_path.parent.parent, sub.resolve())
+            self.assertEqual(json_path.parent.parent.resolve(), sub.resolve())
 
 class TestMainDispatcher(unittest.TestCase):
     """Test top-level main() entrypoint."""

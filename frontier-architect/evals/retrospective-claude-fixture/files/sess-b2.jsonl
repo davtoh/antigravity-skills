@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"sess-b2","timestamp":"2026-11-26T11:00:00Z","message":{"role":"user","content":"continue"}}
+{"type":"assistant","sessionId":"sess-b2","timestamp":"2026-11-26T11:00:04Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"a.py"}}]}}
+{"type":"assistant","sessionId":"sess-b2","timestamp":"2026-11-26T11:00:09Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":"a.py"}}]}}

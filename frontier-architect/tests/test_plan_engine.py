@@ -45,9 +45,11 @@ class TestPlanParser(unittest.TestCase):
                 (root / d).mkdir()
             p1, p2 = root / ".plans" / "plan_a.md", root / ".TODO" / "plan_b.md"
             ign = root / "node_modules" / "plan_c.md"
-            for p in (p1, p2, ign):
+            lp = root / ".TODO" / "learning_proposal_x.md"
+            for p in (p1, p2, ign, lp):
                 p.write_text("# Plan", encoding="utf-8")
             found = [p.name for p in discover_plans(root)]
+            self.assertNotIn("learning_proposal_x.md", found)
             self.assertIn("plan_a.md", found)
             self.assertIn("plan_b.md", found)
             self.assertNotIn("plan_c.md", found)
@@ -377,7 +379,7 @@ class TestPlanEngineCLI(unittest.TestCase):
 
         code, out = self._run_cli(["verify", "sample_plan"])
         self.assertEqual(code, 0)
-        self.assertIn("Running verifier: python -m unittest", out)
+        self.assertRegex(out, r"Running verifier: \S*python\S* -m unittest")  # bare python resolves to the running interpreter without a venv
 
         ws = load_json(get_frontier_dir(self.root) / "state.json")
         self.assertEqual(ws["verification_baseline"]["passed_tests"], 8)

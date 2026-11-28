@@ -7,6 +7,8 @@
   {"query": "design the event pipeline for our telemetry service. Give me a pragmatic baseline, a SOTA version and a moonshot, and ask me whatever you need first", "should_trigger": true},
   {"query": "plan_engine says milestone 3 is in_progress, run next and keep going with the verified loop, no need to re-read the whole plan", "should_trigger": true},
   {"query": "how do we structure a plan-first workflow with atomic slices and closed-loop verification for the checkout rewrite? We use Sonnet for execution and Opus for review.", "should_trigger": true},
+  {"query": "/frontier-architect audit our app — I logged 4 findings and 2 ideas in the DevTools HUD on port 8000", "should_trigger": true},
+  {"query": "run a retrospective on plan offline_sync and propose skill/rule improvements from the session transcripts", "should_trigger": true},
   {"query": "fix the typo in the README where 'recieve' is misspelled", "should_trigger": false},
   {"query": "backend/jobs/worker.py is 1,800 lines with six queue handlers. Split it into modules without breaking imports", "should_trigger": false},
   {"query": "TypeError: Cannot read properties of undefined (reading 'map') at Gallery.jsx:42, it throws only when the list is empty. Why?", "should_trigger": false},

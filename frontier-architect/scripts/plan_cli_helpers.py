@@ -44,16 +44,26 @@ def resolve_commit_hint(
 
 def assess_plan_scope(parsed: dict[str, Any], ps: dict[str, Any], parent_arg: str | None) -> str | None:
     """Recommend Master Plan hierarchy when a flat roadmap spans >=4 milestones or >=3 subsystems."""
+    milestones = parsed.get("milestones", [])
+    total_tasks = sum(len(m.get("tasks", [])) for m in milestones)
+    unique_files = {
+        path for ms in milestones for t in ms.get("tasks", [])
+        for path in _TASK_PATH_RE.findall(t.get("text", ""))
+    }
     is_master = (
         bool(ps.get("child_plans"))
         or any(k in ps.get("slug", "").lower() for k in ("master", "roadmap"))
         or any(k in ps.get("title", "").lower() for k in ("master", "roadmap"))
     )
     if parent_arg or ps.get("parent_plan") or is_master:
+        if (parent_arg or ps.get("parent_plan")) and len(milestones) == 1 and (len(unique_files) > 6 or total_tasks >= 10):
+            return (
+                f"[plan_engine] GRANULARITY WARNING (SINGLE-MILESTONE CHILD): '{ps['slug']}' has 1 milestone "
+                f"with {total_tasks} tasks and {len(unique_files)} files (>6 files / >=10 tasks).\n"
+                "  Split into 2-3 cohesive milestones (~40-70 steps, <=6-8 files each) before execution."
+            )
         return None
-    milestones = parsed.get("milestones", [])
-    total_tasks = sum(len(m.get("tasks", [])) for m in milestones)
-    dirs = {m.group(1).split("/", 1)[0] for ms in milestones for t in ms.get("tasks", []) if (m := _TASK_PATH_RE.search(t.get("text", "")))}
+    dirs = {path.split("/", 1)[0] for path in unique_files}
     if len(milestones) >= 4 or (len(dirs) >= 3 and total_tasks >= 10):
         return (
             f"[plan_engine] SCOPE RECOMMENDATION (MASTER PLAN): '{ps['slug']}' has {len(milestones)} milestones, "
@@ -89,7 +99,7 @@ def _is_tactical_master_step(tasks: list[dict[str, Any]] | None) -> bool:
     if tasks is None:
         return False
     actionable = [t for t in tasks if not _SECTION_HEADER_RE.match(t.get("text", ""))]
-    unique_files = {m.group(1) for t in actionable if (m := _TASK_PATH_RE.search(t.get("text", "")))}
+    unique_files = {path for t in actionable for path in _TASK_PATH_RE.findall(t.get("text", ""))}
     if unique_files:
         return len(unique_files) <= 4 and len(actionable) <= 6
     return len(actionable) <= 3
@@ -187,7 +197,7 @@ def print_advance_summary(
                 if parent_done:
                     print(f"[plan_engine] Master Sync (Auto): Parent '{parent_synced[0]}' Milestone {parent_synced[1]} completed -> Master Roadmap is 100% COMPLETE! (Learning scaffold refreshed; run `/learn` or start a New Conversation (+)).")
                 else:
-                    print(f"[plan_engine] Master Sync (Auto): Marked parent '{parent_synced[0]}' Milestone {parent_synced[1]} complete -> continue with '/frontier-architect continue {parent_synced[0]}'.")
+                    print(f"[plan_engine] Master Sync (Auto): Marked parent '{parent_synced[0]}' Master Step {parent_synced[1]} complete -> run '/frontier-architect continue {parent_synced[0]}' to pre-plan the next Step into sub-milestones.")
             else:
                 print(f"[plan_engine] Master Sync: Run 'plan_engine.py advance {p['slug']} --milestone {p['milestone']}' then prompt '/frontier-architect continue {p['slug']}'.")
         print(f"[plan_engine] Introspectives (User Choice): Review `{scaffold_rel or 'LEARNING_SCAFFOLD.md'}` -> run `/learn` to persist lessons | optional: `plan_engine.py digest {ps['slug']} --backfill --write-scaffold`")

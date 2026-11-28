@@ -12,10 +12,29 @@ _BUG_SYMPTOM_RE = re.compile(r"\b(bug|broken|error|fail(?:ed|ing)?|crash(?:ed|in
 _WORKFLOW_REDIRECT_RE = re.compile(r"\b(agent|model|hydrogen|neon|opus|sonnet|flash|plan\s+mode|swarm|unchecked|cleanup|housekeeping)\b", re.I)
 _REDIRECT_VERB_RE = re.compile(r"\b(switch|change\s+to)\b", re.I)
 _FIRST_OVERRIDE_RE = re.compile(r"^(?:no\b|stop\b|wrong\b|don't\b|do not\b|actually\b|wait\b)", re.I)
+_QUESTION_OPEN_RE = re.compile(
+    r"^(?:can|could|would|will|is|are|do|does|did|how|what|which|where|when|should|puedes|podr[ií]as|podr[ií]a|"
+    r"es\s+verdad|c[oó]mo|qu[eé]|cu[aá]l|d[oó]nde|cu[aá]ndo|deber[ií]a)\b", re.I)
+_BLAME_QUESTION_RE = re.compile(r"\bwhy\s+did\s+you\b|\bpor\s+qu[eé]\s+hiciste\b", re.I)
+_PASTED_RE = re.compile(r"<pasted_content\b[^>]*>.*?(?:</pasted_content>|\Z)", re.S)
 _NOISE_PREFIXES = (
     "Created At:", "Completed At:", "Command output:", "Log: file:///",
     "<SYSTEM_MESSAGE>", "</SYSTEM_MESSAGE>", "YOU MUST TAKE ", "DO NOTHING ELSE.",
 )
+_USER_REJECTED_RE = re.compile(
+    r"user doesn't want to proceed"
+    r"|tool (?:use|call|execution) was (?:rejected|cancel+ed|denied by (?:the )?user)"
+    r"|(?:rejected|cancel+ed|declined|aborted) by (?:the )?user"
+    r"|user (?:rejected|declined|cancel+ed) (?:the |this )?(?:tool|command|action|edit)",
+    re.I,
+)
+
+
+def is_user_rejected(content: str, status: str = "") -> bool:
+    """True when the user declined or cancelled a tool call (not an agent defect or grade input)."""
+    if status.upper() in ("REJECTED", "CANCELED", "CANCELLED"):
+        return True
+    return bool(_USER_REJECTED_RE.search(content))
 
 
 def compute_grade_cap(steps: int, total_failures: int) -> str:
@@ -85,26 +104,46 @@ def failure_snippet(content: str) -> str:
     return " ".join(chosen.split())[:90]
 
 
-def extract_user_correction(content: str, idx: int, acc: dict[str, Any]) -> None:
-    """Capture bug/code corrections into ``user_corrections`` and model/workflow switches into ``workflow_redirects``."""
+def is_plain_question(text: str) -> bool:
+    """True for genuine questions ("can you help me ...?"); blame/override openers still count as corrections."""
+    if _FIRST_OVERRIDE_RE.match(text) or _BLAME_QUESTION_RE.search(text):
+        return False
+    return text.rstrip().endswith("?") or bool(_QUESTION_OPEN_RE.match(text))
+
+
+def extract_user_correction(content: str, idx: int, acc: dict[str, Any], cues: dict[str, Any] | None = None) -> None:
+    """Capture bug/code corrections into ``user_corrections`` and model/workflow switches into ``workflow_redirects``.
+
+    ``cues`` (from ``transcript_cues.load_cues``) replaces the English-only defaults; ``None`` keeps them.
+    """
+    cues = cues or {}
+    bug, flow, verb, corr = (cues.get("bug_symptom", _BUG_SYMPTOM_RE), cues.get("workflow_redirect", _WORKFLOW_REDIRECT_RE),
+                             cues.get("redirect_verb", _REDIRECT_VERB_RE), cues.get("correction", _CORRECTION_RE))
     is_first = not acc["seen_first_user"]
     acc["seen_first_user"] = True
     matches = _USER_REQ_RE.findall(content)
-    clean_req = " ".join(("\n".join(matches) if matches else content).split())
+    body = "\n".join(matches) if matches else content
+    clean_req = " ".join(_PASTED_RE.sub(" ", body).split())
     if not clean_req or (is_first and not _FIRST_OVERRIDE_RE.match(clean_req)):
         return
-    is_redirect = _WORKFLOW_REDIRECT_RE.search(clean_req) and not _BUG_SYMPTOM_RE.search(clean_req)
-    if is_redirect and (_CORRECTION_RE.search(clean_req) or _REDIRECT_VERB_RE.search(clean_req)):
+    if is_plain_question(clean_req):
+        return
+    is_redirect = flow.search(clean_req) and not bug.search(clean_req)
+    if is_redirect and (corr.search(clean_req) or verb.search(clean_req)):
         redirects = acc.setdefault("workflow_redirects", [])
         if len(redirects) < 3:
             redirects.append(f"step {idx}: {clean_req[:110]}")
         return
-    if len(acc["user_corrections"]) < 3 and _CORRECTION_RE.search(clean_req):
+    if len(acc["user_corrections"]) < 3 and corr.search(clean_req):
         acc["user_corrections"].append(f"step {idx}: {clean_req[:110]}")
 
 
 def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     """Append waste flags, failure samples, repeated reads, and user corrections for one row."""
+    if r.get("awaiting_user_answer"):
+        notes.append(f"- PAUSED {cid8}: awaiting user answer on {r.get('last_tool') or 'ask_question'}")
+    if r.get("user_rejected", 0) >= 1:
+        notes.append(f"- NOTE {cid8}: {r['user_rejected']} tool call(s) rejected by the user (not counted as failures)")
     if r["subagents"] and r["reads_after_subagent"] > 4:
         notes.append(f"- FLAG {cid8}: {r['reads_after_subagent']} subagent duplicate reads ({r.get('reads_while_pending', 0)} pending + {r.get('subagent_overlap_reads', 0)} unedited overlap)")
     if r.get("schedule_while_subagent", 0) >= 1:

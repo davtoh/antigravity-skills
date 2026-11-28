@@ -276,7 +276,7 @@ class TestAuxiliaryInspectionTools(unittest.TestCase):
 
             tools = discover_optional_tools(base)
             self.assertIn("virtualenv_python", tools)
-            self.assertEqual(tools["virtualenv_python"], str(py_exe))
+            self.assertEqual(Path(tools["virtualenv_python"]).resolve(), py_exe.resolve())
 
     def test_inspect_css_file_and_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -2,6 +2,8 @@
 
 This document serves as persistent operational memory across conversations for AI agents working in `skills/`.
 
+> **Start here:** [`ARCHITECTURE.md`](ARCHITECTURE.md) maps every skill, script, CLI subcommand, test suite and known gap (including what works under Claude). Read it before sweeping the repo.
+
 ---
 
 ## 1. Architecture & Repository Topology
@@ -15,6 +17,8 @@ This document serves as persistent operational memory across conversations for A
 - **`refactor-monolith/`**: Zero-drift monolith decomposition engine enforcing $\Delta(\text{Observable Behavior}) \equiv 0$. Uses thin SSOT delegating shims for `scripts/css_inspector.py` and `scripts/surface_scanners.py`.
 - **`app-debugger/`**: Dedicated empirical bug hunter and symptom-to-root-cause debugger (`scripts/run_diagnose.py` delegates to `system-diagnostics`).
 - **In-Flight Tool Elevation Rule (SSOT)**: Always fix shared diagnostic bugs in `system-diagnostics/scripts/` and run `system-diagnostics/tests/`—never overwrite thin delegating shims with forked code copies.
+- **Transcript audit (Claude + Antigravity)**: `diagnose.py transcript-audit --vendor claude` reads `~/.claude/projects/`; cue calibration lives in `system-diagnostics/scripts/transcript_cues.py` / `transcript_checks.py` (questions and pasted content are not corrections; `fails` is a floor, see `masked_failures`).
+- **Debug observation connector**: HUD observations (`diagnose.py observations`, `brief`), wire contract v1 in `system-diagnostics/references/observation-connector-contract.md`, workflow in `references/observations.md`; `/frontier-architect audit` follows `frontier-architect/references/audit-recipe.md`. Default-off (`FRONTIER_DEBUG_OBSERVATIONS=1`), loopback only, never commit `.diagnostics/`.
 - **`.TODO/`**: Active implementation plans and architectural roadmaps.
 
 ---
@@ -46,6 +50,11 @@ Authoritative Plan: [`.TODO/latent_defect_and_smell_protocol_plan.md`](.TODO/lat
 4. **Split-Before-You-Grow:** Never append new CLI subcommands or logic directly into a file $\ge 350$ lines.
 5. **Zero Secrets in Source Control:** Resolve exclusively via `os.getenv()` with empty string fallback per Rule 1.
 6. **Cross-Platform Discipline:** Pure standard-library OS-agnostic code (`pathlib.Path`, forward slashes in relative paths, UTF-8 LF normalized).
+7. **Tests resolve temp paths:** build workspaces with `Path(tempfile.mkdtemp()).resolve()` (or `TemporaryDirectory().name` wrapped in `.resolve()`) and compare paths with `.resolve()` on both sides; macOS temp dirs are symlinks (`/var` -> `/private/var`). Tests needing `node` or Chrome must skip, not fail, when absent.
+
+8. **zsh globs:** quote glob patterns (`--include='*.py'`) or use `Glob`; unquoted globs abort with `no matches found` on POSIX zsh.
+9. **No sleep-waits:** never `sleep N; cat <log>` or `Start-Sleep`; use reactive background execution (`WaitMsBeforeAsync` in Antigravity; `run_in_background` or `Monitor` in Claude) and read on completion.
+10. **Python launcher:** in repos with `.venv`, prefer `.venv\Scripts\python.exe` (Windows) / `.venv/bin/python` (POSIX); run skill CLI scripts via `sh "<skill_dir>/scripts/py.sh"` (POSIX) or `& "<skill_dir>/scripts/py.cmd"` (Windows PowerShell), never an unverified bare `python` or `python3`.
 
 ---
 
@@ -58,6 +67,9 @@ python -m unittest discover -s system-diagnostics/tests -p "test_*.py"
 
 # Refactor Monolith Suite
 python -m unittest discover -s refactor-monolith/tests -p "test_*.py"
+
+# App Debugger Suite
+python -m unittest discover -s app-debugger/tests -p "test_*.py"
 ```
 
 ---

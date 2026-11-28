@@ -166,6 +166,59 @@ class TestTraceRecorder(unittest.TestCase):
         self.assertEqual(issue["sample_contexts"][0]["http_method"], "POST")
 
 
+class TestRecordingIdStamping(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="sysdiag_rec_")).resolve()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _events(self):
+        out = []
+        for f in (self.temp_dir / ".diagnostics" / "traces").glob("trace_*.jsonl"):
+            out += [json.loads(line) for line in f.read_text(encoding="utf-8").splitlines() if line.strip()]
+        return out
+
+    def test_asgi_stamps_recording_id(self):
+        import asyncio
+        import trace_middleware
+
+        async def boom(scope, receive, send):
+            raise RuntimeError("asgi boom")
+
+        mw = trace_middleware.DiagnosticTraceMiddleware(boom, workspace_root=self.temp_dir)
+        scope = {"type": "http", "path": "/x", "method": "GET", "client": ("127.0.0.1", 1),
+                 "headers": [(b"X-Debug-Recording-Id", b"rec-8f3a2c")]}
+        with self.assertRaises(RuntimeError):
+            asyncio.run(mw(scope, None, None))
+        self.assertEqual(self._events()[-1]["context"]["recording_id"], "rec-8f3a2c")
+
+    def test_wsgi_stamps_and_rejects_bad_ids(self):
+        import trace_middleware
+
+        def boom(environ, start_response):
+            raise RuntimeError("wsgi boom")
+
+        mw = trace_middleware.DiagnosticWSGIMiddleware(boom, workspace_root=self.temp_dir)
+        for rid in ("rec-abc123", "bad id!<script>", "x" * 200, "réc-1", ""):
+            with self.assertRaises(RuntimeError):
+                mw({"REQUEST_METHOD": "GET", "PATH_INFO": "/", "HTTP_X_DEBUG_RECORDING_ID": rid}, None)
+        ctxs = [e["context"] for e in self._events()]
+        self.assertTrue(any(c.get("recording_id") == "rec-abc123" for c in ctxs))
+        self.assertFalse(any(c.get("recording_id") not in (None, "rec-abc123") for c in ctxs))
+
+    def test_no_header_means_no_key(self):
+        import trace_middleware
+
+        def boom(environ, start_response):
+            raise RuntimeError("plain")
+
+        mw = trace_middleware.DiagnosticWSGIMiddleware(boom, workspace_root=self.temp_dir)
+        with self.assertRaises(RuntimeError):
+            mw({"REQUEST_METHOD": "GET", "PATH_INFO": "/"}, None)
+        self.assertNotIn("recording_id", self._events()[-1]["context"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

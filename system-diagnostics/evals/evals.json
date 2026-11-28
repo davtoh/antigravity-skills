@@ -246,6 +246,39 @@
         "Supports --base, --plan, and --recent flags on diagnose.py changelog pr-description",
         "Generates structured Markdown PR summary output with Verification and Key Changes sections"
       ]
+    },
+    {
+      "id": 21,
+      "prompt": "We run sessions in both Antigravity (Gemini) and Claude Code, and sometimes a developer declines a tool prompt in the UI. How do we audit transcripts across both vendors and ensure user-rejected tool calls do not penalize failure counts or grade caps?",
+      "expected_output": "Executes diagnose.py transcript-audit --vendor auto|gemini|claude (with --list or --plan) across Antigravity brain and Claude projects directories, excluding user_rejected tool calls from total_failures and suggested_grade_cap and reporting them as informational - NOTE lines.",
+      "files": [],
+      "expectations": [
+        "Supports --vendor auto|gemini|claude alongside --list and --plan in diagnose.py transcript-audit to inspect Antigravity and Claude Code session logs",
+        "Excludes user_rejected tool calls from failure counts and suggested_grade_cap across vendors",
+        "Surfaces declined tool calls as informational - NOTE lines rather than - FAIL entries"
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "A user logged three visual bugs and an idea in our DevTools HUD (FRONTIER_DEBUG_OBSERVATIONS=1) on port 8000. Pull the remote observations, print a single capped diagnostic brief with fresh probes, triage the root cause with --missed-by, and resolve the observation after verification.",
+      "expected_output": "Executes diagnose.py observations pull --url http://127.0.0.1:8000, diagnose.py brief --run-probes --pull http://127.0.0.1:8000, observations list, observations triage --missed-by, and observations resolve --commit after verified fix.",
+      "files": [],
+      "expectations": [
+        "Uses diagnose.py observations list and observations pull --url http://127.0.0.1 to inspect local or remote HUD observations",
+        "Runs diagnose.py brief --run-probes to produce a single capped summary of observations, probes, defects, and traces",
+        "Supports observations triage --missed-by and observations resolve --commit after a verified fix"
+      ]
+    },
+    {
+      "id": 23,
+      "prompt": "Run the unit tests inside skills/app-debugger/tests directly by passing the directory path to diagnose.py tests without manually typing discover -s.",
+      "expected_output": "Executes diagnose.py tests skills/app-debugger/tests, which auto-converts the directory path into unittest discover -s <dir> -p test_*.py.",
+      "files": [],
+      "expectations": [
+        "Executes diagnose.py tests to auto-discover local virtual environment interpreters (.venv, venv, env)",
+        "Forwards test arguments cleanly to unittest or pytest",
+        "Enforces --timeout guard (default 180s) returning exit code 124 on hung suites"
+      ]
     }
   ]
 }

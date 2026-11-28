@@ -39,7 +39,7 @@ class TestDualKeyFingerprintStability(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.ws = Path(self.tmp.name)
+        self.ws = Path(self.tmp.name).resolve()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -111,7 +111,7 @@ class TestSandboxSideEffectContainment(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.ws = Path(self.tmp.name)
+        self.ws = Path(self.tmp.name).resolve()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -168,7 +168,7 @@ class TestDirtyTreeBranchSafety(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.ws = Path(self.tmp.name)
+        self.ws = Path(self.tmp.name).resolve()
         try:
             subprocess.run(["git", "init"], cwd=self.ws, capture_output=True, check=True)
             subprocess.run(["git", "config", "user.name", "Tester"], cwd=self.ws, capture_output=True, check=True)
@@ -240,7 +240,7 @@ class TestDualTrackScaffoldingIntegration(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.ws = Path(self.tmp.name)
+        self.ws = Path(self.tmp.name).resolve()
 
     def tearDown(self):
         self.tmp.cleanup()

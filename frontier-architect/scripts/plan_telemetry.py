@@ -225,6 +225,22 @@ def _apply_retry_floors(tri_scores: dict[str, Any], entry: dict[str, Any], retri
         entry["hypotheses_tested"] = max(1, 1 + retries)
 
 
+def _resolve_retro_inputs(args: argparse.Namespace) -> tuple[dict[str, Any], int | None, int | None, str | None]:
+    """Parse --tri, steps, retries, and --cid, warning when telemetry metadata is omitted."""
+    tri_scores = _parse_tri(args.tri)
+    if args.tri and not tri_scores:
+        print(f"[plan_engine] Warning: Could not parse --tri '{args.tri}'. Use 'k=5,k2=4' or '5,5,5,5'.")
+    elif not args.tri:
+        print("[plan_engine] Warning: --tri omitted; tool_reliability_scores will be empty.")
+    raw_retries, raw_steps = getattr(args, "retries", None), getattr(args, "steps", None)
+    retries = raw_retries if isinstance(raw_retries, int) and not isinstance(raw_retries, bool) else None
+    steps = raw_steps if isinstance(raw_steps, int) and not isinstance(raw_steps, bool) else None
+    steps, retries, cid = _resolve_cid_telemetry(args, steps, retries)
+    if steps is None or retries is None:
+        print("[plan_engine] Warning: --steps/--retries unresolved (pass --cid <id> or explicit --steps/--retries for rubric validation).")
+    return tri_scores, retries, steps, cid
+
+
 def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     """Record Token Efficiency Grade, TRI, /learn candidates, and refresh LEARNING_SCAFFOLD.md."""
     plan_p = resolve_plan_path(root, args.plan)
@@ -236,13 +252,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     retro_path = fdir / "plans" / ps["slug"] / "retrospectives.json"
     retros = load_json(retro_path, [])
     milestone_idx = args.milestone if args.milestone is not None else ps.get("last_advanced_milestone", ps["active_milestone_index"])
-    tri_scores = _parse_tri(args.tri)
-    if args.tri and not tri_scores:
-        print(f"[plan_engine] Warning: Could not parse --tri '{args.tri}'. Use 'k=5,k2=4' or '5,5,5,5'.")
-    raw_retries, raw_steps = getattr(args, "retries", None), getattr(args, "steps", None)
-    retries = raw_retries if isinstance(raw_retries, int) and not isinstance(raw_retries, bool) else None
-    steps = raw_steps if isinstance(raw_steps, int) and not isinstance(raw_steps, bool) else None
-    steps, retries, cid = _resolve_cid_telemetry(args, steps, retries)
+    tri_scores, retries, steps, cid = _resolve_retro_inputs(args)
     grade = _cap_grade_by_rubric((args.grade or "A").upper(), retries, steps)
     tri_scores = _cap_tri_by_grade(tri_scores, grade)
     entry = _build_retrospective_entry(milestone_idx, tri_scores, grade, retries, steps, args)
@@ -255,6 +265,7 @@ def cmd_retrospective(root: Path, args: argparse.Namespace) -> int:
     ws = load_json(fdir / "state.json", {})
     _upsert_retro(ws.setdefault("retrospectives", []), {**entry, "_slug": ps["slug"]}, slug=ps["slug"])
     save_json(fdir / "state.json", ws)
+    from plan_sessions import record_session; record_session(root, ps["slug"], milestone_idx, "retrospective", session_id=cid)  # noqa: E702
     from plan_digest import build_workspace_digest, write_learning_scaffold, write_workspace_scaffold
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False, brain_dir=getattr(args, "brain_dir", None))
     if ps.get("status") == "completed":

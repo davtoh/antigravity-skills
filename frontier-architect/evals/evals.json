@@ -361,6 +361,31 @@
         "Generates a PR description from branch changelogs and completed plans via diagnose.py changelog pr-description",
         "Runs diagnose.py changelog add and surfaces git diff main...plan/<slug> on final completion"
       ]
+    },
+    {
+      "id": 29,
+      "prompt": "/frontier-architect audit our app. I logged findings and ideas in the DevTools HUD; the app runs on port 8000 with FRONTIER_DEBUG_OBSERVATIONS=1. I'm away, so don't wait for me.",
+      "expected_output": "Runs diagnose.py brief --run-probes --pull http://127.0.0.1:8000 as the baseline (UNAVAILABLE sections reported UNVERIFIED), builds findings and ideas from observations list --json, records why tools missed each bug with triage --missed-by --guard, states assumptions instead of waiting, and ends with an Axiom 9 verified/not-verified split.",
+      "files": [],
+      "expectations": [
+        "Starts the audit with diagnose.py brief --run-probes and reports UNAVAILABLE sections as UNVERIFIED",
+        "Builds findings and ideas from active observations (observations list --json and --kind idea)",
+        "Records why current tools missed each bug with observations triage --root-cause --missed-by --guard",
+        "Unattended run states working assumptions instead of waiting",
+        "Ends with an Axiom 9 verified versus not verified split"
+      ]
+    },
+    {
+      "id": 30,
+      "prompt": "We work across macOS (where bare python is Python 2) and Windows PowerShell (where python3 is missing or hits the Microsoft Store stub), and we also run retrospectives across Claude Code and Gemini sessions. How does Phase 0 launch plan_engine.py safely on both OSes, and how does retrospective mode route recipes without editing skills prematurely?",
+      "expected_output": "Uses sh \"<skill_dir>/scripts/py.sh\" on POSIX and & \"<skill_dir>/scripts/py.cmd\" on Windows PowerShell in Phase 0 (checking $VIRTUAL_ENV first, then probing py -3, python, python3 for Python 3.10+ while preserving exit codes), routes /frontier-architect retrospective via retrospective-recipe.md precedence (--recipe > RETROSPECTIVE_RECIPE > CLAUDECODE=1 > gemini), and writes learning_proposal*.md without editing skills or rules before user approval.",
+      "files": [],
+      "expectations": [
+        "Uses bundled scripts/py.sh on POSIX and & \"<skill_dir>/scripts/py.cmd\" on Windows PowerShell in Phase 0 to resolve Python 3.10+ without hardcoding bare python or python3",
+        "Checks $VIRTUAL_ENV first in the launcher before probing py -3, python, and python3 and preserves script exit codes",
+        "Routes /frontier-architect retrospective via retrospective-recipe.md precedence (--recipe > RETROSPECTIVE_RECIPE > CLAUDECODE=1 > gemini)",
+        "Writes learning_proposal*.md and waits for user decisions before editing skills, rules, or CLAUDE.md"
+      ]
     }
   ]
 }

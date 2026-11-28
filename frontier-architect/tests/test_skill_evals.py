@@ -20,6 +20,10 @@ BASELINE_SKILL_MD = WORKSPACE_DIR / "skill-snapshot" / "SKILL.md"
 
 # Ordered (trigger_terms_any, required_regexes_all, label)
 _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
+    (("scripts/py.sh", "scripts/py.cmd"), (r"scripts/py\.sh", r"py\.cmd", r"3\.10\+"), "Cross-OS Python 3.10+ launcher"),
+    (("checks $virtual_env first", "preserves script exit codes"), (r"VIRTUAL_ENV", r"preserves exit codes"), "Launcher VIRTUAL_ENV & exit code preservation"),
+    (("retrospective-recipe.md precedence",), (r"retrospective-recipe\.md", r"RETROSPECTIVE_RECIPE", r"CLAUDECODE=1"), "Retrospective recipe router precedence"),
+    (("learning_proposal*.md", "before editing skills"), (r"learning_proposal", r"no edits to skills"), "Retrospective proposal-only before decision"),
     (("tool-call ceiling", "<= 3-5"), (r"tool-call ceiling|3 to 5|3–5",), "Tool-call ceiling"),
     (("user override", "axiom 10"), (r"axiom 10|user override|just do it|skip the plan|no questions",), "Axiom 10 User Overrides"),
     (("working assumption", "states working assumption"), (r"state the assumptions|write the assumptions|assumptions in one or two lines|assumptions at the top|working assumptions",), "State assumptions"),
@@ -154,6 +158,20 @@ def _check_special_rules(text: str, exp_lower: str) -> tuple[bool, str] | None:
     if "research subagent" in exp_lower and "never re-reads" in exp_lower:
         ok = bool(re.search(r"do not re-read files a `research` subagent", text, re.I))
         return ok, f"Zero Subagent Duplication: {ok}"
+    return _check_audit_rules(text, exp_lower)
+
+
+def _check_audit_rules(text: str, exp_lower: str):
+    """Audit-mode expectations (observations connector)."""
+    if "diagnose.py brief" in exp_lower:
+        ok = bool(re.search(r"brief --run-probes", text)) and bool(re.search(r"UNAVAILABLE.*UNVERIFIED", text, re.S))
+        return ok, f"Audit baseline via brief, UNAVAILABLE is UNVERIFIED: {ok}"
+    if "active observations" in exp_lower:
+        ok = bool(re.search(r"observations list --json", text)) and bool(re.search(r"observations list --kind idea", text))
+        return ok, f"Findings and ideas from observations: {ok}"
+    if "--missed-by" in exp_lower:
+        ok = bool(re.search(r"triage --id <ID> --root-cause .* --missed-by .* --guard", text))
+        return ok, f"Record why tools missed it: {ok}"
     return None
 
 
@@ -194,6 +212,18 @@ class TestSkillEvals(unittest.TestCase):
             for key in ("id", "prompt", "expected_output"):
                 self.assertIn(key, e)
             self.assertGreaterEqual(len(e.get("expectations", [])), 4)
+
+    def test_trigger_evals_json_structure(self):
+        """Verify trigger_eval.json exists and has balanced positive/negative queries."""
+        tf = SKILL_DIR / "evals" / "trigger_eval.json"
+        self.assertTrue(tf.is_file(), f"Missing trigger_eval.json at {tf}")
+        items = json.loads(tf.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(items), 16)
+        pos = [x for x in items if x.get("should_trigger") is True]
+        neg = [x for x in items if x.get("should_trigger") is False]
+        self.assertGreaterEqual(len(pos), 8)
+        self.assertGreaterEqual(len(neg), 8)
+        self.assertTrue(all(isinstance(x.get("query"), str) and x["query"].strip() for x in items))
 
     def test_skill_passes_all_eval_expectations(self):
         """Assert current SKILL.md achieves 100% pass rate across all expectations."""
