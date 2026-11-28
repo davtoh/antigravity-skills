@@ -10,9 +10,10 @@ Run every command as `python "<skill_dir>/scripts/diagnose.py" ...` where `<skil
 2. **Record**: in the browser, pick an element, record a short session, log a finding or an idea. Kinds: `element`, `error`, `network`, `note` (findings) and `idea`.
 3. **Read**: `observations list` (active only by default; `--kind`, `--status all`, `--json`), `observations show --id <ID> [--full]`. Remote or containerized app: `observations pull --url http://127.0.0.1:<port>` first (loopback only unless `--allow-remote`).
 4. **Triage**: `observations triage --id <ID> --root-cause "..." [--missed-by tests,surface,scan,audit,ui,probes,trace,other] [--guard "..."] [--plan <slug>]`. Status moves `open -> triaged -> in_progress`.
-5. **Fix and close**: after a **verified** fix, `observations resolve --id <ID> --resolution "..." --commit <sha>`. Not a bug or not worth doing: `observations dismiss --id <ID> --reason "..."`. Never resolve on an unverified patch.
-6. **Digest**: `brief` prints one capped summary (observations, probe last results, defects, traces). `brief --run-probes` runs fresh probes; `brief --pull URL` pulls first. A failing section shows `UNAVAILABLE (reason)`, never a pass.
-7. **Conformance** (app implementers): `observations verify-connector --url http://127.0.0.1:<port>` reports `PASS`/`FAIL`/`SKIP` per check and stores nothing.
+5. **Fix, resolve, and confirm**: after a **verified** fix, close with provenance via `observations resolve --id <ID> --resolution "..." [--commit <sha>] [--plan <slug>] [--milestone M<N>] [--task "..."] [--base-commit <sha>]` (when `--commit` is omitted, `--base-commit` defaults to `pending:<short-head>`). Humans then verify the fix in the HUD (`Resolved` filter -> `Confirm` or `Reopen`) or via CLI `observations confirm --id <ID> [--note "..."]` (`resolved -> confirmed`; recurrence or `Reopen` transitions back to `open`). Not a bug or not worth doing: `observations dismiss --id <ID> --reason "..."`. Never resolve on an unverified patch.
+6. **Plan closure gate**: `plan_engine.py advance` scans the completed milestone/plan markdown for `OBS-\d+` IDs and emits an `OBSERVATION WARNING` banner with exact `diagnose.py observations resolve` commands if any referenced IDs are still active in `.diagnostics/observation_catalog.json`.
+7. **Digest**: `brief` prints one capped summary (observations, probe last results, defects, traces). `brief --run-probes` runs fresh probes; `brief --pull URL` pulls first. A failing section shows `UNAVAILABLE (reason)`, never a pass.
+8. **Conformance** (app implementers): `observations verify-connector --url http://127.0.0.1:<port>` reports `PASS`/`FAIL`/`SKIP` per check and stores nothing.
 
 ## Audit Hand-off
 

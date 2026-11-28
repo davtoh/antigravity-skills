@@ -13,7 +13,7 @@ _WORKFLOW_REDIRECT_RE = re.compile(r"\b(agent|model|hydrogen|neon|opus|sonnet|fl
 _REDIRECT_VERB_RE = re.compile(r"\b(switch|change\s+to)\b", re.I)
 _FIRST_OVERRIDE_RE = re.compile(r"^(?:no\b|stop\b|wrong\b|don't\b|do not\b|actually\b|wait\b)", re.I)
 _QUESTION_OPEN_RE = re.compile(
-    r"^(?:can|could|would|will|is|are|do|does|did|how|what|which|where|when|should|puedes|podr[ií]as|podr[ií]a|"
+    r"^(?:can|could|would|will|is|are|do|does|did|how|what|which|where|when|should|help|ayuda|puedes|podr[ií]as|podr[ií]a|"
     r"es\s+verdad|c[oó]mo|qu[eé]|cu[aá]l|d[oó]nde|cu[aá]ndo|deber[ií]a)\b", re.I)
 _BLAME_QUESTION_RE = re.compile(r"\bwhy\s+did\s+you\b|\bpor\s+qu[eé]\s+hiciste\b", re.I)
 _PASTED_RE = re.compile(r"<pasted_content\b[^>]*>.*?(?:</pasted_content>|\Z)", re.S)

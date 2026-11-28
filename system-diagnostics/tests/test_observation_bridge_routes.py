@@ -195,6 +195,33 @@ class TestWireContract(unittest.TestCase):
         cleared = json.loads(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b'{"elements":[]}')[2])
         self.assertEqual((cleared["elements"], cleared["selector"]), ([], ""))
 
+    def test_confirmed_transition_and_provenance_routes(self):
+        created = json.loads(self.post({
+            "kind": "note", "message": "check provenance",
+            "resolved_plan": "plan_a", "base_commit": "pending:1234abc",
+        })[2])
+        obs_id = created["id"]
+        self.assertEqual(self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b'{"status":"confirmed"}')[0], 400)
+        res = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=json.dumps({
+            "status": "resolved", "resolved_milestone": "M1", "resolved_task": "T1",
+        }).encode("utf-8"))
+        self.assertEqual(res[0], 200)
+        conf = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=json.dumps({
+            "status": "confirmed", "confirmed_note": "looks good",
+        }).encode("utf-8"))
+        self.assertEqual(conf[0], 200)
+        body = json.loads(conf[2])
+        self.assertEqual(body["status"], "confirmed")
+        self.assertEqual(body["resolved_plan"], "plan_a")
+        self.assertEqual(body["resolved_milestone"], "M1")
+        self.assertEqual(body["confirmed_note"], "looks good")
+        self.assertTrue(body["confirmed_at"])
+        listed = json.loads(self.call("GET", "/observations", "status=confirmed")[2])["observations"]
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["base_commit"], "pending:1234abc")
+        reopen = self.call("PATCH", f"/observations/{obs_id}", "", JSON_H, body=b'{"status":"open"}')
+        self.assertEqual((reopen[0], json.loads(reopen[2])["status"]), (200, "open"))
+
     def test_hud_js(self):
         status, headers, body = self.call("GET", "/hud.js")
         self.assertEqual(status, 200)

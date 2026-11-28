@@ -31,18 +31,22 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<pl
 # If exit 124 shows active test progress in partial output, re-run slow suites with --timeout 600 (or --timeout 0); otherwise debug deadlocks / blocking I/O.
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" [--timeout 180] --root .
 
-# Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
+# Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, warns if referenced OBS-NNN IDs remain active in .diagnostics/observation_catalog.json, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
 # Never run git add/commit before advance or without user consent; run retrospective sequentially after advance (never in parallel).
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--note "<summary>"] [--no-sync-parent] --root .
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospective <plan_or_slug> \
-  --milestone <N> --grade A --cid <conv_id> --tri "5,5,5,5" --hypotheses 1 \
+  --milestone <N> --grade A --cid <conv_id> --steps <N> --retries <R> --tri "5,5,5,5" --hypotheses 1 \
   --went-well "<what worked well>" --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
 
 # Targeted Python unittest execution (enforces 180s --timeout guard against deadlocks/hangs)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" tests <modules...>
+
+# Project-agnostic Mini-CI parity runner (host --fast or isolated Linux --linux via WSL/Docker; respects .diagnostics/mini_ci.json)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ci --path . --fast [--tests <targets...>] [--skip-lint] [--dry-run]
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ci --path . --linux [--backend auto|wsl|docker] [--clean-snapshot] [--dry-run]
 
 # Follow-up /app-debugger escalation linked to an active plan (auto-records followup_cids & refreshes LEARNING_SCAFFOLD.md; run transcript-audit last)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" debug-retro --plan <slug> --cid <conv_id> --symptom "<symptom>" --cause "<cause>" --status <verified|unconfirmed>
@@ -52,6 +56,11 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path
 
 # Polyglot defect scan across one or multiple paths
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path <paths...>
+
+# List active HUD observations, resolve with provenance, and confirm verified fixes (uses --path, NOT --root)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations list --path .
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations resolve --id <OBS-NNN> --resolution "<summary>" [--commit <sha>] [--plan <slug>] [--milestone M<N>] [--base-commit <sha>] --path .
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations confirm --id <OBS-NNN> [--note "<verification note>"] --path .
 
 # Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .

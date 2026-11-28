@@ -98,16 +98,53 @@ class CatalogTests(StoreTestBase):
                     ws = Path(tempfile.mkdtemp()).resolve()
                     e, _ = s.add_observation(ws, rec())
                     path = {"open": [], "triaged": ["triaged"], "in_progress": ["in_progress"],
-                            "resolved": ["resolved"], "dismissed": ["dismissed"]}[src]
+                            "resolved": ["resolved"], "confirmed": ["resolved", "confirmed"], "dismissed": ["dismissed"]}[src]
                     for step in path:
                         s.update_status(ws, e["id"], step)
                     self.assertEqual(s.update_status(ws, e["id"], t)["status"], t)
         e, _ = s.add_observation(self.ws, rec())
+        with self.assertRaises(ValueError):
+            s.update_status(self.ws, e["id"], "confirmed")
         s.update_status(self.ws, e["id"], "dismissed")
         with self.assertRaises(ValueError):
             s.update_status(self.ws, e["id"], "triaged")
+        with self.assertRaises(ValueError):
+            s.update_status(self.ws, e["id"], "confirmed")
         with self.assertRaises(KeyError):
             s.update_status(self.ws, "OBS-999", "triaged")
+
+    def test_confirmed_provenance_recurrence_and_import_export(self):
+        e, _ = s.add_observation(self.ws, rec())
+        res = s.update_status(
+            self.ws, e["id"], "resolved", note="fixed", resolution="fixed",
+            resolved_plan="my_plan", resolved_milestone="M1", resolved_task="T1", base_commit="pending:abc1234",
+        )
+        self.assertEqual(res["resolved_plan"], "my_plan")
+        self.assertEqual(res["resolved_milestone"], "M1")
+        self.assertEqual(res["resolved_task"], "T1")
+        self.assertEqual(res["base_commit"], "pending:abc1234")
+        conf = s.update_status(self.ws, e["id"], "confirmed", note="verified", confirmed_note="verified")
+        self.assertEqual(conf["status"], "confirmed")
+        self.assertTrue(conf["confirmed_at"])
+        self.assertEqual(conf["confirmed_note"], "verified")
+        self.assertEqual(len(s.list_observations(self.ws, status="confirmed")), 1)
+        self.assertEqual(len(s.list_observations(self.ws, status="active")), 0)
+
+        bundle = s.export_observations(self.ws, status="confirmed")
+        with tempfile.TemporaryDirectory() as other_td:
+            other_ws = Path(other_td).resolve()
+            imp = s.import_observations(other_ws, bundle)
+            self.assertEqual(imp["imported"], 1)
+            loaded = s.get_observation(other_ws, "OBS-001")
+            self.assertEqual(loaded["status"], "confirmed")
+            self.assertEqual(loaded["resolved_plan"], "my_plan")
+            self.assertEqual(loaded["base_commit"], "pending:abc1234")
+            self.assertEqual(loaded["confirmed_note"], "verified")
+
+        reopened, dedup = s.add_observation(self.ws, rec())
+        self.assertTrue(dedup)
+        self.assertEqual(reopened["status"], "open")
+        self.assertEqual(reopened["history"][-1]["from"], "confirmed")
 
     def test_idea_and_triage_meta(self):
         e, _ = s.add_observation(self.ws, rec(kind="idea", selector="", message="Add pause"))
@@ -128,6 +165,21 @@ class CatalogTests(StoreTestBase):
         self.assertEqual(len(s.list_observations(self.ws, status="resolved")), 1)
         self.assertEqual([e["kind"] for e in s.list_observations(self.ws, kind="idea")], ["idea"])
         self.assertEqual(len(s.list_observations(self.ws, status="all", limit=1)), 1)
+
+    def test_sort_modes_and_patch_preserves_last_seen(self):
+        e1, _ = s.add_observation(self.ws, rec(message="first", ts="2026-01-01T00:00:00+00:00"))
+        e2, _ = s.add_observation(self.ws, rec(message="second", ts="2026-01-03T00:00:00+00:00"))
+        e3, _ = s.add_observation(self.ws, rec(message="third", ts="2026-01-02T00:00:00+00:00"))
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="id_asc")], [e1["id"], e2["id"], e3["id"]])
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="id_desc")], [e3["id"], e2["id"], e1["id"]])
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="recent")], [e2["id"], e3["id"], e1["id"]])
+        orig_last_seen = e1["last_seen"]
+        patched = s.patch_observation(self.ws, e1["id"], {"message": "first edited"})
+        self.assertEqual(patched["last_seen"], orig_last_seen)
+        self.assertNotEqual(patched["updated_at"], orig_last_seen)
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="recent")], [e2["id"], e3["id"], e1["id"]])
+        with self.assertRaises(ValueError):
+            s.list_observations(self.ws, sort="bogus")
 
 
 if __name__ == "__main__":

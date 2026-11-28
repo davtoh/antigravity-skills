@@ -1,5 +1,5 @@
 /* Frontier debug HUD, part 4 of 4: Right-side observation drawer + install. */
-var drawerState = { open: false, filter: 'active', selectedId: null, items: [], pendingPickObsId: null, drafts: {}, confirmDeleteId: null, lastUndo: null };
+var drawerState = { open: false, filter: 'active', sort: 'id_desc', query: '', selectedId: null, items: [], pendingPickObsId: null, drafts: {}, confirmDeleteId: null, lastUndo: null };
 H.drawerState = drawerState;
 
 function findItem(id) {
@@ -125,6 +125,13 @@ H.importObservations = function (payload) { return importPayload(H.drawerEl, pay
 function handleDrawerAction(d, act, id, btn) {
   if (act === 'close') { H.toggleDrawer(false); return; }
   if (act === 'refresh') { H.refreshDrawer(); return; }
+  if (act === 'sort') {
+    var order = ['id_desc', 'id_asc', 'recent'];
+    drawerState.sort = order[(order.indexOf(drawerState.sort) + 1) % order.length];
+    if (btn) btn.textContent = H.drawerUi.sortLabel(drawerState.sort);
+    H.drawerUi.renderList(d, drawerState);
+    return;
+  }
   if (act === 'export') { exportObservations(d); return; }
   if (act === 'import') {
     var fi = d.querySelector('[data-da=import-file]');
@@ -223,6 +230,12 @@ function handleDrawerAction(d, act, id, btn) {
       setStatus(d, '', 'Dismissed ' + H.htmlEsc(id) + ' <button type="button" class="fh-btn" style="padding:1px 6px;margin-left:6px" data-da="undo">Undo</button>');
       H.refreshDrawer(true);
     });
+  } else if (act === 'confirm') {
+    drawerState.lastUndo = null;
+    H.patchObservation(id, { status: 'confirmed' }).then(function () {
+      setStatus(d, 'Confirmed ' + id);
+      H.refreshDrawer(true);
+    });
   } else if (act === 'reopen') {
     drawerState.lastUndo = null;
     H.patchObservation(id, { status: 'open' }).then(function () {
@@ -251,12 +264,11 @@ H.buildDrawer = function () {
   d.className = 'fh-drawer';
   d.hidden = true;
   d.innerHTML = '<div class="fh-row"><strong style="color:#fbbf24;font-size:13px">Registered Observations</strong>' +
-    '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="dismissed">Dismissed</option><option value="all">All</option></select>' +
-    '<button type="button" class="fh-btn" data-da="export">Export</button>' +
-    '<button type="button" class="fh-btn" data-da="import">Import</button>' +
+    '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="open">Open</option><option value="triaged">Triaged</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option><option value="confirmed">Confirmed</option><option value="dismissed">Dismissed</option><option value="all">All</option></select>' +
+    '<button type="button" class="fh-btn" data-da="export">Export</button><button type="button" class="fh-btn" data-da="import">Import</button>' +
     '<input type="file" data-da="import-file" accept="application/json,.json" hidden>' +
-    '<button type="button" class="fh-btn" data-da="refresh">Refresh</button>' +
-    '<button type="button" class="fh-btn" data-da="close">Close</button></div></div>' +
+    '<button type="button" class="fh-btn" data-da="refresh">Refresh</button><button type="button" class="fh-btn" data-da="close">Close</button></div></div>' +
+    '<div class="fh-row"><input type="search" class="fh-input" data-da="search" placeholder="Search ID, message, selector..." style="min-height:0;width:auto;flex:1;padding:4px 6px"><button type="button" class="fh-btn" data-da="sort" title="Toggle sort order">Sort: ID ↓</button></div>' +
     '<div class="fh-status" data-da="dstatus" data-a="dstatus"></div><div class="fh-list" data-a="list"></div>';
   d.addEventListener('change', function (e) {
     var da = e.target && e.target.getAttribute ? e.target.getAttribute('data-da') : null;
@@ -267,6 +279,7 @@ H.buildDrawer = function () {
   d.addEventListener('input', function (e) {
     var da = e.target && e.target.getAttribute ? e.target.getAttribute('data-da') : null;
     if (da === 'msg') syncDraft(d, e.target.closest ? e.target.closest('[data-obs-id]') : null);
+    else if (da === 'search') { drawerState.query = String(e.target.value || ''); H.drawerUi.renderList(d, drawerState); }
   });
   d.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('[data-da]') : e.target;

@@ -286,7 +286,7 @@ class TestSubcommandsExecution(unittest.TestCase):
 
     def test_cmd_tests_converts_positional_dir_and_file_to_discover(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
+            root = Path(tmpdir).resolve()
             sub_tests = root / "skills" / "demo" / "tests"
             sub_tests.mkdir(parents=True)
             test_file = sub_tests / "test_sample.py"

@@ -90,6 +90,9 @@ class TestCodebaseContractInvariants(unittest.TestCase):
                 mod = importlib.import_module(rel_mod)
             except Exception:
                 continue
+            mod_file = getattr(mod, "__file__", None)
+            if not mod_file or pathlib.Path(mod_file).resolve() != p.resolve():
+                continue
 
             for name, obj in inspect.getmembers(mod):
                 if inspect.isclass(obj) and getattr(obj, "__module__", None) == mod.__name__:

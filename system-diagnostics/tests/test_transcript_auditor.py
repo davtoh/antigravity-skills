@@ -451,11 +451,31 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
         self.assertEqual(row["total_failures"], 0)
         self.assertEqual(row["plan_mode_calls"], 0)
 
+        _write(self.brain, "plan-handoffs", [
+            _planner(("enter_plan_mode", {"reason": "a"})),
+            _planner(("exit_plan_mode", {})),
+            _planner(("enter_plan_mode", {"reason": "b"})),
+            _planner(("exit_plan_mode", {})),
+            _planner(("enter_plan_mode", {"reason": "c"})),
+            _planner(("exit_plan_mode", {})),
+            _planner(("exit_plan_mode", {})),
+        ])
+        self.assertEqual(ta.audit_conversation(self.brain, "plan-handoffs")["plan_mode_calls"], 0)
+
         _write(self.brain, "replan-loop", [
             _planner(("enter_plan_mode", {"reason": "a"})),
             _planner(("enter_plan_mode", {"reason": "b"})),
+            _planner(("enter_plan_mode", {"reason": "c"})),
+            _planner(("enter_plan_mode", {"reason": "d"})),
+            _planner(("enter_plan_mode", {"reason": "e"})),
         ])
-        self.assertEqual(ta.audit_conversation(self.brain, "replan-loop")["plan_mode_calls"], 1)
+        self.assertEqual(ta.audit_conversation(self.brain, "replan-loop")["plan_mode_calls"], 2)
+
+        _write(self.brain, "help-question", [
+            {"type": "USER_INPUT", "content": "<USER_REQUEST>start</USER_REQUEST>"},
+            {"type": "USER_INPUT", "content": "help, I think I miss something (I thought the new branch was clean, so not sure what happen) . git checkout"},
+        ])
+        self.assertEqual(ta.audit_conversation(self.brain, "help-question")["user_corrections"], [])
 
     def test_truncated_and_failfast_unittest_classified_as_audit_catch(self) -> None:
         _write(self.brain, "tdd-trunc", [

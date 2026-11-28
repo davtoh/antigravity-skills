@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover - package-style import
 
 SCHEMA_VERSION = "1.0"
 ACTIVE_STATUSES = ("open", "triaged", "in_progress")
-CLOSED_STATUSES = ("resolved", "dismissed")
+CLOSED_STATUSES = ("resolved", "confirmed", "dismissed")
 KINDS = ("element", "error", "network", "note", "idea")
 MISSED_BY = ("tests", "surface", "scan", "audit", "ui", "probes", "trace", "other")
 MAX_RECORD_BYTES = 65536
@@ -39,13 +39,14 @@ TRANSITIONS = {
     "open": ("triaged", "in_progress", "resolved", "dismissed"),
     "triaged": ("in_progress", "resolved", "dismissed"),
     "in_progress": ("resolved", "dismissed", "triaged"),
-    "resolved": ("open",),
+    "resolved": ("confirmed", "open"),
+    "confirmed": ("open",),
     "dismissed": ("open",),
 }
 RAW_NAME = "observations.jsonl"
 BACKUP_NAME = "observations.1.jsonl"
 CATALOG_NAME = "observation_catalog.json"
-_META_FIELDS = ("root_cause", "linked_plan", "resolution", "linked_commit", "proposed_guard")
+_META_FIELDS = observation_fields.META_FIELDS
 
 
 def _now() -> str:
@@ -177,7 +178,7 @@ def _next_id(entries: list[dict[str, Any]]) -> str:
 def _new_entry(rec: dict[str, Any], fp: str, entry_id: str) -> dict[str, Any]:
     return {
         "id": entry_id, "fingerprint": fp, "kind": rec["kind"], "status": "open",
-        "first_seen": rec["ts"], "last_seen": rec["ts"], "occurrence_count": 1,
+        "first_seen": rec["ts"], "last_seen": rec["ts"], "updated_at": rec["ts"], "occurrence_count": 1,
         "page_path": rec.get("page_path", ""), "selector": rec.get("selector", ""),
         "rect": rec.get("rect"), "attrs": rec.get("attrs", {}),
         "elements": rec.get("elements", []), "related_ids": rec.get("related_ids", []),
@@ -185,6 +186,7 @@ def _new_entry(rec: dict[str, Any], fp: str, entry_id: str) -> dict[str, Any]:
         "recording_id": rec.get("recording_id"), "window": rec.get("window"),
         "timeline": rec["timeline"], "correlated_traces": [], "root_cause": "", "missed_by": [],
         "proposed_guard": "", "resolution": "", "linked_plan": "", "linked_commit": "",
+        **{k: str(rec.get(k) or "") for k in observation_fields.PROVENANCE_FIELDS},
         "source_url": rec.get("source_url", ""), "history": [],
     }
 
@@ -214,8 +216,8 @@ def add_observation(workspace: Path, raw: dict[str, Any]) -> tuple[dict[str, Any
         entry["last_seen"] = rec["ts"]
         if entry.get("recording_id") is None and rec.get("recording_id"):
             entry["recording_id"], entry["window"] = rec["recording_id"], rec.get("window")
-        if entry["status"] == "resolved":
-            entry["history"].append({"ts": rec["ts"], "from": "resolved", "to": "open", "note": "recurrence"})
+        if entry["status"] in ("resolved", "confirmed"):
+            entry["history"].append({"ts": rec["ts"], "from": entry["status"], "to": "open", "note": "recurrence"})
             entry["status"] = "open"
     save_catalog(workspace, catalog)
     return entry, dedup
@@ -256,14 +258,24 @@ def update_status(workspace: Path, id_or_fp: str, new_status: str, note: str = "
             entry[field] = meta[field]
     if missed is not None:
         entry["missed_by"] = missed
+    now = _now()
+    if new_status == "confirmed" and not meta.get("confirmed_at"):
+        entry["confirmed_at"] = now
     entry["status"] = new_status
-    entry["history"].append({"ts": _now(), "from": old, "to": new_status, "note": note})
+    entry["history"].append({"ts": now, "from": old, "to": new_status, "note": note})
     save_catalog(workspace, catalog)
     return entry
 
 
-def list_observations(workspace: Path, status: str = "active", limit: int = 20, kind: str | None = None) -> list[dict[str, Any]]:
-    """Newest-first listing; `status` is active, all, or one concrete status."""
+def _id_num(entry: dict[str, Any]) -> int:
+    m = re.fullmatch(r"OBS-(\d+)", str(entry.get("id") or ""))
+    return int(m.group(1)) if m else 0
+
+
+def list_observations(
+    workspace: Path, status: str = "active", limit: int = 20, kind: str | None = None, sort: str = "recent",
+) -> list[dict[str, Any]]:
+    """Listing sorted by `recent` (default), `id_desc`, or `id_asc`; `status` is active, all, or one status."""
     entries = load_catalog(workspace)["observations"]
     if status == "active":
         entries = [e for e in entries if e["status"] in ACTIVE_STATUSES]
@@ -271,7 +283,14 @@ def list_observations(workspace: Path, status: str = "active", limit: int = 20, 
         entries = [e for e in entries if e["status"] == status]
     if kind:
         entries = [e for e in entries if e["kind"] == kind]
-    entries = sorted(entries, key=lambda e: e.get("last_seen", ""), reverse=True)
+    if sort == "id_asc":
+        entries = sorted(entries, key=_id_num)
+    elif sort == "id_desc":
+        entries = sorted(entries, key=_id_num, reverse=True)
+    elif sort == "recent":
+        entries = sorted(entries, key=lambda e: (e.get("last_seen", ""), _id_num(e)), reverse=True)
+    else:
+        raise ValueError(f"unknown sort {sort!r}; expected recent, id_asc, or id_desc")
     return entries[:limit] if limit and limit > 0 else entries
 
 
@@ -297,7 +316,9 @@ def patch_observation(workspace: Path, id_or_fp: str, updates: dict[str, Any]) -
     observation_fields.apply_patch_fields(entry, clean, KINDS, MAX_MESSAGE, MAX_TIMELINE)
     entry["fingerprint"] = make_fingerprint(entry["kind"], entry.get("page_path", ""), _target(entry), entry["message"])
     now = _now()
-    entry["last_seen"] = now
+    if entry["status"] == "confirmed" and old_status != "confirmed" and not clean.get("confirmed_at"):
+        entry["confirmed_at"] = now
+    entry["updated_at"] = now
     entry.setdefault("history", []).append({"ts": now, "from": old_status, "to": entry["status"], "note": "edited"})
     save_catalog(workspace, catalog)
     return entry

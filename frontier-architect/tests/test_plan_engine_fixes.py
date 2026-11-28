@@ -189,6 +189,84 @@ class TestPlanEngineFixes(unittest.TestCase):
         two_m = {"milestones": [{"index": 1, "tasks": [{"text": "**pkg/f1.py**: a"}]}, {"index": 2, "tasks": [{"text": "**pkg/f2.py**: b"}]}]}
         self.assertIsNone(assess_plan_scope(two_m, ps, parent_arg="demo_master"))
 
+    def test_advance_warns_on_unresolved_observations_in_milestone_and_plan(self):
+        import io
+        import json
+        from contextlib import redirect_stdout
+        import plan_engine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_p = root / ".TODO" / "obs_gate_plan.md"
+            plan_p.parent.mkdir(parents=True, exist_ok=True)
+            plan_p.write_text(
+                "# Obs Gate\n\n## Milestone 1: Fix OBS-001\n- [ ] **a.py**: fix OBS-001 and verify OBS-003\n\n"
+                "## Milestone 2: Fix OBS-002\n- [ ] **b.py**: fix OBS-002\n",
+                encoding="utf-8",
+            )
+            cat_p = root / ".diagnostics" / "observation_catalog.json"
+            cat_p.parent.mkdir(parents=True, exist_ok=True)
+            cat_p.write_text(
+                json.dumps({
+                    "observations": [
+                        {"id": "OBS-001", "status": "open"},
+                        {"id": "OBS-002", "status": "triaged"},
+                        {"id": "OBS-003", "status": "resolved"},
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            parser = plan_engine.build_parser()
+            self.assertEqual(plan_engine.cmd_init(root, parser.parse_args(["init", str(plan_p)])), 0)
+            buf1 = io.StringIO()
+            with redirect_stdout(buf1):
+                rc1 = plan_engine.cmd_advance(root, parser.parse_args(["advance", "obs_gate_plan", "--milestone", "1"]))
+            self.assertEqual(rc1, 0)
+            out1 = buf1.getvalue()
+            self.assertIn("OBSERVATION WARNING", out1)
+            self.assertIn("OBS-001", out1)
+            self.assertIn("diagnose.py observations resolve --id OBS-001", out1)
+            self.assertNotIn("OBS-002", out1)
+            self.assertNotIn("OBS-003", out1)
+
+            # Resolve OBS-001, then advance Milestone 2 -> only OBS-002 warned
+            cat_p.write_text(
+                json.dumps({
+                    "observations": [
+                        {"id": "OBS-001", "status": "resolved"},
+                        {"id": "OBS-002", "status": "in_progress"},
+                        {"id": "OBS-003", "status": "confirmed"},
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            buf2 = io.StringIO()
+            with redirect_stdout(buf2):
+                rc2 = plan_engine.cmd_advance(root, parser.parse_args(["advance", "obs_gate_plan", "--milestone", "2"]))
+            self.assertEqual(rc2, 0)
+            out2 = buf2.getvalue()
+            self.assertIn("OBSERVATION WARNING", out2)
+            self.assertIn("OBS-002", out2)
+            self.assertNotIn("OBS-001", out2)
+
+    def test_advance_no_observation_warning_when_closed_or_no_catalog(self):
+        import io
+        from contextlib import redirect_stdout
+        import plan_engine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_p = root / ".TODO" / "clean_obs_plan.md"
+            plan_p.parent.mkdir(parents=True, exist_ok=True)
+            plan_p.write_text("# Clean\n\n## Milestone 1: Fix OBS-009\n- [ ] **a.py**: task\n", encoding="utf-8")
+            parser = plan_engine.build_parser()
+            self.assertEqual(plan_engine.cmd_init(root, parser.parse_args(["init", str(plan_p)])), 0)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = plan_engine.cmd_advance(root, parser.parse_args(["advance", "clean_obs_plan", "--milestone", "1"]))
+            self.assertEqual(rc, 0)
+            self.assertNotIn("OBSERVATION WARNING", buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

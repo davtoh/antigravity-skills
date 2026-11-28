@@ -23,7 +23,9 @@ TARGETS = {
     "media": "document.getElementById('media-btn')",
 }
 SELECTORS = {"plain": '[data-testid="save"]', "iframe": "#f >>> #inner", "csp": "#csp-btn", "media": "#media-btn"}  # #id, then data-testid
-EVAL = """(async () => { const H = window.__FRONTIER_HUD__; if (!H) return {error: 'no hud'};
+EVAL = """(async () => {
+ for (let i = 0; i < 50 && !window.__FRONTIER_HUD__; i++) await new Promise(r => setTimeout(r, 100));
+ const H = window.__FRONTIER_HUD__; if (!H) return {error: 'no hud'};
  const el = %s; H.record(); H.pick();
  el.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true, cancelable: true}));
  const sel = H.lastPick && H.lastPick.selector; el.click();
@@ -94,6 +96,11 @@ class HudSpikeTests(unittest.TestCase):
             [sys.executable, CDP, "--headless", "--url", f"http://127.0.0.1:{self.port}/{name}.html", "--eval", script],
             capture_output=True, text=True, encoding="utf-8", timeout=90)
         text = p.stdout
+        if "{" not in text:
+            self.fail(
+                f"cdp_inspect produced no JSON for '{name}' (rc={p.returncode}).\n"
+                f"STDOUT: {p.stdout!r}\nSTDERR: {p.stderr!r}"
+            )
         start = text.index("{")
         return json.JSONDecoder().raw_decode(text[start:])[0]
 

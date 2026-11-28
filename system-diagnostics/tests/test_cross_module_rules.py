@@ -164,3 +164,54 @@ class TestCrossModuleAndDiagnosticsUpgrades(unittest.TestCase):
         skips = [d for d in findings if d["rule_id"] == "SILENT_SHAPE_SKIP"]
         self.assertEqual(len(skips), 1)
         self.assertEqual(skips[0]["line"], 5)
+
+    def test_method_kwarg_mismatch_catches_dbg01_and_allows_valid_or_kwargs(self):
+        handoff_src = (
+            "class MultiCameraHandoffCoordinator:\n"
+            "    def record_zone_exit(self, camera_id, zone_id, entity_id, timestamp=None):\n"
+            "        return (camera_id, zone_id, entity_id, timestamp)\n"
+            "class FlexibleService:\n"
+            "    def emit_custom(self, name, **kwargs):\n"
+            "        return (name, kwargs)\n"
+        )
+        caller_src = (
+            "def on_exit(handoff, flex: FlexibleService, mock_handoff):\n"
+            "    handoff.record_zone_exit('cam_1', 'z1', 'e1', track_id=42)\n"
+            "    handoff.record_zone_exit('cam_1', 'z1', 'e1', timestamp=1.0)\n"
+            "    flex.emit_custom('ev', arbitrary_flag=True)\n"
+            "    mock_handoff.record_zone_exit('cam_1', 'z1', 'e1', track_id=42)\n"
+        )
+        findings = scan_cross_module_defects([
+            ("handoff.py", ast.parse(handoff_src)),
+            ("governance.py", ast.parse(caller_src)),
+        ])
+        mismatches = [d for d in findings if d["rule_id"] == "METHOD_KWARG_MISMATCH"]
+        self.assertEqual(len(mismatches), 1)
+        self.assertEqual(mismatches[0]["line"], 2)
+        self.assertIn("track_id", mismatches[0]["message"])
+
+    def test_method_kwarg_mismatch_resolved_receiver_and_preserves_try_drift(self):
+        svc_src = (
+            "class Handoff:\n"
+            "    def notify_peer(self, camera_id, zone_id):\n"
+            "        return (camera_id, zone_id)\n"
+            "class Other:\n"
+            "    def notify_peer(self, camera_id, extra=None):\n"
+            "        return (camera_id, extra)\n"
+        )
+        caller_src = (
+            "def run(h: Handoff):\n"
+            "    h.notify_peer('cam_1', extra=1)\n"
+            "    try:\n"
+            "        h.notify_peer('cam_1', bogus=2)\n"
+            "    except Exception:\n"
+            "        pass\n"
+        )
+        findings = scan_cross_module_defects([
+            ("svc.py", ast.parse(svc_src)),
+            ("caller.py", ast.parse(caller_src)),
+        ])
+        kw_lines = {d["line"] for d in findings if d["rule_id"] == "METHOD_KWARG_MISMATCH"}
+        try_lines = {d["line"] for d in findings if d["rule_id"] == "CALLABLE_SIGNATURE_DRIFT"}
+        self.assertEqual(kw_lines, {2, 4})
+        self.assertEqual(try_lines, {4})
