@@ -13,10 +13,14 @@ MAX_RELATED = 30
 MAX_IMPORT_ITEMS = 200
 OBS_ID_RE = re.compile(r"^OBS-\d+$")
 TRIAGE_FIELDS = ("root_cause", "linked_plan", "resolution", "linked_commit", "proposed_guard")
+PROVENANCE_FIELDS = (
+    "resolved_plan", "resolved_milestone", "resolved_task", "base_commit", "confirmed_at", "confirmed_note",
+)
+META_FIELDS = TRIAGE_FIELDS + PROVENANCE_FIELDS
 MUTABLE_IMPORT_FIELDS = (
     "kind", "message", "page_path", "selector", "rect", "attrs", "elements",
     "related_ids", "recording_id", "window", "timeline", "status", "missed_by",
-) + TRIAGE_FIELDS
+) + META_FIELDS
 
 
 def _normalize_one_element(item: Any) -> dict[str, Any]:
@@ -154,6 +158,9 @@ def apply_patch_fields(
         if not isinstance(clean["timeline"], list):
             raise ValueError("timeline must be an array")
         entry["timeline"] = list(clean["timeline"])[-max_timeline:]
+    for field in PROVENANCE_FIELDS:
+        if field in clean:
+            entry[field] = str(clean[field] or "")
 
 
 def validate_import_payload(payload: Any) -> list[dict[str, Any]]:
@@ -187,7 +194,7 @@ def apply_import_metadata(
             entry["occurrence_count"] = max(1, int(raw["occurrence_count"]))
         except (TypeError, ValueError) as exc:
             raise ValueError("occurrence_count must be an integer") from exc
-    for field in TRIAGE_FIELDS + ("source_url",):
+    for field in META_FIELDS + ("source_url",):
         if isinstance(raw.get(field), str) and raw[field]:
             entry[field] = raw[field]
     if "missed_by" in raw and raw["missed_by"] is not None:

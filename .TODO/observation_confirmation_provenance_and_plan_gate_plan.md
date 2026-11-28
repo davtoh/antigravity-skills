@@ -7,11 +7,11 @@
 
 ## Milestone 1: Observation `confirmed` State & Resolution Provenance CLI/Store *(Active)*
 
-- [ ] **system-diagnostics/scripts/observation_fields.py** & **system-diagnostics/scripts/observation_store.py**: Add `"confirmed"` to `CLOSED_STATUSES` and `TRANSITIONS` (`resolved -> confirmed | open`, `confirmed -> open`), add provenance metadata fields (`resolved_plan`, `resolved_milestone`, `resolved_task`, `base_commit`, `confirmed_at`, `confirmed_note`) to `_META_FIELDS` / import-export helpers, keeping `observation_store.py < 350L`.
-- [ ] **system-diagnostics/scripts/observation_cli.py**: Extend `observations resolve` with optional `--plan`, `--milestone`, `--task`, `--base-commit` (auto-populating `base_commit` from `git rev-parse --short HEAD` as `pending:<sha>` when `--commit` is omitted), and add `observations confirm --id <OBS-NNN> [--note "..."]` subcommand.
-- [ ] **system-diagnostics/scripts/observation_routes.py** & **system-diagnostics/scripts/observation_merge.py**: Accept `confirmed` status transitions and provenance fields in Wire Contract v1 PATCH/POST routes and merge logic.
-- [ ] **system-diagnostics/tests/test_observation_store.py** & **system-diagnostics/tests/test_observation_cli.py**: Add unit tests for `resolved -> confirmed -> open` transitions, provenance metadata persistence, auto `base_commit` fallback, and `confirm` CLI round-trip.
-- [ ] **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation*.py"`
+- [x] **system-diagnostics/scripts/observation_fields.py** & **system-diagnostics/scripts/observation_store.py**: Add `"confirmed"` to `CLOSED_STATUSES` and `TRANSITIONS` (`resolved -> confirmed | open`, `confirmed -> open`), add provenance metadata fields (`resolved_plan`, `resolved_milestone`, `resolved_task`, `base_commit`, `confirmed_at`, `confirmed_note`) to `_META_FIELDS` / import-export helpers, keeping `observation_store.py < 350L`.
+- [x] **system-diagnostics/scripts/observation_cli.py**: Extend `observations resolve` with optional `--plan`, `--milestone`, `--task`, `--base-commit` (auto-populating `base_commit` from `git rev-parse --short HEAD` as `pending:<sha>` when `--commit` is omitted), and add `observations confirm --id <OBS-NNN> [--note "..."]` subcommand.
+- [x] **system-diagnostics/scripts/observation_routes.py** & **system-diagnostics/scripts/observation_merge.py**: Accept `confirmed` status transitions and provenance fields in Wire Contract v1 PATCH/POST routes and merge logic.
+- [x] **system-diagnostics/tests/test_observation_store.py** & **system-diagnostics/tests/test_observation_cli.py**: Add unit tests for `resolved -> confirmed -> open` transitions, provenance metadata persistence, auto `base_commit` fallback, and `confirm` CLI round-trip.
+- [x] **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation*.py"`
 
 ---
 

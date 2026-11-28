@@ -3,6 +3,7 @@
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any
 
@@ -15,7 +16,7 @@ except ImportError:  # pragma: no cover - package-style import
     from . import observation_correlate as correlate
     from . import observation_cli_remote as remote
 
-ACTIONS = ["list", "show", "add", "triage", "resolve", "dismiss"] + remote.ACTIONS
+ACTIONS = ["list", "show", "add", "triage", "resolve", "confirm", "dismiss"] + remote.ACTIONS
 COMPACT_FIELDS = ("id", "fingerprint", "status", "kind", "page_path", "selector", "message", "occurrence_count", "last_seen")
 
 
@@ -35,11 +36,15 @@ def register_parser(sub: Any) -> None:
     p.add_argument("--message", default=None, help="add: what was observed")
     p.add_argument("--recording-id", dest="recording_id", default=None)
     p.add_argument("--root-cause", dest="root_cause", default=None)
-    p.add_argument("--plan", default=None, help="triage: linked plan slug")
+    p.add_argument("--plan", default=None, help="triage/resolve: linked or resolved plan slug")
+    p.add_argument("--milestone", default=None, help="resolve: milestone identifier")
+    p.add_argument("--task", default=None, help="resolve: task reference")
+    p.add_argument("--base-commit", dest="base_commit", default=None, help="resolve: base commit SHA (auto pending:<sha> if --commit omitted)")
     p.add_argument("--missed-by", dest="missed_by", default=None, help="triage: comma list of " + ",".join(store.MISSED_BY))
     p.add_argument("--guard", default=None, help="triage: proposed guard (test/probe/rule)")
     p.add_argument("--resolution", default=None)
     p.add_argument("--commit", default=None)
+    p.add_argument("--note", default=None, help="confirm: optional confirmation note")
     p.add_argument("--reason", default=None, help="dismiss: reason")
     remote.add_flags(p)
 
@@ -112,7 +117,8 @@ def _show(ws: Path, a: Any) -> int:
         return 0
     print(format_line(entry))
     for key in ("rect", "attrs", "recording_id", "window", "root_cause", "missed_by", "proposed_guard",
-                "resolution", "linked_plan", "linked_commit", "source_url"):
+                "resolution", "linked_plan", "linked_commit", "resolved_plan", "resolved_milestone",
+                "resolved_task", "base_commit", "confirmed_at", "confirmed_note", "source_url"):
         if entry.get(key):
             print(f"  {key}: {entry[key]}")
     for ev in entry.get("timeline", []):
@@ -160,10 +166,35 @@ def _triage(ws: Path, a: Any) -> int:
     return _transition(ws, a, "triage", status, a.root_cause, meta)
 
 
+def _git_short_head(ws: Path) -> str:
+    try:
+        p = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ws, capture_output=True, text=True, encoding="utf-8", timeout=5
+        )
+        return p.stdout.strip() if p.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def _resolve(ws: Path, a: Any) -> int:
     if not a.obs_id or not a.resolution:
         return _err("resolve", "--id and --resolution are required", 2)
-    return _transition(ws, a, "resolve", "resolved", a.resolution, {"resolution": a.resolution, "linked_commit": a.commit})
+    base_commit = a.base_commit
+    if not base_commit and not a.commit:
+        sha = _git_short_head(ws)
+        base_commit = f"pending:{sha}" if sha else None
+    meta = {
+        "resolution": a.resolution, "linked_commit": a.commit, "resolved_plan": a.plan,
+        "resolved_milestone": a.milestone, "resolved_task": a.task, "base_commit": base_commit,
+    }
+    return _transition(ws, a, "resolve", "resolved", a.resolution, meta)
+
+
+def _confirm(ws: Path, a: Any) -> int:
+    if not a.obs_id:
+        return _err("confirm", "--id is required", 2)
+    note = a.note or ""
+    return _transition(ws, a, "confirm", "confirmed", note, {"confirmed_note": note})
 
 
 def _dismiss(ws: Path, a: Any) -> int:
@@ -178,5 +209,8 @@ def cmd_observations(args: Any) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     ws = Path(args.path).resolve() if getattr(args, "path", None) else Path.cwd().resolve()
-    handlers = {"list": _list, "show": _show, "add": _add, "triage": _triage, "resolve": _resolve, "dismiss": _dismiss, **remote.HANDLERS}
+    handlers = {
+        "list": _list, "show": _show, "add": _add, "triage": _triage,
+        "resolve": _resolve, "confirm": _confirm, "dismiss": _dismiss, **remote.HANDLERS,
+    }
     return handlers[getattr(args, "action", None) or "list"](ws, args)

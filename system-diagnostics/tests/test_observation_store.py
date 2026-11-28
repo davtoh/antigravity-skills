@@ -98,16 +98,53 @@ class CatalogTests(StoreTestBase):
                     ws = Path(tempfile.mkdtemp()).resolve()
                     e, _ = s.add_observation(ws, rec())
                     path = {"open": [], "triaged": ["triaged"], "in_progress": ["in_progress"],
-                            "resolved": ["resolved"], "dismissed": ["dismissed"]}[src]
+                            "resolved": ["resolved"], "confirmed": ["resolved", "confirmed"], "dismissed": ["dismissed"]}[src]
                     for step in path:
                         s.update_status(ws, e["id"], step)
                     self.assertEqual(s.update_status(ws, e["id"], t)["status"], t)
         e, _ = s.add_observation(self.ws, rec())
+        with self.assertRaises(ValueError):
+            s.update_status(self.ws, e["id"], "confirmed")
         s.update_status(self.ws, e["id"], "dismissed")
         with self.assertRaises(ValueError):
             s.update_status(self.ws, e["id"], "triaged")
+        with self.assertRaises(ValueError):
+            s.update_status(self.ws, e["id"], "confirmed")
         with self.assertRaises(KeyError):
             s.update_status(self.ws, "OBS-999", "triaged")
+
+    def test_confirmed_provenance_recurrence_and_import_export(self):
+        e, _ = s.add_observation(self.ws, rec())
+        res = s.update_status(
+            self.ws, e["id"], "resolved", note="fixed", resolution="fixed",
+            resolved_plan="my_plan", resolved_milestone="M1", resolved_task="T1", base_commit="pending:abc1234",
+        )
+        self.assertEqual(res["resolved_plan"], "my_plan")
+        self.assertEqual(res["resolved_milestone"], "M1")
+        self.assertEqual(res["resolved_task"], "T1")
+        self.assertEqual(res["base_commit"], "pending:abc1234")
+        conf = s.update_status(self.ws, e["id"], "confirmed", note="verified", confirmed_note="verified")
+        self.assertEqual(conf["status"], "confirmed")
+        self.assertTrue(conf["confirmed_at"])
+        self.assertEqual(conf["confirmed_note"], "verified")
+        self.assertEqual(len(s.list_observations(self.ws, status="confirmed")), 1)
+        self.assertEqual(len(s.list_observations(self.ws, status="active")), 0)
+
+        bundle = s.export_observations(self.ws, status="confirmed")
+        with tempfile.TemporaryDirectory() as other_td:
+            other_ws = Path(other_td).resolve()
+            imp = s.import_observations(other_ws, bundle)
+            self.assertEqual(imp["imported"], 1)
+            loaded = s.get_observation(other_ws, "OBS-001")
+            self.assertEqual(loaded["status"], "confirmed")
+            self.assertEqual(loaded["resolved_plan"], "my_plan")
+            self.assertEqual(loaded["base_commit"], "pending:abc1234")
+            self.assertEqual(loaded["confirmed_note"], "verified")
+
+        reopened, dedup = s.add_observation(self.ws, rec())
+        self.assertTrue(dedup)
+        self.assertEqual(reopened["status"], "open")
+        self.assertEqual(reopened["history"][-1]["from"], "confirmed")
 
     def test_idea_and_triage_meta(self):
         e, _ = s.add_observation(self.ws, rec(kind="idea", selector="", message="Add pause"))

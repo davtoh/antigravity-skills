@@ -8,9 +8,12 @@ Python standard library only.
 
 from typing import Any
 
+import observation_fields
 import observation_store as store
 
-_TRIAGE_FIELDS = ("root_cause", "linked_plan", "resolution", "linked_commit", "proposed_guard")
+_TRIAGE_FIELDS = observation_fields.TRIAGE_FIELDS
+_PROVENANCE_FIELDS = observation_fields.PROVENANCE_FIELDS
+_META_FIELDS = observation_fields.META_FIELDS
 ALL_STATUSES = store.ACTIVE_STATUSES + store.CLOSED_STATUSES
 
 
@@ -30,7 +33,7 @@ def _new_from_remote(catalog: dict[str, Any], rec: dict[str, Any], remote: dict[
     entry["occurrence_count"] = int(remote.get("occurrence_count") or 1)
     if remote.get("status") in ALL_STATUSES:
         entry["status"] = remote["status"]
-    for field in _TRIAGE_FIELDS:
+    for field in _META_FIELDS:
         entry[field] = str(remote.get(field) or "")
     entry["source_url"] = url
     entries.append(entry)
@@ -44,6 +47,9 @@ def _update_from_remote(entry: dict[str, Any], remote: dict[str, Any], url: str)
     if new in ALL_STATUSES and new != old:
         entry["status"] = new
         entry["history"].append({"ts": entry["last_seen"], "from": old, "to": new, "note": f"pulled from {url}"})
+    for field in _PROVENANCE_FIELDS:
+        if remote.get(field) and not entry.get(field):
+            entry[field] = str(remote[field])
     entry["source_url"] = url
 
 

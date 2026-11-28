@@ -77,6 +77,19 @@ class TestMerge(unittest.TestCase):
         self.assertTrue(M.needs_fetch(cat, {**same, "last_seen": "2026-11-03T00:00:00+00:00"}))
         self.assertTrue(M.needs_fetch(cat, {"fingerprint": "OBS-NOTE-bbbbbb", "last_seen": "x"}))
 
+    def test_merge_confirmed_and_provenance_fields(self):
+        cat = empty()
+        M.merge_remote(cat, remote(status="resolved", resolved_plan="p1", base_commit="pending:aaa111"), URL)
+        local = cat["observations"][0]
+        self.assertEqual((local["status"], local["resolved_plan"], local["base_commit"]), ("resolved", "p1", "pending:aaa111"))
+        res = M.merge_remote(cat, remote(
+            status="confirmed", last_seen="2026-11-06T00:00:00+00:00",
+            confirmed_at="2026-11-06T00:00:00+00:00", confirmed_note="verified remote",
+        ), URL)
+        self.assertEqual(res, "updated")
+        self.assertEqual((local["status"], local["confirmed_note"]), ("confirmed", "verified remote"))
+        self.assertTrue(local["confirmed_at"])
+
 
 if __name__ == "__main__":
     unittest.main()

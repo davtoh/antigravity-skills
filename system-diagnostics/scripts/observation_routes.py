@@ -38,6 +38,8 @@ DEFAULT_LIMIT = 20
 LIST_FIELDS = (
     "id", "fingerprint", "status", "kind", "page_path", "selector", "elements",
     "related_ids", "message", "occurrence_count", "last_seen", "recording_id", "window",
+    "resolution", "linked_commit", "resolved_plan", "resolved_milestone", "resolved_task",
+    "base_commit", "confirmed_at", "confirmed_note",
 )
 
 
