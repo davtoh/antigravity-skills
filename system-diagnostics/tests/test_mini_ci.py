@@ -198,6 +198,11 @@ class TestMiniCiCliExecution(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertIn(expected, buf.getvalue())
 
+    def test_cmd_ci_root_alias_parses_to_path(self) -> None:
+        parser = diagnose.build_parser()
+        args = parser.parse_args(["ci", "--root", str(self.root), "--fast", "--dry-run"])
+        self.assertEqual(args.path, str(self.root))
+
     def test_cmd_ci_invalid_path_returns_2(self) -> None:
         parser = diagnose.build_parser()
         args = parser.parse_args(["ci", "--path", str(self.root / "does_not_exist"), "--dry-run"])

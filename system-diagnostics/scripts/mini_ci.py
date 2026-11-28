@@ -305,7 +305,7 @@ def _run_linux(work_root: Path, config: dict[str, Any], args: argparse.Namespace
 def register_parser(sub: Any) -> None:
     """Register `diagnose.py ci` subcommand."""
     p = sub.add_parser("ci", help="Project-agnostic local Mini-CI runner (host --fast or --linux WSL/Docker)")
-    p.add_argument("--path", default=".", help="Target repository root (default: .)")
+    p.add_argument("--path", "--root", dest="path", default=".", help="Target repository root (default: .)")
     p.add_argument("--fast", action="store_true", help="Run on host virtualenv Python (default)")
     p.add_argument("--linux", action="store_true", help="Run inside isolated Linux backend (WSL or Docker)")
     p.add_argument("--backend", choices=("auto", "wsl", "docker"), default="auto", help="Linux backend (default: auto)")

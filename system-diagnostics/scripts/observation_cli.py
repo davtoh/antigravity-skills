@@ -24,7 +24,7 @@ def register_parser(sub: Any) -> None:
     """Register the 'observations' subparser."""
     p = sub.add_parser("observations", help="Capture, triage and resolve debug observations (HUD findings and ideas)")
     p.add_argument("action", nargs="?", choices=ACTIONS, default="list")
-    p.add_argument("--path", default=None, help="Workspace root (default: current directory)")
+    p.add_argument("--path", "--root", dest="path", default=None, help="Workspace root (default: current directory)")
     p.add_argument("--json", action="store_true", help="Machine-readable output")
     p.add_argument("--id", dest="obs_id", default=None, help="OBS-NNN or fingerprint")
     p.add_argument("--status", default=None, help="list: active|all|<status>; triage: triaged|in_progress")

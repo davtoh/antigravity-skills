@@ -22,4 +22,4 @@ Were milestones right-sized (`~40–90` steps) or overloaded (`> 120` steps, e.g
 
 ## Part 5. Deliverable
 
-Write `learning_proposal.md` (artifact with `RequestFeedback: true`; if it already exists use a suffixed name) containing parts 1 to 4 and a numbered list of proposed changes as diffs. Then call `ask_question` once per decision, recommended option first. **Do not edit skills, rules or the repo before the user decides.**
+Write `learning_proposal.md` (artifact with `RequestFeedback: true`; if it already exists use a suffixed name) containing parts 1 to 4 and a numbered list of proposed changes as diffs. In visible chat before/alongside `ask_question`, output the clickable `file:///` link to the proposal plus a 2–3 line summary (and name the proposal file in the first question) so the user never has to search for it. Then call `ask_question` once per decision, recommended option first, and **always end with a final open-review question** asking for any additional observations, corrections to the learning proposal, or extra requests. **Do not edit skills, rules or the repo before the user decides.**

@@ -24,6 +24,7 @@ class CliTests(unittest.TestCase):
 
     def test_empty_list(self):
         self.assertEqual(self.run_cli("list"), (0, "No active observations.\n"))
+        self.assertEqual(self.run_cli("list", "--root", str(self.ws)), (0, "No active observations.\n"))
 
     def test_add_list_json(self):
         self.assertEqual(self.add()[0], 0)
