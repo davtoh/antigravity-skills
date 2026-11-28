@@ -44,6 +44,10 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospec
 # Targeted Python unittest execution (enforces 180s --timeout guard against deadlocks/hangs)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" tests <modules...>
 
+# Project-agnostic Mini-CI parity runner (host --fast or isolated Linux --linux via WSL/Docker; respects .diagnostics/mini_ci.json)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ci --path . --fast [--tests <targets...>] [--skip-lint] [--dry-run]
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ci --path . --linux [--backend auto|wsl|docker] [--clean-snapshot] [--dry-run]
+
 # Follow-up /app-debugger escalation linked to an active plan (auto-records followup_cids & refreshes LEARNING_SCAFFOLD.md; run transcript-audit last)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" debug-retro --plan <slug> --cid <conv_id> --symptom "<symptom>" --cause "<cause>" --status <verified|unconfirmed>
 

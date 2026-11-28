@@ -230,7 +230,7 @@ def _run_docker(work_root: Path, config: dict[str, Any], steps: list[list[str]],
         print(" ".join(shlex.quote(c) for c in run_cmd))
         return 0
     if need_build:
-        res = subprocess.run(["docker", "build", "-t", tag, "-f", "-", str(work_root)], input=dockerfile, text=True)
+        res = subprocess.run(["docker", "build", "-t", tag, "-f", "-", str(work_root)], input=dockerfile.encode("utf-8"))
         if res.returncode != 0:
             return res.returncode
     return subprocess.run(run_cmd).returncode
@@ -250,7 +250,7 @@ def _run_linux(work_root: Path, config: dict[str, Any], args: argparse.Namespace
     if args.dry_run:
         print(script, end="")
         return 0
-    return subprocess.run(cmd, input=script, text=True, encoding="utf-8").returncode
+    return subprocess.run(cmd, input=script.encode("utf-8")).returncode
 
 
 def register_parser(sub: Any) -> None:

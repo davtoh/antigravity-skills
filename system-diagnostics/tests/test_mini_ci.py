@@ -196,6 +196,21 @@ class TestMiniCiCliExecution(unittest.TestCase):
             rc = mini_ci.cmd_ci(args)
         self.assertEqual(rc, 2)
 
+    def test_cmd_ci_wsl_streams_lf_bytes(self) -> None:
+        from unittest import mock
+
+        parser = diagnose.build_parser()
+        args = parser.parse_args(["ci", "--path", str(self.root), "--linux", "--backend", "wsl"])
+        with mock.patch("mini_ci.subprocess.run", return_value=mock.Mock(returncode=0)) as m_run:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = mini_ci.cmd_ci(args)
+        self.assertEqual(rc, 0)
+        payload = m_run.call_args.kwargs["input"]
+        self.assertIsInstance(payload, bytes)
+        self.assertNotIn(b"\r\n", payload)
+        self.assertIn(b"set -euo pipefail\n", payload)
+
 
 if __name__ == "__main__":
     unittest.main()

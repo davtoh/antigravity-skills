@@ -34,9 +34,9 @@ Provide a project-agnostic, stdlib-only local Mini-CI runner (`diagnose.py ci` b
   - [x] `python system-diagnostics/scripts/diagnose.py ci --path . --linux --dry-run`
   - [x] `python system-diagnostics/scripts/diagnose.py audit --path system-diagnostics/scripts/mini_ci.py system-diagnostics/scripts/diagnose.py`
 
-## Milestone 2: Documentation, Live Linux Parity Run & Full Regression *(Deferred to Next Turn / Milestone)*
-- [ ] **`system-diagnostics/SKILL.md`** & **`frontier-architect/references/cli-cheatsheet.md`**: Document `diagnose.py ci` recipes (`--fast`, `--linux`, `--backend docker`, `--clean-snapshot`, `.diagnostics/mini_ci.json`) and Scenario Combinations Matrix.
-- [ ] **Live Parity Verification**: Run `python system-diagnostics/scripts/diagnose.py ci --path . --linux` (WSL Ubuntu-24.04 / Python 3.12) and `python .github/scripts/validate_skills.py` end-to-end.
+## Milestone 2: Documentation, Live Linux Parity Run & Full Regression
+- [x] **`system-diagnostics/SKILL.md`** & **`frontier-architect/references/cli-cheatsheet.md`**: Document `diagnose.py ci` recipes (`--fast`, `--linux`, `--backend docker`, `--clean-snapshot`, `.diagnostics/mini_ci.json`) and Scenario Combinations Matrix.
+- [x] **Live Parity Verification**: Run `python system-diagnostics/scripts/diagnose.py ci --path . --linux` (WSL Ubuntu-24.04 / Python 3.12) and `python .github/scripts/validate_skills.py` end-to-end.
 
 ---
 
