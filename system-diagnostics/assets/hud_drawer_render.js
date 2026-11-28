@@ -61,16 +61,35 @@ H.drawerUi = {
     }
     return h;
   },
+  renderResolution: function (it) {
+    if (!it || (it.status !== 'resolved' && it.status !== 'confirmed')) return '';
+    var idEsc = H.htmlEsc(it.id), h = '', badges = [];
+    if (it.resolution) h += '<div class="fh-muted" data-da="resolution-note">Resolution: ' + H.htmlEsc(it.resolution) + '</div>';
+    if (it.confirmed_note) h += '<div class="fh-muted" data-da="confirmed-note">Confirmed: ' + H.htmlEsc(it.confirmed_note) + '</div>';
+    var plan = it.resolved_plan || it.linked_plan;
+    if (plan) badges.push('<span class="fh-chip" data-da="prov-plan">plan: ' + H.htmlEsc(plan) + '</span>');
+    if (it.resolved_milestone) badges.push('<span class="fh-chip" data-da="prov-milestone">milestone: ' + H.htmlEsc(it.resolved_milestone) + '</span>');
+    if (it.linked_commit) badges.push('<span class="fh-chip" data-da="prov-commit">commit: ' + H.htmlEsc(it.linked_commit) + '</span>');
+    else if (it.base_commit) badges.push('<span class="fh-chip" data-da="prov-base-commit">base: ' + H.htmlEsc(it.base_commit) + '</span>');
+    if (badges.length) h += '<div class="fh-chips" data-da="provenance">' + badges.join('') + '</div>';
+    if (it.status === 'resolved') {
+      h += '<div class="fh-row" data-da="resolve-actions">' +
+        '<button type="button" class="fh-btn active" data-da="confirm" data-id="' + idEsc + '">Confirm</button>' +
+        '<button type="button" class="fh-btn" data-da="reopen" data-id="' + idEsc + '">Reopen</button></div>';
+    }
+    return h;
+  },
   renderCard: function (it, state) {
     var open = state.selectedId === it.id, idEsc = H.htmlEsc(it.id);
     var draft = state.drafts[it.id], curKind = draft ? draft.kind : it.kind, curMsg = draft ? draft.message : it.message;
     var dirty = !!(draft && (draft.kind !== it.kind || draft.message !== it.message));
-    var closed = it.status === 'dismissed' || it.status === 'resolved';
+    var closed = it.status === 'dismissed' || it.status === 'resolved' || it.status === 'confirmed';
     var h = '<div class="fh-item" data-obs-id="' + idEsc + '"' + (dirty ? ' data-dirty="true"' : '') + '>';
     h += '<div class="fh-item-head" data-da="select" data-id="' + idEsc + '">';
     h += '<span><strong>' + idEsc + '</strong> [' + H.htmlEsc(it.kind) + ']' + (closed ? ' (' + H.htmlEsc(it.status) + ')' : '') + (dirty ? ' <span class="fh-dirty" data-da="dirty-badge" title="Unsaved draft changes">* Unsaved</span>' : '') + ' <span class="fh-muted">' + H.htmlEsc(it.page_path || '/') + '</span></span>';
     h += '<span class="fh-muted">' + (open ? '▲' : '▼') + '</span></div>';
     h += '<div>' + H.htmlEsc(it.message) + '</div>';
+    h += H.drawerUi.renderResolution(it);
     h += H.drawerUi.renderElements(it, open);
     h += H.drawerUi.renderTrace(it);
     h += H.drawerUi.renderRelated(it, open);

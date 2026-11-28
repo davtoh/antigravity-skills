@@ -287,6 +287,14 @@ class HudLogicTests(unittest.TestCase):
         self.assertTrue(o["u5UndoRendered"])
         self.assertEqual((o["u5AfterUndo"], o["u5AfterReopen"]), ("open", "open"))
         self.assertEqual((o["u7FirstClickDeletes"], o["u7ConfirmVisible"], o["u7CancelCleared"], o["u7ConfirmedDeletes"]), (0, True, True, 1))
+        self.assertTrue(o["u8HasFilters"])
+        for token in ("Resolution: Fixed CSS grid", "plan: ui_plan", "milestone: M1", "base: pending:abc1234", 'data-da="confirm"', 'data-da="reopen"'):
+            self.assertIn(token, o["u8ResolvedHtml"])
+        self.assertEqual(o["u8AfterConfirm"], "confirmed")
+        for token in ("Resolution: Fixed API", "Confirmed: Verified in Chrome", "plan: api_plan", "milestone: M2", "commit: def5678"):
+            self.assertIn(token, o["u8ConfirmedHtml"])
+        self.assertNotIn('data-da="confirm"', o["u8ConfirmedHtml"])
+        self.assertEqual(o["u8AfterReopen"], "open")
 
     def test_bundle_order_and_size(self):
         text = observation_assets.hud_bundle()

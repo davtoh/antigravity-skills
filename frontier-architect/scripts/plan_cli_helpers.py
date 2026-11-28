@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Console rendering and parser helpers extracted from plan_engine (keeps plan_engine within budget)."""
 
+from pathlib import Path
 from typing import Any
 import argparse
+import json
 import re
 
 _TASK_PATH_RE = re.compile(r"(?:\*\*|`)([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)(?:\*\*|`)")
+_OBS_ID_RE = re.compile(r"\bOBS-\d+\b", re.IGNORECASE)
+_OBS_ACTIVE_STATUSES = ("open", "triaged", "in_progress")
+_MILESTONE_HDR_RE = re.compile(r"^#{2,4}\s+(?:Milestone|Phase|Step)\s+(\d+)\b", re.IGNORECASE)
 
 
 def build_commit_suggestion(ps: dict[str, Any], target_idx: int) -> str:
@@ -173,16 +178,69 @@ def print_milestone_body(
     print("  3. Modularity Line Budgets: Target < 350 lines; hard split ceiling at 500 lines.")
 
 
+def _extract_milestone_text(raw_text: str, target_idx: int) -> str:
+    """Return raw markdown lines belonging to *target_idx* (or full text if headers absent)."""
+    lines, capturing, out = raw_text.splitlines(), False, []
+    for line in lines:
+        m = _MILESTONE_HDR_RE.match(line.strip())
+        if m:
+            capturing = int(m.group(1)) == target_idx
+        if capturing:
+            out.append(line)
+    return "\n".join(out) if out else raw_text
+
+
+def find_unresolved_observations(
+    root: Path, plan_path: Path, target_idx: int, is_plan_completed: bool = False,
+) -> list[str]:
+    """Return sorted active OBS-NNN IDs referenced in the milestone/plan and still active in catalog."""
+    catalog_path = Path(root) / ".diagnostics" / "observation_catalog.json"
+    if not catalog_path.is_file() or not Path(plan_path).is_file():
+        return []
+    try:
+        raw_plan = Path(plan_path).read_text(encoding="utf-8")
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    scope_text = raw_plan if is_plan_completed else _extract_milestone_text(raw_plan, target_idx)
+    refs = {m.upper() for m in _OBS_ID_RE.findall(scope_text)}
+    if not refs or not isinstance(catalog, dict):
+        return []
+    entries = catalog.get("observations", [])
+    if not isinstance(entries, list):
+        return []
+    active = {
+        str(e.get("id") or "").upper()
+        for e in entries
+        if isinstance(e, dict) and e.get("status") in _OBS_ACTIVE_STATUSES
+    }
+    return sorted(refs & active)
+
+
+def _print_observation_warning(unresolved_obs: list[str] | None, slug: str, target_idx: int) -> None:
+    """Emit OBSERVATION WARNING banner when referenced observations remain active."""
+    if not unresolved_obs:
+        return
+    print("=" * 72)
+    print(f"[plan_engine] OBSERVATION WARNING: Unresolved active observation(s): {', '.join(unresolved_obs)}")
+    print("  Close each verified observation before sign-off:")
+    for obs_id in unresolved_obs[:5]:
+        print(f'    diagnose.py observations resolve --id {obs_id} --resolution "<summary>" --plan {slug} --milestone M{target_idx} --path .')
+    if len(unresolved_obs) > 5:
+        print(f"    ... and {len(unresolved_obs) - 5} more (run `diagnose.py observations list --path .`).")
+    print("=" * 72)
+
+
 def print_advance_summary(
-    ps: dict[str, Any], target_idx: int, sha: str | None, commit_hint: str,
-    has_code_diff: bool, patched: int, missing_prior_retro: int | None = None,
-    scaffold_rel: str | None = None, parent_synced: tuple[str, int] | tuple[str, int, bool] | None = None,
+    ps: dict[str, Any], target_idx: int, sha: str | None, commit_hint: str, has_code_diff: bool, patched: int,
+    missing_prior_retro: int | None = None, scaffold_rel: str | None = None,
+    parent_synced: tuple[str, int] | tuple[str, int, bool] | None = None, unresolved_obs: list[str] | None = None,
 ) -> None:
     """Print the milestone-advance result, turn gate, and user-selectable introspective commands."""
     plan_ref = ps.get("plan_path") or ps.get("slug", "plan")
     print(f"[plan_engine] Advanced Milestone {target_idx} (checked {patched} tasks in {plan_ref}).")
-    print(f"  Commit: {sha or 'N/A'} | Status: {ps['status']}")
-    print(f"  Suggested Commit: {commit_hint}")
+    print(f"  Commit: {sha or 'N/A'} | Status: {ps['status']}\n  Suggested Commit: {commit_hint}")
+    _print_observation_warning(unresolved_obs, ps["slug"], target_idx)
     if missing_prior_retro is not None:
         print(f"[plan_engine] RETROSPECTIVE REMINDER: Milestone {missing_prior_retro} has no retrospective logged yet (run `plan_engine.py retrospective {ps['slug']} --milestone {missing_prior_retro} ...`).")
     if ps["status"] == "completed":

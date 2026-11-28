@@ -26,7 +26,10 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_cli_helpers import add_retrospective_parser, assess_plan_scope, print_advance_summary, print_master_gate, print_milestone_body, resolve_commit_hint
+from plan_cli_helpers import (
+    add_retrospective_parser, assess_plan_scope, find_unresolved_observations,
+    print_advance_summary, print_master_gate, print_milestone_body, resolve_commit_hint,
+)
 from plan_digest import cmd_digest, register_digest_parser, write_learning_scaffold
 from plan_parser import discover_plans, parse_plan_markdown, patch_milestone_checkboxes, slugify
 from plan_reconcile import _find_duplicate_milestones, cmd_reconcile, register_reconcile_parser
@@ -273,7 +276,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
     if ps["status"] == "completed":
         from plan_digest import build_workspace_digest, write_workspace_scaffold
         write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
-    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced)
+    print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced, unresolved_obs=find_unresolved_observations(root, plan_p, target_idx, ps["status"] == "completed"))
     return 0
 
 

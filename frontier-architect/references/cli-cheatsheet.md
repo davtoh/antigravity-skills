@@ -31,7 +31,7 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" next [<pl
 # If exit 124 shows active test progress in partial output, re-run slow suites with --timeout 600 (or --timeout 0); otherwise debug deadlocks / blocking I/O.
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <plan_or_slug> --command "<test_cmd>" [--timeout 180] --root .
 
-# Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
+# Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, warns if referenced OBS-NNN IDs remain active in .diagnostics/observation_catalog.json, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
 # Never run git add/commit before advance or without user consent; run retrospective sequentially after advance (never in parallel).
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--note "<summary>"] [--no-sync-parent] --root .
 
@@ -57,9 +57,10 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path
 # Polyglot defect scan across one or multiple paths
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path <paths...>
 
-# List active HUD observations & close resolved OBS-NNN entries at milestone/plan sign-off (uses --path, NOT --root)
+# List active HUD observations, resolve with provenance, and confirm verified fixes (uses --path, NOT --root)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations list --path .
-python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations resolve --id <OBS-NNN> --resolution "<summary>" --commit <sha> --path .
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations resolve --id <OBS-NNN> --resolution "<summary>" [--commit <sha>] [--plan <slug>] [--milestone M<N>] [--base-commit <sha>] --path .
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations confirm --id <OBS-NNN> [--note "<verification note>"] --path .
 
 # Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .

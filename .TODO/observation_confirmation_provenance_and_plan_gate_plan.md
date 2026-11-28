@@ -17,11 +17,11 @@
 
 ## Milestone 2: HUD Confirmation UX, Provenance Display & `plan_engine.py advance` Warning Gate *(Deferred to Next Turn / Milestone 2)*
 
-- [ ] **system-diagnostics/assets/hud_drawer.js** & **system-diagnostics/assets/hud_drawer_render.js**: Add `confirmed` to status filter options, render AI resolution note + provenance badges (`plan`, `milestone`, `commit`/`base_commit`) on `resolved`/`confirmed` cards, and add one-click `Confirm` / `Reopen` buttons on `resolved` cards.
-- [ ] **frontier-architect/scripts/plan_cli_helpers.py**: On `plan_engine.py advance`, scan the completed milestone/plan markdown for `OBS-\d+` IDs and, if `.diagnostics/observation_catalog.json` exists with any still in `ACTIVE_STATUSES`, emit an `OBSERVATION WARNING` banner listing the unresolved IDs and the exact `diagnose.py observations resolve` command.
-- [ ] **system-diagnostics/references/observations.md** & **frontier-architect/references/cli-cheatsheet.md**: Document `observations confirm`, `--plan`/`--milestone`/`--base-commit`, and the `advance` warning gate.
-- [ ] **system-diagnostics/tests/test_observation_hud.py** & **frontier-architect/tests/test_plan_engine_fixes.py**: Add HUD confirmation/provenance rendering tests and `plan_engine.py advance` unresolved-observation warning tests.
-- [ ] **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation*.py"` and `python -m unittest discover -s frontier-architect/tests -p "test_*.py"`
+- [x] **system-diagnostics/assets/hud_drawer.js** & **system-diagnostics/assets/hud_drawer_render.js**: Add `confirmed` to status filter options, render AI resolution note + provenance badges (`plan`, `milestone`, `commit`/`base_commit`) on `resolved`/`confirmed` cards, and add one-click `Confirm` / `Reopen` buttons on `resolved` cards.
+- [x] **frontier-architect/scripts/plan_cli_helpers.py**: On `plan_engine.py advance`, scan the completed milestone/plan markdown for `OBS-\d+` IDs and, if `.diagnostics/observation_catalog.json` exists with any still in `ACTIVE_STATUSES`, emit an `OBSERVATION WARNING` banner listing the unresolved IDs and the exact `diagnose.py observations resolve` command.
+- [x] **system-diagnostics/references/observations.md** & **frontier-architect/references/cli-cheatsheet.md**: Document `observations confirm`, `--plan`/`--milestone`/`--base-commit`, and the `advance` warning gate.
+- [x] **system-diagnostics/tests/test_observation_hud.py** & **frontier-architect/tests/test_plan_engine_fixes.py**: Add HUD confirmation/provenance rendering tests and `plan_engine.py advance` unresolved-observation warning tests.
+- [x] **Verifier**: `python -m unittest discover -s system-diagnostics/tests -p "test_observation*.py"` and `python -m unittest discover -s frontier-architect/tests -p "test_*.py"`
 
 ---
 

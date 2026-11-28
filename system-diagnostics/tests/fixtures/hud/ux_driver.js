@@ -221,5 +221,26 @@ const clickEl = (container, target) => (container.listeners.click || []).forEach
   await flush();
   out.u7ConfirmedDeletes = calls.filter(c => c.method === 'DELETE').length - delBefore;
 
+  // U8: Confirmed/Resolved filters, provenance badges, one-click Confirm & Reopen
+  out.u8HasFilters = H.drawerEl.innerHTML.includes('value="resolved"') && H.drawerEl.innerHTML.includes('value="confirmed"');
+  store.push(
+    { id: 'OBS-004', kind: 'element', status: 'resolved', page_path: '/grid', message: 'grid misaligned', elements: [], related_ids: [],
+      resolution: 'Fixed CSS grid', resolved_plan: 'ui_plan', resolved_milestone: 'M1', base_commit: 'pending:abc1234' },
+    { id: 'OBS-005', kind: 'network', status: 'confirmed', page_path: '/api', message: '500 on save', elements: [], related_ids: [],
+      resolution: 'Fixed API', confirmed_note: 'Verified in Chrome', resolved_plan: 'api_plan', resolved_milestone: 'M2', linked_commit: 'def5678' }
+  );
+  H.drawerState.filter = 'resolved';
+  await H.refreshDrawer();
+  out.u8ResolvedHtml = drawerNodes.list.innerHTML;
+  clickEl(H.drawerEl, makeEl('button', { 'data-da': 'confirm', 'data-id': 'OBS-004' }));
+  await flush();
+  out.u8AfterConfirm = store.find(o => o.id === 'OBS-004').status;
+  H.drawerState.filter = 'confirmed';
+  await H.refreshDrawer();
+  out.u8ConfirmedHtml = drawerNodes.list.innerHTML;
+  clickEl(H.drawerEl, makeEl('button', { 'data-da': 'reopen', 'data-id': 'OBS-005' }));
+  await flush();
+  out.u8AfterReopen = store.find(o => o.id === 'OBS-005').status;
+
   console.log(JSON.stringify(out));
 })();

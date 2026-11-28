@@ -223,6 +223,12 @@ function handleDrawerAction(d, act, id, btn) {
       setStatus(d, '', 'Dismissed ' + H.htmlEsc(id) + ' <button type="button" class="fh-btn" style="padding:1px 6px;margin-left:6px" data-da="undo">Undo</button>');
       H.refreshDrawer(true);
     });
+  } else if (act === 'confirm') {
+    drawerState.lastUndo = null;
+    H.patchObservation(id, { status: 'confirmed' }).then(function () {
+      setStatus(d, 'Confirmed ' + id);
+      H.refreshDrawer(true);
+    });
   } else if (act === 'reopen') {
     drawerState.lastUndo = null;
     H.patchObservation(id, { status: 'open' }).then(function () {
@@ -251,7 +257,7 @@ H.buildDrawer = function () {
   d.className = 'fh-drawer';
   d.hidden = true;
   d.innerHTML = '<div class="fh-row"><strong style="color:#fbbf24;font-size:13px">Registered Observations</strong>' +
-    '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="dismissed">Dismissed</option><option value="all">All</option></select>' +
+    '<div class="fh-bar"><select class="fh-select" data-da="filter" style="width:auto;padding:3px 6px"><option value="active">Active</option><option value="resolved">Resolved</option><option value="confirmed">Confirmed</option><option value="dismissed">Dismissed</option><option value="all">All</option></select>' +
     '<button type="button" class="fh-btn" data-da="export">Export</button>' +
     '<button type="button" class="fh-btn" data-da="import">Import</button>' +
     '<input type="file" data-da="import-file" accept="application/json,.json" hidden>' +
