@@ -8,6 +8,7 @@ Verifies that the architectural patterns recommended by refactor-monolith:
 4. SCSS @use / @forward manifest preserves selector cascade ordering.
 """
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,7 +39,7 @@ class TestPythonDecompositionContract(unittest.TestCase):
             )
             # Execute the caller script to verify zero breaking imports
             import subprocess
-            res = subprocess.run(["python", str(caller_file)], capture_output=True, text=True)
+            res = subprocess.run([sys.executable, str(caller_file)], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f"Python facade failed: {res.stderr}")
 
 class TestGoDecompositionContract(unittest.TestCase):

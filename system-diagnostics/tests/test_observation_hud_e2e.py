@@ -23,7 +23,9 @@ TARGETS = {
     "media": "document.getElementById('media-btn')",
 }
 SELECTORS = {"plain": '[data-testid="save"]', "iframe": "#f >>> #inner", "csp": "#csp-btn", "media": "#media-btn"}  # #id, then data-testid
-EVAL = """(async () => { const H = window.__FRONTIER_HUD__; if (!H) return {error: 'no hud'};
+EVAL = """(async () => {
+ for (let i = 0; i < 50 && !window.__FRONTIER_HUD__; i++) await new Promise(r => setTimeout(r, 100));
+ const H = window.__FRONTIER_HUD__; if (!H) return {error: 'no hud'};
  const el = %s; H.record(); H.pick();
  el.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true, cancelable: true}));
  const sel = H.lastPick && H.lastPick.selector; el.click();
