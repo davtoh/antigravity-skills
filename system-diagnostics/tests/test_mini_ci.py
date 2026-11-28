@@ -119,9 +119,10 @@ class TestMiniCiBuilders(unittest.TestCase):
         self.assertEqual(steps, [["ruff", "check", "."], ["py", "-m", "pytest"]])
         steps_no_lint = mini_ci.build_ci_steps(self.root, "py", skip_lint=True, which_fn=lambda x: f"/bin/{x}")
         self.assertEqual(steps_no_lint, [["py", "-m", "pytest"]])
-        # Custom config steps
-        cfg_steps = mini_ci.build_ci_steps(self.root, "py", config={"steps": ["{python} -m unittest"]})
-        self.assertEqual(cfg_steps, [["py", "-m", "unittest"]])
+        # Custom config steps (including --skip-lint filtering)
+        cfg = {"steps": ["{python} -m ruff check .", "{python} -m unittest"]}
+        self.assertEqual(mini_ci.build_ci_steps(self.root, "py", config=cfg), [["py", "-m", "ruff", "check", "."], ["py", "-m", "unittest"]])
+        self.assertEqual(mini_ci.build_ci_steps(self.root, "py", config=cfg, skip_lint=True), [["py", "-m", "unittest"]])
         # Targeted .py file without pytest
         targeted = mini_ci.build_ci_steps(
             self.root, "py", tests=["system-diagnostics/tests/test_mini_ci.py"], which_fn=lambda _x: None
@@ -140,12 +141,21 @@ class TestMiniCiBuilders(unittest.TestCase):
         self.assertIn('export HOME="$CLEAN_HOME"', script)
         self.assertIn("export MY_VAR='a b'", script)
         self.assertIn('VENV_DIR="/tmp/mini_ci_venvs/$REQ_HASH"', script)
+        self.assertIn('if [ ! -f "$VENV_DIR/.ready" ]; then', script)
+        self.assertIn('import ensurepip', script)
         self.assertIn('"$PY_BIN" -m unittest discover -s tests', script)
 
         df = mini_ci.build_dockerfile("python:3.12-slim", config={"apt_packages": ["git"]}, has_requirements=True)
         self.assertIn("FROM python:3.12-slim", df)
         self.assertIn("apt-get install -y --no-install-recommends git", df)
         self.assertIn("COPY requirements.txt .", df)
+
+        req_a = self.root / "requirements.txt"
+        req_a.write_text("pytest==8.0.0\n", encoding="utf-8")
+        tag_a = mini_ci._docker_image_tag(df, req_a)
+        req_a.write_text("pytest==8.1.0\n", encoding="utf-8")
+        tag_b = mini_ci._docker_image_tag(df, req_a)
+        self.assertNotEqual(tag_a, tag_b)
 
         dcmd = mini_ci.build_docker_run_command(self.root, "python:3.12-slim", steps, config={"env": {"K": "V"}})
         self.assertEqual(dcmd[:3], ["docker", "run", "--rm"])

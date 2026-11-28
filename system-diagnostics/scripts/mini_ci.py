@@ -119,13 +119,24 @@ def _parse_config_steps(raw_steps: list[Any], python_bin: str) -> list[list[str]
     return steps
 
 
+def _is_lint_step(step: list[str]) -> bool:
+    """Return True when a configured CI step invokes a linter (ruff/flake8)."""
+    if not step:
+        return False
+    head = Path(step[0]).name.lower()
+    if head in ("ruff", "ruff.exe", "flake8", "flake8.exe"):
+        return True
+    return len(step) >= 3 and step[1] == "-m" and step[2] in ("ruff", "flake8")
+
+
 def build_ci_steps(root: Path, python_bin: str, *, config: Mapping[str, Any] | None = None, tests: list[str] | None = None, skip_lint: bool = False, which_fn: Any = shutil.which) -> list[list[str]]:
     """Build ordered CI command argv lists for `root`."""
     use_pytest = ((root / "pytest.ini").is_file() or (root / "conftest.py").is_file()) and bool(which_fn("pytest"))
     if tests:
         return [_target_to_step(root, python_bin, t, use_pytest) for t in tests]
     if (config or {}).get("steps"):
-        return _parse_config_steps(config["steps"], python_bin)
+        steps = _parse_config_steps(config["steps"], python_bin)
+        return [s for s in steps if not (skip_lint and _is_lint_step(s))]
     if detect_layout(root) == "skills_monorepo":
         steps = [[python_bin, ".github/scripts/validate_skills.py"]] if (root / ".github" / "scripts" / "validate_skills.py").is_file() else []
         return steps + [[python_bin, "-m", "unittest", "discover", "-s", d, "-p", "test_*.py"] for d in discover_skill_test_dirs(root)]
@@ -143,6 +154,7 @@ def _render_shell_step(step: list[str], py_var: str = '"$PY_BIN"') -> str:
 def build_wsl_script(wsl_workdir: str, steps: list[list[str]], *, config: Mapping[str, Any] | None = None, has_requirements: bool = False) -> str:
     """Build an isolated-HOME bash script streamed to `wsl ... bash -s`."""
     cfg = config or {}
+    apt_pkgs = [str(p) for p in cfg.get("apt_packages", [])]
     pip_pkgs = [str(p) for p in cfg.get("pip_packages", [])]
     lines = [
         "set -euo pipefail", 'CLEAN_HOME="$(mktemp -d)"', 'trap \'rm -rf "$CLEAN_HOME"\' EXIT',
@@ -153,13 +165,24 @@ def build_wsl_script(wsl_workdir: str, steps: list[list[str]], *, config: Mappin
     ]
     if has_requirements or pip_pkgs:
         extra = " ".join(shlex.quote(p) for p in pip_pkgs)
+        apt_hint = " ".join(["python3-venv", *apt_pkgs])
         lines.extend([
             'REQ_HASH="$({ [ -f requirements.txt ] && cat requirements.txt; printf "%s" ' + shlex.quote(extra) + '; } | sha256sum | cut -c1-12)"',
             'VENV_DIR="/tmp/mini_ci_venvs/$REQ_HASH"',
-            'if [ ! -x "$VENV_DIR/bin/python" ]; then python3 -m venv "$VENV_DIR"; fi',
+            'if [ ! -f "$VENV_DIR/.ready" ]; then',
+            '  if ! python3 -c "import ensurepip" >/dev/null 2>&1; then',
+            '    echo "[diagnose ci --linux/wsl] Missing python3-venv in WSL. Install with:" >&2',
+            f'    echo "  sudo apt-get update && sudo apt-get install -y {apt_hint}" >&2',
+            '    echo "Or run with Docker instead: diagnose.py ci --path . --linux --backend docker" >&2',
+            "    exit 2",
+            "  fi",
+            '  rm -rf "$VENV_DIR" && python3 -m venv "$VENV_DIR"',
+            '  "$VENV_DIR/bin/python" -m pip install -q --upgrade pip setuptools wheel',
+            *(['  [ -f requirements.txt ] && "$VENV_DIR/bin/python" -m pip install -q -r requirements.txt'] if has_requirements else []),
+            *([f'  "$VENV_DIR/bin/python" -m pip install -q {extra}'] if pip_pkgs else []),
+            '  touch "$VENV_DIR/.ready"',
+            "fi",
             'PY_BIN="$VENV_DIR/bin/python"',
-            '[ -f requirements.txt ] && "$PY_BIN" -m pip install -q -r requirements.txt || true',
-            *([f'"$PY_BIN" -m pip install -q {extra}'] if pip_pkgs else []),
         ])
     lines.extend(_render_shell_step(s) for s in steps)
     return "\n".join(lines) + "\n"
@@ -176,7 +199,10 @@ def build_dockerfile(docker_image: str = DEFAULT_DOCKER_IMAGE, *, config: Mappin
         lines.append(f"RUN apt-get update && apt-get install -y --no-install-recommends {joined} && rm -rf /var/lib/apt/lists/*")
     lines.append("WORKDIR /workspace")
     if has_requirements:
-        lines.extend(["COPY requirements.txt .", "RUN pip install --no-cache-dir -r requirements.txt"])
+        lines.extend([
+            "COPY requirements.txt .",
+            "RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && pip install --no-cache-dir -r requirements.txt",
+        ])
     if pip_pkgs:
         lines.append(f"RUN pip install --no-cache-dir {' '.join(shlex.quote(p) for p in pip_pkgs)}")
     return "\n".join(lines) + "\n"
@@ -217,22 +243,45 @@ def _run_fast(work_root: Path, config: dict[str, Any], args: argparse.Namespace)
     return 0
 
 
+def _docker_image_tag(dockerfile: str, req_file: Path | None) -> str:
+    """Compute a content-addressed Docker tag from Dockerfile and requirements.txt."""
+    digest = hashlib.sha256(dockerfile.encode("utf-8"))
+    if req_file and req_file.is_file():
+        digest.update(b"\0")
+        digest.update(req_file.read_bytes())
+    return f"mini-ci-{digest.hexdigest()[:12]}"
+
+
+def _ensure_docker_image(tag: str, dockerfile: str, req_file: Path | None) -> int:
+    """Reuse cached Docker image or build from a minimal temp context."""
+    probe = subprocess.run(["docker", "image", "inspect", tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if probe.returncode == 0:
+        return 0
+    with tempfile.TemporaryDirectory(prefix="mini_ci_docker_") as tmp:
+        ctx = Path(tmp)
+        (ctx / "Dockerfile").write_text(dockerfile, encoding="utf-8")
+        if req_file and req_file.is_file():
+            shutil.copy2(req_file, ctx / "requirements.txt")
+        return subprocess.run(["docker", "build", "-t", tag, str(ctx)]).returncode
+
+
 def _run_docker(work_root: Path, config: dict[str, Any], steps: list[list[str]], args: argparse.Namespace, has_req: bool) -> int:
     base_image = args.docker_image or config.get("docker_image") or DEFAULT_DOCKER_IMAGE
     need_build = has_req or bool(config.get("apt_packages")) or bool(config.get("pip_packages"))
     dockerfile = build_dockerfile(base_image, config=config, has_requirements=has_req)
-    tag = f"mini-ci-{hashlib.sha256(dockerfile.encode()).hexdigest()[:12]}" if need_build else base_image
+    req_file = (work_root / "requirements.txt") if has_req else None
+    tag = _docker_image_tag(dockerfile, req_file) if need_build else base_image
     run_cmd = build_docker_run_command(work_root, tag, steps, config=config)
     print(f"=== Mini-CI [linux:docker] ({tag}) ===")
     if args.dry_run:
         if need_build:
-            print(f"# docker build -t {tag} -f - .\n{dockerfile}")
+            print(f"# docker build -t {tag} <minimal-ctx>\n{dockerfile}")
         print(" ".join(shlex.quote(c) for c in run_cmd))
         return 0
     if need_build:
-        res = subprocess.run(["docker", "build", "-t", tag, "-f", "-", str(work_root)], input=dockerfile.encode("utf-8"))
-        if res.returncode != 0:
-            return res.returncode
+        rc = _ensure_docker_image(tag, dockerfile, req_file)
+        if rc != 0:
+            return rc
     return subprocess.run(run_cmd).returncode
 
 
