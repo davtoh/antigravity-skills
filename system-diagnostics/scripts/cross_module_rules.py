@@ -13,10 +13,16 @@ from typing import Any
 
 try:
     from ast_guard_rules import check_silent_shape_skips
-    from signature_drift_rules import check_callable_signature_drift
+    from signature_drift_rules import (
+        check_callable_signature_drift,
+        check_method_kwarg_mismatch,
+    )
 except ImportError:
     from .ast_guard_rules import check_silent_shape_skips  # type: ignore[no-redef]
-    from .signature_drift_rules import check_callable_signature_drift  # type: ignore[no-redef]
+    from .signature_drift_rules import (  # type: ignore[no-redef]
+        check_callable_signature_drift,
+        check_method_kwarg_mismatch,
+    )
 
 
 def check_mixed_clock_domains(
@@ -319,5 +325,6 @@ def scan_cross_module_defects(parsed_files: list[tuple[str, ast.AST]]) -> list[d
         + _check_lock_order_inversion(parsed_files)
         + _check_repo_rollback(parsed_files)
         + check_callable_signature_drift(parsed_files, classes, dynamic, _bind_local_types)
+        + check_method_kwarg_mismatch(parsed_files, classes, dynamic, _bind_local_types)
         + check_silent_shape_skips(parsed_files)
     )
