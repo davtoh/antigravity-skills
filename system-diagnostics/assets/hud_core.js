@@ -16,15 +16,9 @@ H.hex = function (n) {
   for (i = 0; i < n; i++) s += ('0' + ((a ? a[i] : Math.floor(Math.random() * 256)) & 255).toString(16)).slice(-2);
   return s;
 };
-H.esc = function (s) {
-  return (win.CSS && win.CSS.escape) ? win.CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
-};
-H.htmlEsc = function (s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-};
-H.isUnique = function (root, sel) {
-  try { return root.querySelectorAll(sel).length === 1; } catch (e) { return false; }
-};
+H.esc = function (s) { return (win.CSS && win.CSS.escape) ? win.CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&'); };
+H.htmlEsc = function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+H.isUnique = function (root, sel) { try { return root.querySelectorAll(sel).length === 1; } catch (e) { return false; } };
 H.partFor = function (el) {
   var tag = el.tagName.toLowerCase(), cls = (el.getAttribute('class') || '').split(/\s+/).filter(Boolean).slice(0, 2);
   var part = tag + cls.map(function (c) { return '.' + H.esc(c); }).join('');
@@ -77,9 +71,7 @@ H.attrsFor = function (el) {
   if (tag === 'input' || tag === 'textarea') { try { a.value_length = String(el.value).length; } catch (e) { /* ignore */ } }
   return a;
 };
-H.isSecret = function (el) {
-  return el.tagName === 'INPUT' && String(el.getAttribute('type') || '').toLowerCase() === 'password';
-};
+H.isSecret = function (el) { return el.tagName === 'INPUT' && String(el.getAttribute('type') || '').toLowerCase() === 'password'; };
 H.urlTarget = function (url) {
   var u, keys = [], k;
   try { u = new win.URL(String(url), win.location.href); } catch (e) { return ''; }
@@ -101,14 +93,8 @@ H.scrub = function (obj) {
   if (obj && typeof obj === 'object') { for (k in obj) { if (FORBIDDEN[k.toLowerCase()]) delete obj[k]; else H.scrub(obj[k]); } }
   return obj;
 };
-H.pagePath = function () {
-  var p = (win.location && win.location.pathname) || '/', h = (win.location && win.location.hash) || '';
-  return p + (h ? h : '');
-};
-H.normalizePick = function (p) {
-  if (!p || !p.selector) return null;
-  return { selector: String(p.selector), rect: p.rect || null, attrs: p.attrs || {} };
-};
+H.pagePath = function () { return ((win.location && win.location.pathname) || '/') + ((win.location && win.location.hash) || ''); };
+H.normalizePick = function (p) { return (p && p.selector) ? { selector: String(p.selector), rect: p.rect || null, attrs: p.attrs || {} } : null; };
 H.activePicks = function () {
   if (H.picks && H.picks.length) return H.picks.slice(0, H.MAX_ELEMENTS);
   var single = H.normalizePick(H.lastPick);
@@ -118,16 +104,11 @@ H.addPick = function (pick) {
   var clean = H.normalizePick(pick), i;
   if (!clean) return false;
   H.lastPick = pick;
-  for (i = 0; i < H.picks.length; i++) {
-    if (H.picks[i].selector === clean.selector) { H.picks[i] = clean; return true; }
-  }
+  for (i = 0; i < H.picks.length; i++) if (H.picks[i].selector === clean.selector) { H.picks[i] = clean; return true; }
   if (H.picks.length < H.MAX_ELEMENTS) H.picks.push(clean);
   return true;
 };
-H.removePick = function (idx) {
-  if (idx >= 0 && idx < H.picks.length) H.picks.splice(idx, 1);
-  H.lastPick = H.picks.length ? H.picks[H.picks.length - 1] : null;
-};
+H.removePick = function (idx) { if (idx >= 0 && idx < H.picks.length) H.picks.splice(idx, 1); H.lastPick = H.picks.length ? H.picks[H.picks.length - 1] : null; };
 H.clearPicks = function () { H.picks = []; H.lastPick = null; };
 H.buildRecord = function (kind, message) {
   var picks = H.activePicks(), rec = {
@@ -154,10 +135,7 @@ H.req = function (url, method, body) {
   });
 };
 H.post = function (rec) { return H.req(H.endpoint, 'POST', rec); };
-H.listObservations = function (status, limit) {
-  var st = status || 'active', lim = limit || 50;
-  return H.req(H.baseEndpoint + '/observations?status=' + encodeURIComponent(st) + '&limit=' + lim, 'GET');
-};
+H.listObservations = function (status, limit) { return H.req(H.baseEndpoint + '/observations?status=' + encodeURIComponent(status || 'active') + '&limit=' + (limit || 50), 'GET'); };
 H.getObservation = function (id) { return H.req(H.baseEndpoint + '/observations/' + encodeURIComponent(id), 'GET'); };
 H.patchObservation = function (id, data) { return H.req(H.baseEndpoint + '/observations/' + encodeURIComponent(id), 'PATCH', data); };
 H.deleteObservation = function (id) { return H.req(H.baseEndpoint + '/observations/' + encodeURIComponent(id), 'DELETE'); };
@@ -179,11 +157,8 @@ H.openInComposer = function (entry) {
 };
 H.cancelEdit = function () {
   var p = H.panelEl, msg = p && p.querySelector('[data-a=msg]'), kindEl = p && p.querySelector('[data-a=kind]');
-  H.editingId = null;
-  H.clearPicks();
-  H.finished = null; H.traceCleared = false;
-  if (msg) msg.value = '';
-  if (kindEl) kindEl.value = 'note';
+  H.editingId = null; H.clearPicks(); H.finished = null; H.traceCleared = false;
+  if (msg) msg.value = ''; if (kindEl) kindEl.value = 'note';
   if (H.updateUi) H.updateUi('Edit cancelled');
 };
 H.logObservation = function (kind, message) {
@@ -224,9 +199,7 @@ H.logObservation = function (kind, message) {
     throw err;
   });
 };
-H.sameOrigin = function (url) {
-  try { return new win.URL(String(url), win.location.href).origin === win.location.origin; } catch (e) { return false; }
-};
+H.sameOrigin = function (url) { try { return new win.URL(String(url), win.location.href).origin === win.location.origin; } catch (e) { return false; } };
 H.addRoot = function (root) { if (H.roots.indexOf(root) < 0) H.roots.push(root); };
 H.attachFrames = function () {
   var frames = doc.querySelectorAll('iframe'), i, d;
@@ -235,6 +208,32 @@ H.attachFrames = function () {
     if (d) { H.addRoot(d); if (H.onRoot) H.onRoot(d); }
   }
 };
+H.attachDrag = function (p) {
+  var drag = null;
+  function onMove(e) {
+    if (!drag || (drag.id !== undefined && e.pointerId !== undefined && e.pointerId !== drag.id)) return;
+    var vw = win.innerWidth || (doc.documentElement && doc.documentElement.clientWidth) || 1280;
+    var vh = win.innerHeight || (doc.documentElement && doc.documentElement.clientHeight) || 720;
+    var nx = Math.min(Math.max(0, vw - Math.min(drag.w, vw)), Math.max(0, drag.ox + ((e.clientX || 0) - drag.sx)));
+    var ny = Math.min(Math.max(0, vh - Math.min(drag.h, vh)), Math.max(0, drag.oy + ((e.clientY || 0) - drag.sy)));
+    p.style.left = Math.round(nx) + 'px'; p.style.top = Math.round(ny) + 'px'; p.style.right = 'auto'; p.style.bottom = 'auto';
+  }
+  function onUp(e) {
+    if (!drag || (drag.id !== undefined && e && e.pointerId !== undefined && e.pointerId !== drag.id)) return;
+    if (drag.cap && drag.cap.releasePointerCapture && drag.id !== undefined) { try { drag.cap.releasePointerCapture(drag.id); } catch (err) { /* ignore */ } }
+    drag = null;
+  }
+  p.addEventListener('pointerdown', function (e) {
+    var t = e.target, h = t && t.closest ? t.closest('[data-a="title"],[data-a="card-head"]') : null;
+    if (!h || (t && t.tagName && /^(SELECT|OPTION|BUTTON|INPUT|TEXTAREA)$/i.test(t.tagName)) || (e.button !== undefined && e.button !== 0)) return;
+    var r = p.getBoundingClientRect ? p.getBoundingClientRect() : { left: 0, top: 0, width: 320, height: 180 };
+    drag = { id: e.pointerId, sx: e.clientX || 0, sy: e.clientY || 0, ox: typeof r.left === 'number' ? r.left : (r.x || 0), oy: typeof r.top === 'number' ? r.top : (r.y || 0), w: r.width || 320, h: r.height || 180, cap: h };
+    if (h.setPointerCapture && e.pointerId !== undefined) { try { h.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
+    if (e.preventDefault) e.preventDefault();
+  });
+  p.addEventListener('pointermove', onMove); p.addEventListener('pointerup', onUp); p.addEventListener('pointercancel', onUp);
+  if (win.addEventListener) { win.addEventListener('pointermove', onMove); win.addEventListener('pointerup', onUp); win.addEventListener('pointercancel', onUp); }
+};
 H.buildPanel = function () {
   var p = doc.createElement('div'), css = '';
   p.id = '__frontier_hud__';
@@ -242,14 +241,14 @@ H.buildPanel = function () {
   css += '#__frontier_hud__ *{box-sizing:border-box;}.fh-pill{background:#b45309;color:#fff;border:1px solid #f59e0b;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35);display:inline-flex;align-items:center;gap:6px;}';
   css += '.fh-btn{background:#1f2937;color:#f3f4f6;border:1px solid #374151;border-radius:6px;padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;}.fh-btn:hover{border-color:#f59e0b;}.fh-btn.active{background:#b45309;border-color:#f59e0b;color:#fff;}.fh-btn.danger{border-color:#ef4444;color:#fca5a5;}';
   css += '.fh-card{width:320px;background:#111827;border:1px solid #f59e0b;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);}.fh-card[hidden],.fh-drawer[hidden]{display:none;}';
-  css += '.fh-row{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;}.fh-input,.fh-select{width:100%;background:#1f2937;color:#f9fafb;border:1px solid #374151;border-radius:6px;padding:7px;font-size:12px;}.fh-input{min-height:68px;resize:vertical;}';
-  css += '.fh-chips{display:flex;flex-wrap:wrap;gap:4px;}.fh-chip{background:#1f2937;border:1px solid #f59e0b;color:#fde68a;border-radius:999px;padding:2px 8px;font-size:10px;display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}';
+  css += '.fh-row{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;}.fh-drag{cursor:grab;user-select:none;}.fh-drag:active{cursor:grabbing;}.fh-input,.fh-select{width:100%;background:#1f2937;color:#f9fafb;border:1px solid #374151;border-radius:6px;padding:7px;font-size:12px;}.fh-input{min-height:68px;resize:vertical;}';
+  css += '.fh-chips{display:flex;flex-wrap:wrap;gap:4px;}.fh-chip{background:#1f2937;border:1px solid #f59e0b;color:#fde68a;border-radius:999px;padding:2px 8px;font-size:10px;display:inline-flex;align-items:center;gap:4px;max-width:100%;min-width:0;overflow:hidden;}.fh-chip-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;}.fh-chip .fh-btn{flex-shrink:0;}';
   css += '.fh-chip-link{border-color:#60a5fa;color:#bfdbfe;cursor:pointer;}.fh-status{font-size:11px;color:#fcd34d;min-height:14px;}.fh-status.err{color:#fca5a5;}.fh-bar{display:flex;align-items:center;gap:6px;}';
   css += '.fh-drawer{position:fixed;top:0;right:0;bottom:0;width:360px;max-width:95vw;background:#111827;border-left:1px solid #f59e0b;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:-8px 0 28px rgba(0,0,0,.55);z-index:2147483647;}';
   css += '.fh-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}.fh-item{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px;}';
   css += '.fh-item-head{display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer;}.fh-muted{color:#9ca3af;font-size:10px;word-break:break-word;}.fh-dot{width:8px;height:8px;border-radius:999px;background:#ef4444;display:inline-block;}.fh-dirty{background:#78350f;border:1px solid #f59e0b;color:#fde68a;border-radius:999px;padding:1px 6px;font-size:10px;font-weight:600;}';
   var html = '<style>' + css + '</style><div class="fh-card" data-a="card" hidden>';
-  html += '<div class="fh-row"><strong style="font-size:12px;color:#fbbf24" data-a="title">Debug Observation</strong><select class="fh-select" data-a="kind" style="width:auto;padding:3px 6px"><option value="note">note</option><option value="element">element</option><option value="idea">idea</option><option value="error">error</option><option value="network">network</option></select></div>';
+  html += '<div class="fh-row fh-drag" data-a="card-head"><strong class="fh-drag" style="font-size:12px;color:#fbbf24" data-a="title">Debug Observation</strong><select class="fh-select" data-a="kind" style="width:auto;padding:3px 6px"><option value="note">note</option><option value="element">element</option><option value="idea">idea</option><option value="error">error</option><option value="network">network</option></select></div>';
   html += '<div class="fh-row"><button type="button" class="fh-btn" data-a="pick">Pick</button><button type="button" class="fh-btn" data-a="rec">Record</button><button type="button" class="fh-btn" data-a="stop">Stop</button><button type="button" class="fh-btn" data-a="drawer">History <span data-a="count"></span></button></div>';
   html += '<div class="fh-chips" data-a="chips"></div><textarea class="fh-input" data-a="msg" placeholder="Describe bug or idea (or attach Pick/Trace)..."></textarea>';
   html += '<div class="fh-row"><span class="fh-status" data-a="status">Ready</span><div class="fh-bar"><button type="button" class="fh-btn" data-a="cancel-edit" hidden>Cancel</button><button type="button" class="fh-pill" data-a="log">Log</button></div></div></div>';
@@ -268,10 +267,10 @@ H.buildPanel = function () {
     if (chips) {
       var chtml = '', picks = H.activePicks(), i;
       for (i = 0; i < picks.length; i++) {
-        chtml += '<span class="fh-chip" title="' + H.htmlEsc(picks[i].selector) + '">Target: ' + H.htmlEsc(picks[i].selector) + ' <button type="button" class="fh-btn" style="padding:0 4px" data-a="remove-pick" data-idx="' + i + '">x</button></span>';
+        chtml += '<span class="fh-chip" title="' + H.htmlEsc(picks[i].selector) + '"><span class="fh-chip-label">Target: ' + H.htmlEsc(picks[i].selector) + '</span><button type="button" class="fh-btn" style="padding:0 4px;flex-shrink:0" data-a="remove-pick" data-idx="' + i + '">x</button></span>';
       }
-      if (H.recordingId) chtml += '<span class="fh-chip"><span class="fh-dot"></span> ' + H.htmlEsc(H.recordingId) + ' (' + H.timeline.length + ')</span>';
-      else if (H.finished) chtml += '<span class="fh-chip">Trace: ' + H.htmlEsc(H.finished.id) + ' (' + (typeof H.finished.count === 'number' ? H.finished.count : H.finished.timeline.length) + ') <button type="button" class="fh-btn" style="padding:0 4px" data-a="clear-trace">x</button></span>';
+      if (H.recordingId) chtml += '<span class="fh-chip"><span class="fh-dot"></span> <span class="fh-chip-label">' + H.htmlEsc(H.recordingId) + ' (' + H.timeline.length + ')</span></span>';
+      else if (H.finished) chtml += '<span class="fh-chip"><span class="fh-chip-label">Trace: ' + H.htmlEsc(H.finished.id) + ' (' + (typeof H.finished.count === 'number' ? H.finished.count : H.finished.timeline.length) + ')</span><button type="button" class="fh-btn" style="padding:0 4px;flex-shrink:0" data-a="clear-trace">x</button></span>';
       chips.innerHTML = chtml;
     }
   };
@@ -294,6 +293,7 @@ H.buildPanel = function () {
       }, function () { /* keep text for retry */ });
     }
   });
+  H.attachDrag(p);
   (doc.body || doc.documentElement).appendChild(p);
   return p;
 };

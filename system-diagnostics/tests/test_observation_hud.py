@@ -170,6 +170,7 @@ const H = win.__FRONTIER_HUD__;
 })();
 """
 UX_DRIVER = ROOT / "tests" / "fixtures" / "hud" / "ux_driver.js"
+UX_V12_DRIVER = ROOT / "tests" / "fixtures" / "hud" / "ux_v12_driver.js"
 
 
 @unittest.skipUnless(shutil.which("node"), "Node.js required")
@@ -295,6 +296,40 @@ class HudLogicTests(unittest.TestCase):
             self.assertIn(token, o["u8ConfirmedHtml"])
         self.assertNotIn('data-da="confirm"', o["u8ConfirmedHtml"])
         self.assertEqual(o["u8AfterReopen"], "open")
+
+    def test_hud_v1_2_overflow_filter_sort_search_drag_and_datalist(self):
+        p = subprocess.run(
+            ["node", str(UX_V12_DRIVER), str(self.tmp / "bundle.js")],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        )
+        self.assertEqual(p.returncode, 0, p.stderr)
+        o = json.loads(p.stdout)
+        self.assertGreaterEqual(o["longSelLen"], 180)
+        self.assertTrue(o["panelCssHasChipLabel"])
+        self.assertIn('<span class="fh-chip-label">Target: ', o["composerChipHtml"])
+        self.assertIn('flex-shrink:0" data-a="remove-pick"', o["composerChipHtml"])
+        self.assertIn('<span class="fh-chip-label">main.workspace', o["drawerChipHtml"])
+        self.assertIn('flex-shrink:0" data-da="remove-el"', o["drawerChipHtml"])
+        self.assertTrue(o["filterOptions"])
+        self.assertEqual(o["orderDefaultIdDesc"], ["OBS-003", "OBS-002", "OBS-001"])
+        self.assertEqual(o["orderIdAsc"], ["OBS-001", "OBS-002", "OBS-003"])
+        self.assertEqual(o["orderRecent"], ["OBS-002", "OBS-003", "OBS-001"])
+        self.assertEqual(o["orderBackIdDesc"], ["OBS-003", "OBS-002", "OBS-001"])
+        self.assertEqual((o["sortLabelInit"], o["sortLabelAsc"], o["sortLabelRecent"]), ("Sort: ID ↓", "Sort: ID ↑", "Sort: Recent"))
+        self.assertEqual(o["searchById"], ["OBS-002"])
+        self.assertEqual(o["searchBySelector"], ["OBS-002"])
+        self.assertEqual(o["searchByMessage"], ["OBS-003"])
+        self.assertEqual(o["searchCleared"], ["OBS-003", "OBS-002", "OBS-001"])
+        self.assertIn('list="fh-rel-list-OBS-002"', o["drawerExpandedHtml"])
+        self.assertIn('<datalist id="fh-rel-list-OBS-002" data-da="rel-datalist">', o["drawerExpandedHtml"])
+        self.assertIn('<option value="OBS-001">OBS-001: Long selector overflow', o["drawerExpandedHtml"])
+        self.assertNotIn('<option value="OBS-002">', o["drawerExpandedHtml"])
+        self.assertNotIn('<option value="OBS-003">', o["drawerExpandedHtml"])
+        self.assertEqual(o["dragMoved"], {"left": "600px", "top": "300px", "right": "auto", "bottom": "auto"})
+        self.assertEqual(o["dragClampMin"], {"left": "0px", "top": "0px"})
+        self.assertEqual(o["dragClampMax"], {"left": "880px", "top": "500px"})
+        self.assertEqual(o["dragAfterUp"], {"left": "880px", "top": "500px"})
+        self.assertEqual(o["dragCapture"], {"captured": [7], "released": [7]})
 
     def test_bundle_order_and_size(self):
         text = observation_assets.hud_bundle()

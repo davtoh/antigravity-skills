@@ -37,7 +37,7 @@ MAX_LIMIT = 200
 DEFAULT_LIMIT = 20
 LIST_FIELDS = (
     "id", "fingerprint", "status", "kind", "page_path", "selector", "elements",
-    "related_ids", "message", "occurrence_count", "last_seen", "recording_id", "window",
+    "related_ids", "message", "occurrence_count", "last_seen", "updated_at", "recording_id", "window",
     "resolution", "linked_commit", "resolved_plan", "resolved_milestone", "resolved_task",
     "base_commit", "confirmed_at", "confirmed_note",
 )
@@ -104,14 +104,15 @@ def _list(query: dict[str, list[str]], workspace: Path) -> Response:
     status = query.get("status", ["active"])[0]
     valid = ("active", "all") + store.ACTIVE_STATUSES + store.CLOSED_STATUSES
     kind = query.get("kind", [""])[0] or None
-    if status not in valid or (kind and kind not in store.KINDS):
-        return _error(400, "invalid_record", "invalid status or kind filter")
+    sort = query.get("sort", ["recent"])[0] or "recent"
+    if status not in valid or (kind and kind not in store.KINDS) or sort not in ("recent", "id_asc", "id_desc"):
+        return _error(400, "invalid_record", "invalid status, kind, or sort filter")
     try:
         limit = int(query.get("limit", [str(DEFAULT_LIMIT)])[0])
     except ValueError:
         return _error(400, "invalid_record", "limit must be an integer")
     limit = min(max(limit, 1), MAX_LIMIT)
-    entries = store.list_observations(workspace, status=status, limit=0, kind=kind)
+    entries = store.list_observations(workspace, status=status, limit=0, kind=kind, sort=sort)
     shown = [_list_row(e) for e in entries[:limit]]
     return _json(200, {"schema": 1, "count": len(shown), "truncated": len(entries) > limit, "observations": shown})
 

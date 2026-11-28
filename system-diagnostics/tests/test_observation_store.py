@@ -166,6 +166,21 @@ class CatalogTests(StoreTestBase):
         self.assertEqual([e["kind"] for e in s.list_observations(self.ws, kind="idea")], ["idea"])
         self.assertEqual(len(s.list_observations(self.ws, status="all", limit=1)), 1)
 
+    def test_sort_modes_and_patch_preserves_last_seen(self):
+        e1, _ = s.add_observation(self.ws, rec(message="first", ts="2026-01-01T00:00:00+00:00"))
+        e2, _ = s.add_observation(self.ws, rec(message="second", ts="2026-01-03T00:00:00+00:00"))
+        e3, _ = s.add_observation(self.ws, rec(message="third", ts="2026-01-02T00:00:00+00:00"))
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="id_asc")], [e1["id"], e2["id"], e3["id"]])
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="id_desc")], [e3["id"], e2["id"], e1["id"]])
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="recent")], [e2["id"], e3["id"], e1["id"]])
+        orig_last_seen = e1["last_seen"]
+        patched = s.patch_observation(self.ws, e1["id"], {"message": "first edited"})
+        self.assertEqual(patched["last_seen"], orig_last_seen)
+        self.assertNotEqual(patched["updated_at"], orig_last_seen)
+        self.assertEqual([e["id"] for e in s.list_observations(self.ws, sort="recent")], [e2["id"], e3["id"], e1["id"]])
+        with self.assertRaises(ValueError):
+            s.list_observations(self.ws, sort="bogus")
+
 
 if __name__ == "__main__":
     unittest.main()

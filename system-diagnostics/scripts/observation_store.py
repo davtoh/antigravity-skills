@@ -178,7 +178,7 @@ def _next_id(entries: list[dict[str, Any]]) -> str:
 def _new_entry(rec: dict[str, Any], fp: str, entry_id: str) -> dict[str, Any]:
     return {
         "id": entry_id, "fingerprint": fp, "kind": rec["kind"], "status": "open",
-        "first_seen": rec["ts"], "last_seen": rec["ts"], "occurrence_count": 1,
+        "first_seen": rec["ts"], "last_seen": rec["ts"], "updated_at": rec["ts"], "occurrence_count": 1,
         "page_path": rec.get("page_path", ""), "selector": rec.get("selector", ""),
         "rect": rec.get("rect"), "attrs": rec.get("attrs", {}),
         "elements": rec.get("elements", []), "related_ids": rec.get("related_ids", []),
@@ -267,8 +267,15 @@ def update_status(workspace: Path, id_or_fp: str, new_status: str, note: str = "
     return entry
 
 
-def list_observations(workspace: Path, status: str = "active", limit: int = 20, kind: str | None = None) -> list[dict[str, Any]]:
-    """Newest-first listing; `status` is active, all, or one concrete status."""
+def _id_num(entry: dict[str, Any]) -> int:
+    m = re.fullmatch(r"OBS-(\d+)", str(entry.get("id") or ""))
+    return int(m.group(1)) if m else 0
+
+
+def list_observations(
+    workspace: Path, status: str = "active", limit: int = 20, kind: str | None = None, sort: str = "recent",
+) -> list[dict[str, Any]]:
+    """Listing sorted by `recent` (default), `id_desc`, or `id_asc`; `status` is active, all, or one status."""
     entries = load_catalog(workspace)["observations"]
     if status == "active":
         entries = [e for e in entries if e["status"] in ACTIVE_STATUSES]
@@ -276,7 +283,14 @@ def list_observations(workspace: Path, status: str = "active", limit: int = 20, 
         entries = [e for e in entries if e["status"] == status]
     if kind:
         entries = [e for e in entries if e["kind"] == kind]
-    entries = sorted(entries, key=lambda e: e.get("last_seen", ""), reverse=True)
+    if sort == "id_asc":
+        entries = sorted(entries, key=_id_num)
+    elif sort == "id_desc":
+        entries = sorted(entries, key=_id_num, reverse=True)
+    elif sort == "recent":
+        entries = sorted(entries, key=lambda e: (e.get("last_seen", ""), _id_num(e)), reverse=True)
+    else:
+        raise ValueError(f"unknown sort {sort!r}; expected recent, id_asc, or id_desc")
     return entries[:limit] if limit and limit > 0 else entries
 
 
@@ -304,7 +318,7 @@ def patch_observation(workspace: Path, id_or_fp: str, updates: dict[str, Any]) -
     now = _now()
     if entry["status"] == "confirmed" and old_status != "confirmed" and not clean.get("confirmed_at"):
         entry["confirmed_at"] = now
-    entry["last_seen"] = now
+    entry["updated_at"] = now
     entry.setdefault("history", []).append({"ts": now, "from": old_status, "to": entry["status"], "note": "edited"})
     save_catalog(workspace, catalog)
     return entry
