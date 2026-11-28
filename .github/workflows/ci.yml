@@ -1,0 +1,88 @@
+name: Skills CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrity-and-evals:
+    name: Integrity, Syntax & Evals (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation dependencies
+        run: python -m pip install --upgrade pip pyyaml
+
+      - name: Run skill integrity, syntax, evals & CLI smoke checks
+        run: python .github/scripts/validate_skills.py
+
+  unit-tests:
+    name: Unit & Regression Tests (${{ matrix.os }})
+    needs: integrity-and-evals
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pyyaml
+
+      - name: Run unittest suites for all skills
+        shell: python
+        run: |
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path(".")
+          failed = []
+          for entry in sorted(root.iterdir()):
+              if not entry.is_dir() or entry.name.startswith(".") or entry.name.endswith("-workspace"):
+                  continue
+              tests_dir = entry / "tests"
+              if not tests_dir.is_dir():
+                  continue
+              test_files = list(tests_dir.glob("test_*.py"))
+              if not test_files:
+                  continue
+              print(f"=== Running {entry.name} ({len(test_files)} test files) ===", flush=True)
+              res = subprocess.run(
+                  [sys.executable, "-m", "unittest", "discover", "-s", str(tests_dir), "-p", "test_*.py"],
+                  check=False,
+              )
+              if res.returncode != 0:
+                  failed.append(entry.name)
+
+          if failed:
+              print(f"FAILED test suites: {', '.join(failed)}", file=sys.stderr)
+              sys.exit(1)
+          print("All skill test suites passed.")

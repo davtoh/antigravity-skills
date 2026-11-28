@@ -28,5 +28,6 @@ skill-creator/eval-data/
 !/app-debugger/
 
 # Whitelist others
+!/.github/
 !/.TODO/
 .coverage
