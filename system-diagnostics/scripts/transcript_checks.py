@@ -47,16 +47,29 @@ def classify_result(content: str, status: str, last_cmd: str = "") -> str | None
         code = int(match.group(1))
         if code == 1 and re.search(r"\bgit\s+grep\b", last_cmd) and "fatal:" not in content.lower():
             return None
+        if code == 1 and re.search(r"\bGet-ChildItem\b[^\n]*-ErrorAction\s+SilentlyContinue", last_cmd, re.I) and "Traceback" not in content:
+            return None
         if code == 1 and "Select-Object -First" in last_cmd and "Traceback" not in content:
             return None
         low = content.lower()
         has_audit_cmd = bool(re.search(r"(?:(?:run_)?diagnose\.py|\$[a-z_]\w*\b)[^\n]*\b(?:audit|scan|probe\s+run|surface\s+--verify)\b", last_cmd))
         has_audit_marker = "audit result: defects_found" in low or "--- contract verification (mismatches:" in low
-        if code == 1 and not is_cli_usage_error(content) and "traceback" not in low and (has_audit_cmd or has_audit_marker):
+        is_test_runner = bool(re.search(r"\b(?:unittest|pytest)\b", last_cmd, re.I))
+        is_truncated = "truncated due to being too long" in content[:800].lower()
+        has_runner_crash = any(tok in low for tok in ("can't open file", "no such file or directory", "modulenotfounderror", "syntaxerror"))
+        is_tdd_fail = (
+            bool(re.search(r"failed\s*\((?:failures|errors)=", low))
+            or bool(re.search(r"fullyqualifiederrorid\s*:\s*(?:[\w-]+\s+)?(?:tests|unittest|pytest|probe)\s+failed", low))
+            or (is_test_runner and (is_truncated or bool(re.search(r"(?:^|\s)-f(?:\s|$)", last_cmd))) and not has_runner_crash)
+        )
+        if code == 1 and not is_cli_usage_error(content) and is_tdd_fail and not has_runner_crash and re.search(r"\b(?:unittest|pytest|diagnose\.py)\b", last_cmd, re.I):
+            return "audit_catch"
+        has_non_audit_crash = "can't open file" in low or "no such file or directory" in low or is_tdd_fail
+        if code == 1 and not is_cli_usage_error(content) and "traceback" not in low and not has_non_audit_crash and (has_audit_cmd or has_audit_marker):
             return "audit_catch"
         return "cmd_fail" if code != 0 else None
     if status == "ERROR":
-        return "edit_fail" if "target content not found" in content else ("read_fail" if ("file does not exist" in content or "failed to parse path" in content) else None)
+        return "edit_fail" if "target content not found" in content else ("read_fail" if ("file does not exist" in content or "failed to parse path" in content) else ("hook_fail" if "denied by pre-tool hook" in content.lower() else None))
     return None
 
 
@@ -108,7 +121,7 @@ def append_row_notes(r: dict[str, Any], cid8: str, notes: list[str]) -> None:
     cli_errs = max(int(r.get("tooling_cli_fails") or 0), sum(1 for s in (r.get("failure_samples") or []) if "plan_engine.py" in s and "error:" in s))
     raw_cmd = (r.get("failures") or {}).get("cmd_fail")
     samples = r.get("failure_samples") or []
-    non_tdd_fails = sum(1 for s in samples if "unittest" not in s and "AssertionError" not in s and "plan_engine.py" not in s)
+    non_tdd_fails = sum(1 for s in samples if not re.search(r"unittest|AssertionError|FAILED\s*\(|plan_engine\.py", s))
     cmd_fails = (int(raw_cmd) if raw_cmd is not None else int(r.get("total_failures") or 0)) - cli_errs
     if cmd_fails >= 4 and (not samples or non_tdd_fails >= 2) and not r.get("has_debug_retro"):
         notes.append(f"- FLAG {cid8}: {r['total_failures']} failures without /app-debugger or debug-retro (unescalated thrash)")

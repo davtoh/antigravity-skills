@@ -131,3 +131,36 @@ class TestCrossModuleAndDiagnosticsUpgrades(unittest.TestCase):
         self.assertIn(".data-table", js)
         self.assertIn("empty or missing src", js)
         self.assertIn("offsetParent === null", js)
+
+    def test_silent_shape_skip_ast_rule(self):
+        src = (
+            "def match(items, log):\n"
+            "    for x in items:\n"
+            "        if x.shape[0] != 512:\n"
+            "            continue\n"
+            "    for y in items:\n"
+            "        if y.ndim != 2:\n"
+            "            log.warning('dim mismatch')\n"
+            "            continue\n"
+        )
+        findings = scan_cross_module_defects([("reid.py", ast.parse(src))])
+        skips = [d for d in findings if d["rule_id"] == "SILENT_SHAPE_SKIP"]
+        self.assertEqual(len(skips), 1)
+        self.assertEqual(skips[0]["line"], 3)
+
+    def test_silent_shape_skip_elif_and_raise_edges(self):
+        src = (
+            "def check(batch):\n"
+            "    for item in batch:\n"
+            "        if item is None:\n"
+            "            continue\n"
+            "        elif len(item) < 3:\n"
+            "            continue\n"
+            "    for item in batch:\n"
+            "        if item.shape[0] == 0:\n"
+            "            raise ValueError('empty')\n"
+        )
+        findings = scan_cross_module_defects([("pipe.py", ast.parse(src))])
+        skips = [d for d in findings if d["rule_id"] == "SILENT_SHAPE_SKIP"]
+        self.assertEqual(len(skips), 1)
+        self.assertEqual(skips[0]["line"], 5)

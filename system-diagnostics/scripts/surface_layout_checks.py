@@ -51,3 +51,31 @@ def check_undefined_layout_classes(
                         seen.add(key)
                         findings.append({"class": cls_name, "file": rel})
     return findings
+
+
+_APP_NAVIGATE_RE = re.compile(r"""\bApp\.navigate\s*\(\s*['"]([a-zA-Z0-9_\-]+)['"]""")
+
+
+def check_app_navigate_targets(
+    html_files: list[Path],
+    js_texts: list[tuple[str, str]],
+    all_html_ids: set[str],
+    target_path: Path,
+) -> list[dict[str, str]]:
+    """Verify App.navigate('<tabId>') jump calls target existing HTML tab IDs."""
+    if not all_html_ids:
+        return []
+    invalid: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for hp in html_files:
+        rel = str(hp.relative_to(target_path)).replace("\\", "/") if hp.is_relative_to(target_path) else hp.name
+        for tab_id in _APP_NAVIGATE_RE.findall(hp.read_text(encoding="utf-8", errors="replace")):
+            if tab_id not in all_html_ids and (tab_id, rel) not in seen:
+                seen.add((tab_id, rel))
+                invalid.append({"target": tab_id, "file": rel})
+    for rel, cleaned in js_texts:
+        for tab_id in _APP_NAVIGATE_RE.findall(cleaned):
+            if tab_id not in all_html_ids and (tab_id, rel) not in seen:
+                seen.add((tab_id, rel))
+                invalid.append({"target": tab_id, "file": rel})
+    return invalid

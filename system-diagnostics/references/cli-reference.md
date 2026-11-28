@@ -22,6 +22,7 @@ python skills/system-diagnostics/scripts/diagnose.py ui [OPTIONS]
 - `--eval-file <PATH>`: Reads UTF-8 JavaScript from a file (or `-` for stdin) and evaluates in page context (avoids Windows PowerShell quote-stripping).
 - `--click <SELECTOR>`: Clicks an element before measuring.
 - `--window-size <WxH>`: Headless viewport dimensions (default: `1440x900`).
+- `--viewports <LIST>`: Comma-separated viewports for multi-viewport `--audit-layout` sweeps (e.g. `'960x720,1280x800,1920x1080'`).
 - `--wait <SEC>`: Maximum post-load/click settle wait in seconds (default: `1.5`).
 - `--stability-ms <MS>`: Early-exit layout stability window in milliseconds (default: `0`).
 - `--connect-timeout <SEC>`: Live CDP handshake timeout in seconds (default: `15.0`).
@@ -118,11 +119,12 @@ python skills/system-diagnostics/scripts/diagnose.py dismiss-defect --id <ID_FP_
 
 ### Subcommand: `changelog`
 ```bash
-python skills/system-diagnostics/scripts/diagnose.py changelog {add,migrate,show,status} [OPTIONS]
+python skills/system-diagnostics/scripts/diagnose.py changelog {add,migrate,show,status,pr-description} [OPTIONS]
 ```
 - `add --title "<T>" --type <TYPE> --summary "<S>" [--files <FILES...>] [--verify "<V>"] [--path <DIR>] [--max-lines 150] [--no-commit-hint]`: Appends a sanitized milestone entry to `CHANGELOG.md`, auto-migrates any legacy `MIGRATION_LOG.md`, shards overflow into `.changelogs/`, and prints a copy-pasteable `git commit` snippet by default (pass `--no-commit-hint` to suppress).
 - `migrate [--path <DIR>] [--source-log <NAME>] [--target-log <NAME>] [--max-lines 150]`: Migrates and shards an oversized legacy log into `CHANGELOG.md`.
 - `show [--path <DIR>] [--recent 3] [--json]` / `status [--path <DIR>] [--max-lines 150] [--json]`: Reads recent entries or inspects line/shard status.
+- `pr-description [--path <DIR>] [--base <REF>] [--plan <SLUG>] [--recent 5] [--json]`: Generates a structured Markdown PR description from `CHANGELOG.md`/`.changelogs/`, `.TODO/<plan>.md` milestones, and `git log`/`diff --stat`.
 
 ### Subcommand: `transcript-audit`
 ```bash
@@ -163,10 +165,13 @@ skills/system-diagnostics/
 │   ├── diagnose.py                   # Unified CLI entrypoint
 │   ├── diagnose_cli.py               # Core parser builders & 3-tier runner
 │   ├── arch_mapper.py                # Compact architecture, modularity & coupling mapper
+│   ├── ast_guard_rules.py            # AST guard rules for silent shape-guarded skips
 │   ├── audit_layout.js               # Injected DOM bounding box & overflow auditor
+│   ├── audit_layout_extra.js         # SVG data-URI, flex overflow & canvas luminance checks
 │   ├── cdp_inspect.py                # CDP layout, DOMRect, and runtime inspector
 │   ├── cdp_runtime.py                # Console, exception, network & DevToolsActivePort helpers
 │   ├── cdp_transport.py              # Zero-dependency RFC 6455 WebSocket client
+│   ├── cdp_viewport.py               # Viewport parsing & multi-viewport audit helpers
 │   ├── changelog_archive.py          # Semester sharding & sanitization helpers
 │   ├── changelog_manager.py          # Unified CHANGELOG.md & commit-hint engine
 │   ├── connector_scaffolder.py       # Framework trace middleware scaffolder
@@ -176,12 +181,14 @@ skills/system-diagnostics/
 │   ├── defect_catalog.py             # SSOT catalog manager, git safety & JIT router
 │   ├── docker_audit.py               # Docker stats, top, and MD5 sync auditor
 │   ├── probe_runner.py               # Pluggable extension runner & probe registry
+│   ├── pr_description.py             # Deterministic PR description generator
 │   ├── runtime_runner.py             # Zero-code runtime trace bootstrapper
 │   ├── scaffold_templates.py         # Tactical Red/Green tests & architectural briefs
 │   ├── shadow_prober.py              # Polyglot AST/lexer rules, sandbox & scan runner
 │   ├── skill_packager.py             # Standalone .skill bundler materializing SSOT shims
 │   ├── static_auditor.py             # Modular static defect, smell & callable auditor
 │   ├── surface_contracts.py          # Surface CLI & response-key contract matcher
+│   ├── surface_layout_checks.py      # Undefined layout class & App.navigate target checks
 │   ├── surface_scanners.py           # AST surface parser for HTML/JS/Python/CSS
 │   ├── surface_verifier.py           # Cross-contract verifier (fetch vs routes, window.*, IDs)
 │   ├── trace_cli.py                  # CLI handler for runtime trace inspection & resolution

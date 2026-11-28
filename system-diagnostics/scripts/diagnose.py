@@ -129,8 +129,15 @@ def cmd_surface(args: argparse.Namespace) -> int:
 def cmd_tests(args: argparse.Namespace) -> int:
     """Execute automated test runner using virtualenv Python if available."""
     target_path = Path(args.path).resolve() if args.path else Path.cwd()
+    if target_path.name in ("tests", "test") and not (target_path / "tests").is_dir():
+        parent = target_path.parent
+        if any((parent / m).exists() for m in (".venv", "venv", "pyproject.toml", "setup.py", ".git")):
+            start_dir, target_path = target_path.name, parent
+        else:
+            start_dir = "."
+    else:
+        start_dir = "tests" if (target_path / "tests").is_dir() else "."
     py_bin = find_virtualenv_python(target_path)
-    start_dir = "tests" if (target_path / "tests").is_dir() else "."
     test_args = args.args if args.args else ["discover", "-s", start_dir, "-p", "test_*.py"]
     cmd = [py_bin, "-m", "unittest", *test_args]
     raw_timeout = getattr(args, "timeout", 180.0)

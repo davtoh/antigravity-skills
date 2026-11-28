@@ -179,6 +179,8 @@ def _apply_backfill_row(e: dict[str, Any], row: dict[str, Any] | None) -> bool:
     cap = _grade_cap(e.get("steps"), e.get("retries"))
     if _worse(str(e.get("token_efficiency_grade", "A")), cap):
         e["token_efficiency_grade"] = cap
+    if cap == "C" or (e.get("retries") or 0) > 1:
+        e["went_well"] = [w for w in (e.get("went_well") or []) if not str(w).startswith("Completed within budget (steps=?,")]
     return e != before
 
 
@@ -331,6 +333,7 @@ def cmd_digest(root: Path, args: argparse.Namespace) -> int:
     rendered = json.dumps(digest, indent=2) if getattr(args, "json", False) else format_digest(digest)
     if write_scaf:
         rel_path = _write_scaffold_file(root, digest)
+        write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
         if not getattr(args, "json", False):
             rendered += f"\n\n[plan_engine] Wrote learning scaffold: {rel_path}"
     print(rendered)

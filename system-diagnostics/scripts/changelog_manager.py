@@ -251,12 +251,28 @@ def register_parser(sub: Any) -> None:
     _add_common_flags(p_stat)
     p_stat.add_argument("--json", action="store_true", help="Output JSON format")
 
+    p_pr = acts.add_parser("pr-description", help="Generate a structured PR description from CHANGELOG, .TODO/ plans, and git log")
+    p_pr.add_argument("--path", default=None, help="Repository root path")
+    p_pr.add_argument("--target-log", default="CHANGELOG.md", help="Target log filename")
+    p_pr.add_argument("--base", default=None, help="Base branch for git log/diff (auto-detects main/master)")
+    p_pr.add_argument("--plan", default=None, help="Optional .TODO/ plan path or slug")
+    p_pr.add_argument("--recent", type=int, default=5, help="Recent changelog entries to include")
+    p_pr.add_argument("--json", action="store_true", help="Output JSON format")
+
 def cmd_changelog(args: argparse.Namespace) -> int:
     """CLI dispatcher for changelog commands."""
+    from pr_description import cmd_changelog_pr_description
+
     action = getattr(args, "action", None)
-    dispatch = {"add": cmd_changelog_add, "migrate": cmd_changelog_migrate, "show": cmd_changelog_show, "status": cmd_changelog_status}
+    dispatch = {
+        "add": cmd_changelog_add,
+        "migrate": cmd_changelog_migrate,
+        "show": cmd_changelog_show,
+        "status": cmd_changelog_status,
+        "pr-description": cmd_changelog_pr_description,
+    }
     handler = dispatch.get(action) if action else None
     if not handler:
-        print("Usage: diagnose.py changelog {add,migrate,show,status} ...", file=sys.stderr)
+        print("Usage: diagnose.py changelog {add,migrate,show,status,pr-description} ...", file=sys.stderr)
         return 2
     return handler(args)

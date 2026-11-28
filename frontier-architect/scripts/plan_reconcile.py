@@ -65,7 +65,7 @@ def _analyze_one(root: Path, slug: str, ps: dict[str, Any], plan_p: Path | None,
             issues.append(f"uncheckboxed_bullets:{plain_bullets}")
         elif state_status == "in_progress" and unchecked_cb == 0:
             issues.append("stale_in_progress_zero_unchecked" if parsed["milestones"] else "legacy_no_milestones")
-        if state_status == "in_progress" and parsed["milestones"] and all(
+        if state_status == "in_progress" and unchecked_cb == 0 and parsed["milestones"] and all(
             m["is_complete"] or any(k in (m.get("title") or "").lower() for k in ("(complete)", "(completed)", "(deferred"))
             for m in parsed["milestones"]
         ):

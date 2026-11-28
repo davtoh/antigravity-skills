@@ -66,6 +66,7 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("--click", "--screenshot"), (r"--click", r"--screenshot"), "ui --click & --screenshot"),
     (("--no-fallback-headless",), (r"--no-fallback-headless",), "ui --no-fallback-headless"),
     (("--navigate", "--window-size"), (r"--navigate", r"--window-size"), "ui --navigate & --window-size"),
+    (("--viewports",), (r"--viewports",), "ui --viewports multi-viewport sweep"),
     (("arch-map",), (r"diagnose\.py\s+arch-map",), "arch-map"),
     (("--include-tests",), (r"--json", r"--full", r"--include-tests", r"--out"), "arch-map options"),
     (("diagnose.py run",), (r"diagnose\.py\s+run", r"zero-code runner"), "diagnose.py run"),
@@ -88,6 +89,9 @@ _RULES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
     (("missing virtualenv",), (r"falling back cleanly to system python",), "Fallback to system Python when venv missing"),
     (("comma-separated defect ids",), (r"comma-separated defect ids, fingerprints, or rule ids",), "Comma-separated defect IDs/fingerprints/rules"),
     (("single root or multiple subpaths",), (r"Single root or multi-subpath", r"arch-map"), "arch-map single root or multiple subpaths"),
+    (("changelog pr-description", "pr summary"), (r"pr-description", r"changelog"), "changelog pr-description command"),
+    (("--base, --plan, and --recent",), (r"--base\s+--plan\s+--recent", r"pr-description"), "changelog pr-description flags"),
+    (("structured markdown pr summary",), (r"pr-description", r"PR summary"), "changelog pr-description Markdown summary"),
 ]
 
 

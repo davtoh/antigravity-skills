@@ -253,7 +253,7 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
         sha = base_sha
     now_iso = datetime.now(timezone.utc).isoformat()
     fdir = get_frontier_dir(root)
-    ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso)
+    ps = record_milestone_advance(fdir, ps, target_idx, sha, now_iso, note=getattr(args, "note", None))
     commit_hint, has_code_diff = resolve_commit_hint(ps, target_idx, code_changes, is_git, args.commit)
 
     from plan_telemetry import rollup_child_retrospective
@@ -267,10 +267,10 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
             missing_prior_retro = target_idx - 1
 
     scaffold_rel = write_learning_scaffold(root, ps["slug"], backfill=False) if (ps["status"] == "completed" or ps.get("child_plans")) else None
+    parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
     if ps["status"] == "completed":
         from plan_digest import build_workspace_digest, write_workspace_scaffold
         write_workspace_scaffold(root, build_workspace_digest(root, backfill=False))
-    parent_synced = _auto_sync_parent(root, ps, sha, now_iso, getattr(args, "no_sync_parent", False))
     print_advance_summary(ps, target_idx, sha, commit_hint, has_code_diff, patched, missing_prior_retro, scaffold_rel=scaffold_rel, parent_synced=parent_synced)
     return 0
 
@@ -278,11 +278,11 @@ def cmd_advance(root: Path, args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Construct CLI argument parser with subcommands."""
     parser = argparse.ArgumentParser(description="Frontier Architect Plan & Continuation Engine")
-    parser.add_argument("--root", type=Path, default=None, help="Optional workspace root override")
+    parser.add_argument("--root", "--path", dest="root", type=Path, default=None, help="Optional workspace root override")
     sub = parser.add_subparsers(dest="subcommand", help="Engine subcommands")
 
     root_parent = argparse.ArgumentParser(add_help=False)
-    root_parent.add_argument("--root", type=Path, default=argparse.SUPPRESS, help="Optional workspace root override")
+    root_parent.add_argument("--root", "--path", dest="root", type=Path, default=argparse.SUPPRESS, help="Optional workspace root override")
 
     sub.add_parser("discover", parents=[root_parent], help="Discover architectural plans in workspace")
     p_init = sub.add_parser("init", parents=[root_parent], help="Initialize or bind active plan")
@@ -301,12 +301,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_adv = sub.add_parser("advance", parents=[plan_parent], help="Check off tasks and advance milestone")
     p_adv.add_argument("--milestone", type=int, help="Milestone number to complete")
     p_adv.add_argument("--commit", help="Commit SHA to record")
+    p_adv.add_argument("--note", default=None, help="Optional milestone completion summary note")
     p_adv.add_argument("--no-sync-parent", action="store_true", help="Skip auto-advancing parent master milestone when child plan completes")
     add_retrospective_parser(sub, plan_parent)
     p_look = sub.add_parser("lookup", parents=[root_parent], help="Search past plans and decisions")
     p_look.add_argument("query", help="Search term, slug, or commit SHA")
     p_ver = sub.add_parser("verify", parents=[plan_parent], help="Run plan verification baseline")
-    p_ver.add_argument("--command", "--cmd", "--test-cmd", dest="command", help="Explicit verifier command")
+    p_ver.add_argument("--command", "--cmd", "--test-cmd", "--verify-cmd", dest="command", help="Explicit verifier command")
     p_ver.add_argument("--timeout", type=float, default=180.0, help="Max seconds before aborting hung verifier (default: 180; 0 disables)")
     register_digest_parser(sub, plan_parent)
     register_reconcile_parser(sub, root_parent)

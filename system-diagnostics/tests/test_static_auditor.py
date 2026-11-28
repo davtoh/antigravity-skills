@@ -269,6 +269,29 @@ class TestStaticAuditor(unittest.TestCase):
             issues = static_auditor.audit_modularity_budgets(p, max_fn_lines=10)
             self.assertEqual(issues, [])
 
+    def test_static_typecheckers_walks_above_package_and_sets_safepath(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            pkg = root / "pkg" / "sub"
+            pkg.mkdir(parents=True)
+            (root / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "types.py").write_text("x = 1\n", encoding="utf-8")
+            target = pkg / "mod.py"
+            target.write_text("y = 2\n", encoding="utf-8")
+            with patch("subprocess.run") as mock_run:
+                mock_run.side_effect = [
+                    MagicMock(returncode=0),
+                    MagicMock(returncode=0, stdout=""),
+                    MagicMock(returncode=0),
+                    MagicMock(returncode=0, stdout=""),
+                ]
+                code, _ = static_auditor.run_static_typecheckers(target, "python")
+                self.assertEqual(code, 0)
+                for call in mock_run.call_args_list:
+                    self.assertEqual(Path(call.kwargs["cwd"]), root)
+                    self.assertEqual(call.kwargs["env"].get("PYTHONSAFEPATH"), "1")
+
 
 if __name__ == "__main__":
     unittest.main()

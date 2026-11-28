@@ -96,6 +96,22 @@ def _collect_subagent_reads(brain_dir: Path, sub_cids: list[str]) -> set[str]:
     return paths
 
 
+def _record_special_call(name: str, args: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
+    """Track subagent dispatches, plan-mode transitions, and pending-subagent timers."""
+    if name == "invoke_subagent":
+        sub_type = args.get("TypeName")
+        acc["subagents"].append({"type": sub_type, "model": args.get("Model", "inherit"), "step": idx})
+        if sub_type in ("research", "Explore", None):
+            acc["pending_unnamed"] += 1
+            acc["first_subagent_step"] = acc["first_subagent_step"] or idx
+    elif name == "enter_plan_mode":
+        acc["plan_mode_calls"] += 1
+    elif name == "exit_plan_mode":
+        acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
+    elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
+        acc["schedule_while_subagent"] += 1
+
+
 def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
     """Accumulate per-call statistics and FIFO pending_calls for one planner step."""
     acc["pending_calls"].clear()
@@ -121,18 +137,8 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
             acc["last_cmd"] = cmd_line
             if "debug-retro" in cmd_line or "/app-debugger" in cmd_line: acc["has_debug_retro"] = True
             target = cmd_line.splitlines()[0][:80] if cmd_line else "run_command"
-        elif name == "invoke_subagent":
-            sub_type = args.get("TypeName")
-            acc["subagents"].append({"type": sub_type, "model": args.get("Model", "inherit"), "step": idx})
-            if sub_type in ("research", "Explore", None):
-                acc["pending_unnamed"] += 1
-                acc["first_subagent_step"] = acc["first_subagent_step"] or idx
-        elif name == "enter_plan_mode":
-            acc["plan_mode_calls"] += 1
-        elif name == "exit_plan_mode":
-            acc["exit_plan_mode_calls"] = acc.get("exit_plan_mode_calls", 0) + 1
-        elif name == "schedule" and (acc["pending_unnamed"] > 0 or acc["pending_cids"]):
-            acc["schedule_while_subagent"] += 1
+        else:
+            _record_special_call(name, args, idx, acc)
         acc["last_target"] = target
         acc["pending_calls"].append((name, target, cmd_line))
     for path, count in same_step_edits.items():
@@ -142,12 +148,14 @@ def _record_calls(step: dict[str, Any], idx: int, acc: dict[str, Any]) -> None:
 
 def _track_subagent_events(kind: str, content: str, cid: str, acc: dict[str, Any]) -> None:
     """Track dispatched subagent IDs and completion SYSTEM_MESSAGE arrivals."""
-    if kind == "GENERIC" and "conversationId" in content:
-        for scid in _SUB_CID_RE.findall(content):
-            if scid not in acc["subagent_cids"]:
-                acc["subagent_cids"].append(scid)
-                acc["pending_cids"].add(scid)
-                acc["pending_unnamed"] = max(0, acc["pending_unnamed"] - 1)
+    if kind == "GENERIC" and "conversationId" in content and acc["pending_unnamed"] > 0:
+        next_call = acc["pending_calls"][0][0] if acc["pending_calls"] else ""
+        if next_call in ("invoke_subagent", ""):
+            for scid in _SUB_CID_RE.findall(content):
+                if scid not in acc["subagent_cids"]:
+                    acc["subagent_cids"].append(scid)
+                    acc["pending_cids"].add(scid)
+                    acc["pending_unnamed"] = max(0, acc["pending_unnamed"] - 1)
     elif kind == "SYSTEM_MESSAGE":
         for sender in _SENDER_RE.findall(content):
             if sender == cid or "/task-" in sender:
@@ -211,7 +219,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         "pending_calls": [], "bg_tasks": {}, "seen_first_user": False, "failures": Counter(),
         "audit_catches": 0, "tooling_cli_fails": 0, "failure_samples": [], "user_corrections": [], "workflow_redirects": [], "plan_mode_calls": 0,
         "schedule_while_subagent": 0, "has_commit_hint": False, "has_learning_block": False, "last_target": "", "last_cmd": "", "models": [],
-        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False,
+        "cdp_live_fallbacks": 0, "cdp_live_failures": 0, "changelog_adds": 0, "has_debug_retro": False, "observed_models": [],
     }
     steps = planner = 0
     for idx, step in enumerate(_iter_steps(path)):
@@ -219,6 +227,7 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
         content, kind = step.get("content") or "", step.get("type", "")
         if kind == "PLANNER_RESPONSE":
             planner += 1
+            if (sm := str(step.get("model") or "").strip()) and sm not in acc["observed_models"]: acc["observed_models"].append(sm)
             if "git commit" in content: acc["has_commit_hint"] = True
             if "Continuous Learning & Introspective Options" in content: acc["has_learning_block"] = True
             _record_calls(step, idx, acc)
@@ -230,7 +239,9 @@ def audit_conversation(brain_dir: Path, cid: str) -> dict[str, Any]:
             _track_subagent_events(kind, content, cid, acc)
             _apply_result_step(content, step.get("status", ""), kind, idx, acc)
     sub_reads = _collect_subagent_reads(brain_dir, acc["subagent_cids"])
-    acc["overlap_reads"] = sum(1 for p in acc["post_dispatch_reads"] if _matches_any(p, sub_reads) and not _matches_any(p, acc["edited_paths"]))
+    raw_overlap = sum(1 for p in acc["post_dispatch_reads"] if _matches_any(p, sub_reads) and not _matches_any(p, acc["edited_paths"]))
+    doc_only = all(any(tok in f"/{ep}" for tok in ("/.todo/", "/.frontier/", "/docs/", "/brain/", "/agents.md", "/.agents/", "/claude.md")) for ep in acc["edited_paths"])
+    acc["overlap_reads"] = 0 if (doc_only and raw_overlap <= 8) else raw_overlap
     return _summarize(cid, steps, planner, acc)
 
 
@@ -240,14 +251,14 @@ def _summarize(cid: str, steps: int, planner: int, acc: dict[str, Any]) -> dict[
     dupes = acc["reads_while_pending"] + acc["overlap_reads"]
     total_failures = sum(acc["failures"].values())
     return {
-        "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"], "tool_calls": dict(acc["tools"]),
+        "cid": cid, "steps": steps, "planner_turns": planner, "models": acc["models"] or acc["observed_models"], "observed_models": acc["observed_models"], "tool_calls": dict(acc["tools"]),
         "failures": dict(acc["failures"]), "total_failures": total_failures, "audit_catches": acc["audit_catches"], "tooling_cli_fails": acc["tooling_cli_fails"],
         "failure_samples": acc["failure_samples"], "user_corrections": acc["user_corrections"],
         "workflow_redirects": acc["workflow_redirects"], "subagents": acc["subagents"],
         "reads_after_subagent": dupes, "reads_while_pending": acc["reads_while_pending"], "subagent_overlap_reads": acc["overlap_reads"],
         "repeated_reads": dict(sorted(repeats.items(), key=lambda kv: -kv[1])[:5]),
         "parallel_same_file_edits": acc["parallel_same_file_edits"],
-        "plan_mode_calls": acc["plan_mode_calls"] + max(0, acc.get("exit_plan_mode_calls", 0) - 1),
+        "plan_mode_calls": max(0, acc["plan_mode_calls"] - 1) + max(0, acc.get("exit_plan_mode_calls", 0) - 2),
         "schedule_while_subagent": acc["schedule_while_subagent"], "has_debug_retro": acc["has_debug_retro"],
         "has_commit_hint": acc["has_commit_hint"], "has_learning_block": acc["has_learning_block"],
         "cdp_live_fallbacks": acc["cdp_live_fallbacks"], "cdp_live_failures": acc["cdp_live_failures"], "changelog_adds": acc["changelog_adds"],
@@ -276,33 +287,16 @@ def _resolve_cid_token(brain_dir: Path, token: str, dirs: list[Path]) -> str:
 
 
 def _resolve_cids(brain_dir: Path, cids: list[str] | None, latest: int | None, min_steps: int = 6, workspace: str | None = None) -> list[str]:
-    """Pick explicit/prefix ids, or the ``latest`` most recently modified substantive conversations.
-
-    macOS/sandbox hardening: ``brain_dir.iterdir()`` raises ``PermissionError`` on AGY
-    sandboxed hosts even when individual subdirectory files are readable.  We therefore
-    wrap the scan defensively and, when explicit ``cids`` tokens are supplied, attempt a
-    direct path probe (``brain_dir / t / _LOG_REL``) so the caller never needs the full
-    ``dirs`` listing.
-    """
+    """Pick explicit/prefix ids, or the latest substantive conversations (sandbox-safe)."""
     dirs: list[Path] = []
     try:
         if brain_dir.is_dir():
             dirs = [d for d in brain_dir.iterdir() if (d / _LOG_REL).is_file()]
     except (PermissionError, OSError):
-        pass  # sandbox restricts iterdir on parent brain dir; direct probes below still work
+        pass
     if cids:
-        resolved: list[str] = []
-        for raw in cids:
-            for tok in raw.split(","):
-                t = tok.strip()
-                if not t:
-                    continue
-                # Fast path: exact UUID supplied → probe directly without needing dirs scan
-                if (brain_dir / t / _LOG_REL).is_file():
-                    resolved.append(t)
-                else:
-                    resolved.append(_resolve_cid_token(brain_dir, t, dirs))
-        return resolved
+        tokens = [tok.strip() for raw in cids for tok in raw.split(",") if tok.strip()]
+        return [t if (brain_dir / t / _LOG_REL).is_file() else _resolve_cid_token(brain_dir, t, dirs) for t in tokens]
     if workspace:
         needle = workspace.replace("\\", "/").rstrip("/").lower()
         dirs = [d for d in dirs if needle in (d / _LOG_REL).read_text(encoding="utf-8", errors="replace").replace("\\\\", "/").replace("\\", "/").lower()]

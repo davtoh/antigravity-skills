@@ -250,7 +250,7 @@ def _sync_workspace_state(
 
 
 def record_milestone_advance(
-    fdir: Path, ps: dict[str, Any], target_idx: int, sha: str, now_iso: str
+    fdir: Path, ps: dict[str, Any], target_idx: int, sha: str, now_iso: str, note: str | None = None
 ) -> dict[str, Any]:
     """Update plan and workspace ledgers after advancing a milestone."""
     for m in ps["milestones"]:
@@ -260,6 +260,8 @@ def record_milestone_advance(
             m["completed_tasks"] = m["total_tasks"]
             m["commit_sha"] = sha
             m["completed_at"] = now_iso
+            if note and str(note).strip():
+                m["note"] = str(note).strip()
 
     incomplete = [m for m in ps["milestones"] if m["status"] != "completed"]
     all_done = len(incomplete) == 0

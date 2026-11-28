@@ -163,10 +163,11 @@ def audit_platform_smells(target: Path) -> list[dict[str, Any]]:
 
 def _run_linter(py_bin: str, mod: str, args: list[str], cwd: Path, match_fn: Any, label: str) -> tuple[bool, int, list[str]]:
     """Run one optional linter/typechecker module and return (ran, exit_code, logs)."""
+    env = {**os.environ, "PYTHONSAFEPATH": "1"}
     try:
-        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).returncode != 0:
+        if subprocess.run([py_bin, "-m", mod, "--version"], cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).returncode != 0:
             return False, 0, []
-        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+        proc = subprocess.run([py_bin, "-m", mod, *args], cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     except Exception:
         return False, 0, []
     if proc.returncode == 0:
@@ -183,6 +184,8 @@ def run_static_typecheckers(target: Path, py_bin: str) -> tuple[int, list[str]]:
     if target.is_file() and target.suffix.lower() != ".py":
         return 0, [f"[typecheck] SKIPPED: Non-Python target {target.name}."]
     cwd = target if target.is_dir() else target.parent
+    while (cwd / "__init__.py").is_file() and cwd.parent != cwd:
+        cwd = cwd.parent
     t_str = str(target)
     logs: list[str] = []
     has_run, exit_code = False, 0

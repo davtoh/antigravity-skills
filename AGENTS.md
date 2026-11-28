@@ -30,11 +30,11 @@ Authoritative Plan: [`.TODO/latent_defect_and_smell_protocol_plan.md`](.TODO/lat
 - [x] **Tier 2: Centralized Static Defect & Quality Audit Engine** *(Commit `3e8d2e0`)*
   - Added `diagnose.py audit` (`static_auditor.py`, 240L).
   - Virtualenv linter integration and dynamic platform import ladder checks.
-- [ ] **Tier 3: Polyglot Shadow Prober, Unified SSOT & Dual-Track Remediation**
+- [x] **Tier 3: Polyglot Shadow Prober, Unified SSOT & Dual-Track Remediation**
   - [x] **Slice 1 (COMPLETED):** Polyglot `shadow_prober.py` core engine (307L), `DefectFinding` dataclass with `track` classification, Dual-Key addressing (`DEFECT-001` + `DEF-<RULE>-<6HEX>`), two-pass AST + polyglot lexer (Python, JS/TS, CSS, Dart), and opt-in 2s PEP 578 sandbox. Covered by `11/11` unit tests (`test_shadow_prober.py`).
-  - [ ] **Slice 2 (NEXT):** `.diagnostics/` SSOT catalog persistence (`defect_catalog.json` + `DEFECT_CATALOG.md`), dirty-tree git pre-flight check, and JIT defect scaffolder (`diagnose.py scaffold-defect`).
-  - [ ] **Slice 3 (DEFERRED):** Subparser delegation from `diagnose.py` (keeping `diagnose.py` under the 500L ceiling) and campaign hook integration in `campaign_manager.py`.
-  - [ ] **Slice 4 (DEFERRED):** End-to-end integration test suite and SKILL.md documentation synchronization across all three skills.
+  - [x] **Slice 2 (COMPLETED):** `.diagnostics/` SSOT catalog persistence (`defect_catalog.json` + `DEFECT_CATALOG.md`), dirty-tree git pre-flight check, and JIT defect scaffolder (`diagnose.py scaffold-defect`).
+  - [x] **Slice 3 (COMPLETED):** Subparser delegation from `diagnose.py` (keeping `diagnose.py` under the 350L ceiling) and campaign hook integration in `campaign_manager.py`.
+  - [x] **Slice 4 (COMPLETED):** End-to-end integration test suite and SKILL.md documentation synchronization across all three skills.
 
 ---
 

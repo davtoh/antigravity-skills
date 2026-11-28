@@ -102,6 +102,27 @@ class TestCDPDiscoveryAndHelpers(unittest.TestCase):
         self.assertIn("button, a, .badge, .menuitem, .video-action-menu", js)
         self.assertIn("el.scrollWidth > el.clientWidth + 2", js)
         self.assertIn("Horizontal text overflow detected", js)
+        self.assertIn("verifyDataSvgImages", js)
+        self.assertIn("checkFlexChildBoxOverflow", js)
+        self.assertIn("checkCanvasLuminance", js)
+
+    def test_multi_viewport_audit_960_1280_1920(self):
+        parser = cdp_inspect.build_parser()
+        args = parser.parse_args(["--audit-layout", "--viewports", "960x720,1280x800,1920x1080"])
+        fake_cdp = MagicMock()
+        fake_cdp.send = AsyncMock(return_value={"result": {"value": {"layoutOverflowWarnings": [], "viewport": {"hasHorizontalWindowScroll": False}}}})
+        rc = asyncio.run(cdp_inspect.run_against_target(fake_cdp, "sess-1", args))
+        self.assertEqual(rc, 0)
+        override_calls = [c for c in fake_cdp.send.await_args_list if c.args and c.args[0] == "Emulation.setDeviceMetricsOverride"]
+        self.assertEqual([c.args[1]["width"] for c in override_calls], [960, 1280, 1920])
+
+        # Edge cases: empty/None viewports list and --strict failing when any viewport overflows
+        import cdp_viewport
+        self.assertEqual(cdp_viewport.parse_viewports_list(None), [])
+        self.assertEqual(cdp_viewport.parse_viewports_list(" , "), [])
+        strict_args = parser.parse_args(["--audit-layout", "--viewports", "960x720", "--strict"])
+        fake_cdp.send = AsyncMock(return_value={"result": {"value": {"layoutOverflowWarnings": [{"selector": "#x"}], "viewport": {"hasHorizontalWindowScroll": False}}}})
+        self.assertEqual(asyncio.run(cdp_inspect.run_against_target(fake_cdp, "sess-1", strict_args)), 1)
 
     def test_urls_match_localhost_and_summarize_cdp_events(self):
         import cdp_runtime

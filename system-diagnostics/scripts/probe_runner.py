@@ -18,6 +18,8 @@ from typing import Any
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 DEFAULT_GLOBAL_PROBES = SCRIPTS_DIR.parent / "probes"
+INFRA_UNAVAILABLE = "INFRA_UNAVAILABLE"
+VALID_PROBE_STATUSES = frozenset({"ok", "warning", "error", INFRA_UNAVAILABLE})
 
 @dataclass
 class ProbeInfo:
@@ -119,6 +121,23 @@ def _populate_probe_output(stdout_clean: str, stderr_clean: str, result: dict[st
     result["details"] = {"stdout": stdout_clean, "stderr": stderr_clean}
 
 
+def validate_cdp_sweep(details: Any, min_tabs: int = 1) -> tuple[bool, str]:
+    """Reject empty CDP sweeps (sweep == {} or 0 tabs) so infra failures never pass."""
+    if not isinstance(details, dict):
+        return True, ""
+    sweep = details.get("sweep")
+    if sweep is None and isinstance(details.get("checks"), dict):
+        sweep = details["checks"].get("sweep")
+    if sweep is None:
+        return True, ""
+    if not isinstance(sweep, dict) or not sweep:
+        return False, "Empty CDP sweep: sweep == {} (browser/port failure)."
+    tabs = sweep.get("tabs")
+    if not isinstance(tabs, dict) or len(tabs) < min_tabs:
+        return False, f"Empty CDP sweep: expected >= {min_tabs} tab(s), got {len(tabs) if isinstance(tabs, dict) else 0}."
+    return True, ""
+
+
 def run_probe(
     name_or_path: str,
     probe_args: list[str] | None = None,
@@ -151,6 +170,13 @@ def run_probe(
         "details": {}, "latency_ms": elapsed_ms, "exit_code": proc.returncode,
     }
     _populate_probe_output(proc.stdout.strip(), proc.stderr.strip(), result)
+    if result.get("status") not in VALID_PROBE_STATUSES:
+        result["status"] = "error"
+    if result.get("status") == "ok":
+        sweep_ok, reason = validate_cdp_sweep(result.get("details"))
+        if not sweep_ok:
+            result["status"] = "error"
+            result["summary"] = reason
     return result
 
 

@@ -197,6 +197,26 @@ class TestPlanReconcileAndScaffold(unittest.TestCase):
         with patch("subprocess.Popen", return_value=mock_p):
             self.assertEqual(plan_engine.main(["verify", "cli_ux", "--test-cmd", "pytest tests/a.py"], root=self.root), 0)
 
+    def test_reconcile_preserves_deferred_master_with_unchecked_and_dedupes_verified_retro(self) -> None:
+        master = "# Master\n\n## Step 1: Done\n- [x] a\n\n## Step 2: Next *(Deferred to Next Turn / Milestone)*\n- [ ] pending task\n"
+        (self.root / ".TODO" / "master_roadmap.md").write_bytes(master.encode("utf-8"))
+        (self.root / ".TODO" / "step_1_child.md").write_bytes("# Child\n\n## Milestone 1: M1\n- [ ] **x.py**: do\n".encode("utf-8"))
+        plan_engine.main(["init", ".TODO/master_roadmap.md"], root=self.root)
+        plan_engine.main(["init", ".TODO/step_1_child.md", "--parent", "master_roadmap", "--milestone", "1"], root=self.root)
+        plan_engine.main(["advance", "step_1_child", "--milestone", "1"], root=self.root)
+        q_text = (self.root / ".frontier" / "LEARN_QUEUE.md").read_text(encoding="utf-8")
+        self.assertIn("| master_roadmap | in_progress | 1/2 |", q_text)
+        self.assertEqual(plan_engine.main(["reconcile", "--apply"], root=self.root), 0)
+        m_state = json.loads((self.root / ".frontier" / "plans" / "master_roadmap" / "state.json").read_text(encoding="utf-8"))
+        self.assertEqual(m_state["status"], "in_progress")
+        (self.root / ".frontier" / "DEBUG_RETRO.md").write_bytes((
+            "# Debug Retrospectives\n\n"
+            "## [2026-11-20] [UNCONFIRMED] Slow video\n- **Telemetry**: cid=7d2de50f steps=150 fails=1 cap=C\n\n"
+            "## [2026-11-21] [VERIFIED] Slow video\n- **Telemetry**: cid=7d2de50f steps=156 fails=1 cap=C\n"
+        ).encode("utf-8"))
+        wd = pd.build_workspace_digest(self.root)
+        self.assertFalse(any("Slow video" in e for e in wd["escalations"]))
+
 
 if __name__ == "__main__":
     unittest.main()

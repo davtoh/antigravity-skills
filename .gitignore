@@ -26,4 +26,7 @@ skill-creator/eval-data/
 !/refactor-monolith/
 !/system-diagnostics/
 !/app-debugger/
+
+# Whitelist others
+!/.TODO/
 .coverage

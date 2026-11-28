@@ -14,16 +14,16 @@ from typing import Any
 
 try:
     from surface_contracts import (
-        check_dead_buttons_and_dupes, check_inline_handlers, check_response_key_contracts,
-        extract_html_buttons, extract_js_fetch_calls, extract_non_fetch_urls,
+        check_dead_buttons_and_dupes, check_inline_handlers,
+        check_response_key_contracts, extract_html_buttons, extract_js_fetch_calls, extract_non_fetch_urls,
     )
-    from surface_layout_checks import check_undefined_layout_classes
+    from surface_layout_checks import check_app_navigate_targets, check_undefined_layout_classes
 except ImportError:
     from .surface_contracts import (  # type: ignore[no-redef]
-        check_dead_buttons_and_dupes, check_inline_handlers, check_response_key_contracts,
-        extract_html_buttons, extract_js_fetch_calls, extract_non_fetch_urls,
+        check_dead_buttons_and_dupes, check_inline_handlers,
+        check_response_key_contracts, extract_html_buttons, extract_js_fetch_calls, extract_non_fetch_urls,
     )
-    from .surface_layout_checks import check_undefined_layout_classes  # type: ignore[no-redef]
+    from .surface_layout_checks import check_app_navigate_targets, check_undefined_layout_classes  # type: ignore[no-redef]
 
 _JS_WIN_OBJ_RE = re.compile(r"""\b(?:window|globalThis|self)\.([A-Z][a-zA-Z0-9_]*)\s*=\s*\{""")
 _JS_WIN_CALL_RE = re.compile(r"""\bwindow\.([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*\(""")
@@ -328,19 +328,15 @@ def verify_surface_contracts(
     script_warns = _check_script_wrap_order(files["html"], js["texts"], target_path)
     qp_warns = _check_query_param_parity(py_items, js["texts"])
     undef_layout = check_undefined_layout_classes(files["html"], files.get("css", []), target_path)
-    total = len(unmatched) + len(dead_reads) + len(missing_ids) + len(missing_handlers) + len(dead_btns) + len(dupe_labels) + len(resp_mismatches) + len(script_warns) + len(undef_layout)
-    return {
+    invalid_nav = check_app_navigate_targets(files["html"], js["texts"], all_html_ids, target_path)
+    report: dict[str, Any] = {
         "unmatched_fetches": unmatched, "dead_window_reads": dead_reads, "missing_html_ids": missing_ids,
         "missing_inline_handlers": missing_handlers, "dead_buttons": dead_btns,
         "duplicate_button_labels": dupe_labels, "response_key_mismatches": resp_mismatches,
         "script_order_warnings": script_warns, "query_param_warnings": qp_warns,
-        "undefined_layout_classes": undef_layout,
-        "summary": {
-            "unmatched_fetches": len(unmatched), "dead_window_reads": len(dead_reads),
-            "missing_html_ids": len(missing_ids), "missing_inline_handlers": len(missing_handlers),
-            "dead_buttons": len(dead_btns), "duplicate_button_labels": len(dupe_labels),
-            "response_key_mismatches": len(resp_mismatches), "script_order_warnings": len(script_warns),
-            "query_param_warnings": len(qp_warns), "undefined_layout_classes": len(undef_layout),
-            "total_mismatches": total,
-        },
+        "undefined_layout_classes": undef_layout, "invalid_nav_targets": invalid_nav,
     }
+    summary = {k: len(v) for k, v in report.items()}
+    summary["total_mismatches"] = sum(v for k, v in summary.items() if k != "query_param_warnings")
+    report["summary"] = summary
+    return report

@@ -349,6 +349,18 @@
         "Uses diagnose.py debug-retro --plan <slug> --cid <cid> to auto-record followup_cids and refresh LEARNING_SCAFFOLD.md with --backfill, running transcript-audit --latest 1 last",
         "Uses plan_engine.py digest <slug> --cids <all_cids> --backfill --write-scaffold when merging external CIDs"
       ]
+    },
+    {
+      "id": 28,
+      "prompt": "We just completed the final milestone of our feature branch plan. How do we record a milestone completion summary note on advance, refresh the workspace learning queue on digest, and generate a PR description from our branch changelog and completed plan?",
+      "expected_output": "Passes --note \"<summary>\" to plan_engine.py advance, runs plan_engine.py digest <slug> --backfill --write-scaffold (which also updates .frontier/LEARN_QUEUE.md), and generates a PR description via diagnose.py changelog pr-description --base main --plan <slug> --recent 5.",
+      "files": [],
+      "expectations": [
+        "Records an optional milestone completion summary note via plan_engine.py advance --note",
+        "Runs plan_engine.py digest <slug> --backfill --write-scaffold and updates .frontier/LEARN_QUEUE.md",
+        "Generates a PR description from branch changelogs and completed plans via diagnose.py changelog pr-description",
+        "Runs diagnose.py changelog add and surfaces git diff main...plan/<slug> on final completion"
+      ]
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 Consult this quick-reference sheet during **Phase 1B (Diagnostics)** and **Phase 6 (Plan Execution & Milestone Sign-Off)** to avoid `--help` round-trips and quote-stripping errors on Windows PowerShell.
 
-> `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside the config repo).
+> `<config_dir>` = `%USERPROFILE%\.gemini\config` (Windows) or `~/.gemini/config` (POSIX). Always use the full quoted path when running from a product repo (relative `skills/...` only resolves inside `<config_dir>`). Note: `<config_dir>` itself is **not** a git repo—run `git -C "<config_dir>/skills" ...` when inspecting skill git state.
 
 ---
 
@@ -30,7 +30,7 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" verify <p
 
 # Advance completed milestone (patches [ ] -> [x] in-place, records SHA or pending:<base_sha> if uncommitted edits exist, emits git commit snippet, and auto-syncs completed child -> parent master milestone unless --no-sync-parent)
 # Never run git add/commit before advance or without user consent; run retrospective sequentially after advance (never in parallel).
-python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--no-sync-parent] --root .
+python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <plan_or_slug> --milestone <N> --commit <sha> [--note "<summary>"] [--no-sync-parent] --root .
 
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
@@ -90,6 +90,9 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" ui --url htt
 # Record completed milestone in CHANGELOG.md (<=150L auto-archived) and emit git commit snippet
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog add \
   --title "<Milestone Title>" --type feat --summary "<1-line summary>" --verify "<test_cmd>" --path .
+
+# Generate a PR description from branch commits, CHANGELOG.md, and completed plans
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" changelog pr-description --base main --recent 5 --path .
 
 # Package standalone .skill archive (resolves SSOT shims into full scripts & strips tests/evals per /skill-creator)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" package-skill all --out dist/

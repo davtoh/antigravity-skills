@@ -382,11 +382,94 @@ class TestTranscriptAuditorSignals(_TranscriptTestBase):
             {"type": "GENERIC", "content": "Command exited with code 1.\n#btn-save\n", "status": "DONE"},
             _planner(("run_command", {"CommandLine": "python -m unittest discover tests"})),
             {"type": "GENERIC", "content": "Command exited with code 1.\nRan 1027 tests in 300s\nFAILED (failures=2)\nmoov atom not found\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "pytest tests/a.py"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nAssertionError: broken\n", "status": "DONE"},
         ])
         row = ta.audit_conversation(self.brain, "pipe-1")
+        self.assertEqual(row["audit_catches"], 1)
         self.assertEqual(row["failures"], {"cmd_fail": 1})
         self.assertEqual(row["total_failures"], 1)
-        self.assertIn("FAILED (failures=2)", row["failure_samples"][0])
+        self.assertIn("AssertionError: broken", row["failure_samples"][0])
+
+    def test_chained_unittest_hook_fail_and_doc_only_overlap_exemption(self) -> None:
+        _write(self.brain, "sub-a", [_planner(("read_file", {"Path": "src/a.py"}), ("read_file", {"Path": "src/b.py"}))])
+        _write(self.brain, "plan-doc", [
+            _planner(("invoke_subagent", {"TypeName": "research", "Model": "flash"})),
+            {"type": "GENERIC", "content": '{"conversationId": "sub-a"}', "status": "DONE"},
+            {"type": "SYSTEM_MESSAGE", "content": "[Message] sender=sub-a content=done", "status": "DONE"},
+            _planner(("read_file", {"Path": "src/a.py"}), ("write_file", {"Path": ".TODO/step_2.md"})),
+            {"type": "GENERIC", "content": "tool call denied by pre-tool hook", "status": "ERROR"},
+            _planner(("run_command", {"CommandLine": "python -m unittest tests/a.py ; python diagnose.py audit --path a.py"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nFAILED (failures=1)\n", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python skills/system-diagnostics/scripts/diagnose.py audit --path a.py"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\ncan't open file 'diagnose.py'\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "plan-doc")
+        self.assertEqual(row["subagent_overlap_reads"], 0)
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["failures"], {"hook_fail": 1, "cmd_fail": 1})
+
+    def test_observed_models_and_get_childitem_silently_continue_exempt(self) -> None:
+        _write(self.brain, "orch-1", [
+            {"type": "PLANNER_RESPONSE", "model": "gemini-4-neon-medium", "tool_calls": [
+                {"name": "run_command", "args": {"CommandLine": "Get-ChildItem -Force .plan, .TODO -ErrorAction SilentlyContinue"}},
+            ]},
+            {"type": "GENERIC", "content": "Command exited with code 1.\n.TODO/step_3.md\n", "status": "DONE"},
+            {"type": "PLANNER_RESPONSE", "model": "gemini-4-hydrogen-high", "tool_calls": [
+                {"name": "read_file", "args": {"Path": "a.py"}},
+            ]},
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "orch-1")
+        self.assertEqual(row["models"], ["gemini-4-neon-medium", "gemini-4-hydrogen-high"])
+        self.assertEqual(row["observed_models"], ["gemini-4-neon-medium", "gemini-4-hydrogen-high"])
+        self.assertEqual(row["total_failures"], 0)
+
+    def test_conversation_id_in_read_output_without_subagent_not_counted_as_pending(self) -> None:
+        _write(self.brain, "read-cid-1", [
+            _planner(("read_file", {"Path": "tests/test_transcript_auditor.py"})),
+            {"type": "GENERIC", "content": 'Showing lines 1-20 of 20\n{"conversationId": "sub-fake"}', "status": "DONE"},
+            _planner(("read_file", {"Path": "a.py"}), ("read_file", {"Path": "b.py"})),
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+            {"type": "GENERIC", "content": "Showing lines 1-5 of 5", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "read-cid-1")
+        self.assertEqual(row["subagents"], [])
+        self.assertEqual(row["reads_while_pending"], 0)
+        self.assertEqual(row["reads_after_subagent"], 0)
+
+    def test_probe_failed_classified_as_audit_catch_and_single_orchestrator_cycle_exempt(self) -> None:
+        _write(self.brain, "probe-orch", [
+            _planner(("exit_plan_mode", {})),
+            _planner(("enter_plan_mode", {"reason": "plan review due"})),
+            _planner(("exit_plan_mode", {})),
+            _planner(("run_command", {"CommandLine": "python skills/system-diagnostics/scripts/diagnose.py probe run seam ; if ($LASTEXITCODE -ne 0) { throw 'probe failed' }"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nFullyQualifiedErrorId : probe failed\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "probe-orch")
+        self.assertEqual(row["audit_catches"], 1)
+        self.assertEqual(row["total_failures"], 0)
+        self.assertEqual(row["plan_mode_calls"], 0)
+
+        _write(self.brain, "replan-loop", [
+            _planner(("enter_plan_mode", {"reason": "a"})),
+            _planner(("enter_plan_mode", {"reason": "b"})),
+        ])
+        self.assertEqual(ta.audit_conversation(self.brain, "replan-loop")["plan_mode_calls"], 1)
+
+    def test_truncated_and_failfast_unittest_classified_as_audit_catch(self) -> None:
+        _write(self.brain, "tdd-trunc", [
+            _planner(("run_command", {"CommandLine": "python -m unittest discover -s tests -p \"test_*.py\" -f"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\n{\"result\": 2}\n]", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": ".venv\\Scripts\\python.exe -m unittest tests/test_e2e.py"})),
+            {"type": "GENERIC", "content": "Tool is running as a background task with task id: tdd-trunc/task-1", "status": "RUNNING"},
+            {"type": "SYSTEM_MESSAGE", "content": "<SYSTEM_MESSAGE>\nsender=tdd-trunc/task-1\nThe tool's output was truncated due to being too long.\nCommand exited with code 1.\n[mov,mp4] moov atom not found\n</SYSTEM_MESSAGE>", "status": "DONE"},
+            _planner(("run_command", {"CommandLine": "python -m unittest tests/missing.py -f"})),
+            {"type": "GENERIC", "content": "Command exited with code 1.\nModuleNotFoundError: No module named 'tests.missing'\n", "status": "DONE"},
+        ])
+        row = ta.audit_conversation(self.brain, "tdd-trunc")
+        self.assertEqual(row["audit_catches"], 2)
+        self.assertEqual(row["total_failures"], 1)
 
 
 if __name__ == "__main__":

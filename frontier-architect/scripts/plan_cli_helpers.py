@@ -176,7 +176,8 @@ def print_advance_summary(
     if missing_prior_retro is not None:
         print(f"[plan_engine] RETROSPECTIVE REMINDER: Milestone {missing_prior_retro} has no retrospective logged yet (run `plan_engine.py retrospective {ps['slug']} --milestone {missing_prior_retro} ...`).")
     if ps["status"] == "completed":
-        print(f"[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off Gate (`diagnose.py scan --path .` + `plan_engine.py digest {ps['slug']} --backfill --write-scaffold`).")
+        print(f"[plan_engine] MANDATORY BEFORE SIGN-OFF: Log Milestone {target_idx} telemetry via `plan_engine.py retrospective {ps['slug']} --milestone {target_idx} --cid <cid> --tri \"5,5,5,5\" ...`.")
+        print(f"[plan_engine] All milestones COMPLETED! Enforce Final Sign-Off Gate (`diagnose.py scan --path .` + `plan_engine.py digest {ps['slug']} --cids <all_cids> --backfill --write-scaffold`).")
         if scaffold_rel:
             print(f"[plan_engine] Learning Scaffold: {scaffold_rel}")
         if ps.get("parent_plan"):
@@ -194,13 +195,13 @@ def print_advance_summary(
         print(f"  Status: in_progress | Next Milestone: {ps['active_milestone_index']}/{ps['total_milestones']}")
         print("=" * 72)
         print(f"[plan_engine] TURN GATE: Milestone {target_idx} COMPLETE!")
-        print("MANDATORY: STOP calling tools. DO NOT execute the next milestone in this turn.")
+        print(f"MANDATORY NEXT STEP: Run `diagnose.py scan --path <modified_paths>` then `plan_engine.py retrospective {ps['slug']} --milestone {target_idx} --cid <cid> --tri \"5,5,5,5\" ...`, then STOP. DO NOT execute Milestone {ps['active_milestone_index']} in this turn.")
         if has_code_diff:
             print(f"Present milestone verification and Suggested Commit to user, then prompt '/frontier-architect continue {ps['slug']}'.")
         else:
             print("Milestone was verification/audit only (no application code files modified; skip git commit).")
             print(f"Present verification results to user, then prompt '/frontier-architect continue {ps['slug']}'.")
-        print(f"Introspectives (User Choice): `plan_engine.py retrospective {ps['slug']} --milestone {target_idx} --cid <cid>` | `diagnose.py transcript-audit --latest 1`")
+        print("Introspectives (User Choice): `/learn` | `diagnose.py transcript-audit --latest 1`")
         print("=" * 72)
 
 
@@ -228,7 +229,7 @@ def add_retrospective_parser(sub: Any, plan_parent: argparse.ArgumentParser) -> 
     p_retro.add_argument("--learn", help="Project-level candidate proposal for /learn (AGENTS.md)")
     p_retro.add_argument("--skill-learn", help="Skill/script candidate improvement for /learn (SKILL.md or scripts/)")
     p_retro.add_argument("--tool-gap", help="Tooling or script defect encountered during execution")
-    p_retro.add_argument("--went-well", default=None, help="Positive execution or architectural pattern that worked well")
+    p_retro.add_argument("--went-well", "--notes", "--summary", dest="went_well", default=None, help="Positive execution or architectural pattern that worked well")
 
 
 def print_retrospective_summary(entry: dict[str, Any], slug: str, scaffold_rel: str | None) -> None:

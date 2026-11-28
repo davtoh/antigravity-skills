@@ -210,10 +210,12 @@ class TestSubcommandsExecution(unittest.TestCase):
             cmd_eval_file = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_eval_file)
             self.assertIn("--capture-runtime", cmd_eval_file)
 
-            args_plain = parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout"])
+            args_plain = parser.parse_args(["ui", "--url", "http://localhost:8000", "--audit-layout", "--viewports", "960x720,1280x800"])
             cmd_plain = diagnose.diagnose_cli.build_ui_command(diagnose.SCRIPTS_DIR, "http://localhost:8000", args_plain)
             self.assertNotIn("--capture-runtime", cmd_plain)
             self.assertNotIn("--no-capture-runtime", cmd_plain)
+            self.assertIn("--viewports", cmd_plain)
+            self.assertIn("960x720,1280x800", cmd_plain)
 
     def test_stage_standalone_skill_materializes_ssot(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -357,6 +359,20 @@ class TestMainDispatcher(unittest.TestCase):
                 self.assertEqual(diagnose.main(), 0)
             retro_text = (root / ".frontier" / "DEBUG_RETRO.md").read_text(encoding="utf-8")
             self.assertIn("Overlay missing", retro_text)
+
+    def test_cmd_tests_resolves_parent_repo_root_when_path_is_tests_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / ".git").mkdir()
+            (root / "pkg").mkdir()
+            (root / "pkg" / "__init__.py").write_text("VAL = 42\n", encoding="utf-8")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_ok.py").write_text(
+                "import unittest\nfrom pkg import VAL\nclass T(unittest.TestCase):\n    def test_v(self): self.assertEqual(VAL, 42)\n",
+                encoding="utf-8",
+            )
+            rc = diagnose.cmd_tests(argparse.Namespace(path=str(root / "tests"), args=[], timeout=30.0))
+            self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":

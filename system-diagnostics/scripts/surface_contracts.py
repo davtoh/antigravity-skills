@@ -275,6 +275,7 @@ def print_verification_report(verification: dict[str, Any]) -> None:
         ("duplicate_button_labels", "DUPE_BUTTON_LABEL", lambda x: f"'{x['label']}' ({x['file']})"),
         ("response_key_mismatches", "RESPONSE_KEY_MISMATCH", lambda x: f"{x['path']} missing .{x['key']} ({x['file']})"),
         ("undefined_layout_classes", "UNDEFINED_LAYOUT_CLASS", lambda x: f".{x['class']} ({x['file']})"),
+        ("invalid_nav_targets", "INVALID_NAV_TARGET", lambda x: f"App.navigate('{x['target']}') ({x['file']})"),
     )
     for key, tag, fmt in sections:
         for item in verification.get(key, [])[:10]:
