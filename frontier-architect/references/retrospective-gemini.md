@@ -6,7 +6,7 @@ Inputs: plan slug or conversation ids (`--plan SLUG | --cids ID...`), triggered 
 
 ## Part 1. Chronology and before/after skill evolution
 
-Run `diagnose.py transcript-audit --plan <slug>` (or `--cids`) with both table output and `--json`, plus `--list` to find timestamps. Order sessions by start time; for each give role, model tiers, steps, failures, subagents, duplicate reads, and parallel-edit/correction flags. Check `git log` on `skills/` and `rules/` for mid-stream changes between sessions; mark any not diffed as **not verified**. Delegate sweeps of more than 3 to 4 files to a `research` subagent (`Model: 'flash'`) and wait for its `SYSTEM_MESSAGE`.
+Run `diagnose.py transcript-audit --plan <slug>` (or `--cids`) with both table output and `--json`, plus `--list` to find timestamps. Order sessions by start time (prior retrospective CIDs are useful as before/after baseline anchors, but exclude them from execution step/failure averages); for each give role, model tiers, steps, failures, subagents, duplicate reads, and parallel-edit/correction flags. Run `git -C "<config_dir>/skills" log` for mid-stream skill changes between sessions; mark `rules/` (when outside `skills/.git`) or any undiffed change as **not verified**. Delegate sweeps of more than 3 to 4 files to a `research` subagent (`Model: 'flash'`) and wait for its `SYSTEM_MESSAGE`.
 
 ## Part 2. Root-cause matrix
 

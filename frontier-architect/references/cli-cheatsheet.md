@@ -38,7 +38,7 @@ python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" advance <
 # Log mandatory 4-Dimensional Retrospective telemetry (dual-writes to .frontier/state.json & retrospectives.json and auto-refreshes LEARNING_SCAFFOLD.md)
 # Positional --tri maps to: token_efficiency, hypothesis_accuracy, tool_reliability, architectural_defense (or use named k=score pairs)
 python "<config_dir>/skills/frontier-architect/scripts/plan_engine.py" retrospective <plan_or_slug> \
-  --milestone <N> --grade A --cid <conv_id> --tri "5,5,5,5" --hypotheses 1 \
+  --milestone <N> --grade A --cid <conv_id> --steps <N> --retries <R> --tri "5,5,5,5" --hypotheses 1 \
   --went-well "<what worked well>" --learn "<project rule>" --skill-learn "<skill/script lesson>" --tool-gap "<gap_or_none>" --escalate "none" --root .
 
 # Targeted Python unittest execution (enforces 180s --timeout guard against deadlocks/hangs)
