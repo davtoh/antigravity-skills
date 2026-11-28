@@ -57,6 +57,10 @@ python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" audit --path
 # Polyglot defect scan across one or multiple paths
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" scan --path <paths...>
 
+# List active HUD observations & close resolved OBS-NNN entries at milestone/plan sign-off (uses --path, NOT --root)
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations list --path .
+python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" observations resolve --id <OBS-NNN> --resolution "<summary>" --commit <sha> --path .
+
 # Architecture, coupling & route/CLI map (supports single root or multiple subpaths)
 python "<config_dir>/skills/system-diagnostics/scripts/diagnose.py" arch-map --path .
 
