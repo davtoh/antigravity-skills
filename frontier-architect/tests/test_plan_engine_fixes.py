@@ -10,7 +10,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from plan_cli_helpers import print_master_gate, print_retrospective_summary, resolve_commit_hint
+from plan_cli_helpers import assess_plan_scope, print_master_gate, print_retrospective_summary, resolve_commit_hint
 from plan_scaffold import _triage_candidates
 from plan_state import load_json, save_json
 
@@ -69,7 +69,7 @@ class TestPlanEngineFixes(unittest.TestCase):
             {"text": "**Files**:"},
             {"text": "`dashboard/services/async_inference_worker.py`: Add worker."},
             {"text": "`dashboard/services/stream_worker.py`: Wire async step."},
-            {"text": "`dashboard/stream_manager.py` & `dashboard/routers/streaming.py`: Event wakeup."},
+            {"text": "`dashboard/stream_manager.py`: Event wakeup."},
             {"text": "`tests/test_async_inference_worker.py`: Add unit tests."},
             {"text": "**Verification**:"},
             {"text": "`python -m unittest tests/test_async_inference_worker.py`"},
@@ -162,6 +162,32 @@ class TestPlanEngineFixes(unittest.TestCase):
             out = buf.getvalue()
             self.assertIn("Warning: --tri omitted", out)
             self.assertIn("Warning: --steps/--retries unresolved", out)
+
+    def test_tactical_master_gate_counts_all_paths_per_line(self):
+        import io
+        from contextlib import redirect_stdout
+
+        ps = {"slug": "demo_master_roadmap", "title": "Demo Master", "child_plans": {}}
+        tasks = [
+            {"text": "`pkg/a.py`, `pkg/b.py`, `pkg/c.py`"},
+            {"text": "`pkg/d.py`, `pkg/e.py`, `pkg/f.py`"},
+        ]
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_master_gate(ps, 2, declared_child=None, tasks=tasks)
+        out = buf.getvalue()
+        self.assertNotIn("Tactical Master Step", out)
+        self.assertIn("MANDATORY: DO NOT implement this entire master step in one turn.", out)
+
+    def test_assess_plan_scope_warns_on_overloaded_single_milestone_child(self):
+        ps = {"slug": "step_2_demo", "title": "Step 2", "child_plans": {}, "parent_plan": {"slug": "demo_master", "milestone": 2}}
+        one_m = {"milestones": [{"index": 1, "tasks": [{"text": f"**pkg/f{i}.py**: edit"} for i in range(7)]}]}
+        warn = assess_plan_scope(one_m, ps, parent_arg="demo_master")
+        self.assertIsNotNone(warn)
+        self.assertIn("GRANULARITY WARNING (SINGLE-MILESTONE CHILD)", warn)
+
+        two_m = {"milestones": [{"index": 1, "tasks": [{"text": "**pkg/f1.py**: a"}]}, {"index": 2, "tasks": [{"text": "**pkg/f2.py**: b"}]}]}
+        self.assertIsNone(assess_plan_scope(two_m, ps, parent_arg="demo_master"))
 
 
 if __name__ == "__main__":

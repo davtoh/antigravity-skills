@@ -18,4 +18,4 @@ def parent_handoff(root: Path, parent: dict) -> list[str]:
     if pstate.get("status") == "completed" or (isinstance(nxt, int) and isinstance(total, int) and nxt > total):
         return [f"[plan_engine] Plan complete: master '{slug}' is fully advanced. Run its final sign-off."]
     return [f"[plan_engine] Plan complete: master step {idx} of '{slug}' is already advanced (no further 'advance' needed).",
-            f"[plan_engine] Next: master step {nxt} is active -> run `/frontier-architect continue {slug}`."]
+            f"[plan_engine] Next: Master Step {nxt} is active -> run `/frontier-architect continue {slug}` to pre-plan Step {nxt} into a multi-milestone child plan."]

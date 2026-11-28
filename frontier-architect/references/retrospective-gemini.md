@@ -18,7 +18,7 @@ Audit `LEARNING_SCAFFOLD.md` and `LEARN_QUEUE.md`: stale, duplicate or polluted 
 
 ## Part 4. Plan granularity and master-roadmap alignment
 
-Were milestones right-sized (`~40–90` steps) or overloaded (`> 120` steps), and were pre-plan (`init`) sessions cleanly separated from execution? Check `plan_engine.py status` and pending commits: does the master roadmap match what was built? Propose splits or merges as diffs.
+Were milestones right-sized (`~40–90` steps) or overloaded (`> 120` steps, e.g., Step 1 collapsed into a single `M1/1` child plan), and were pre-plan (`init`) sessions cleanly separated from execution? Check `plan_engine.py status` and pending commits: does the master roadmap match what was built? Propose splits or merges as diffs.
 
 ## Part 5. Deliverable
 
